@@ -133,10 +133,34 @@ async function renderCategoryList() {
     const catName = params.get('cat');
     const app = document.getElementById('app');
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
+    
     try {
         const allProducts = await fetchGASProducts();
-        const filtered = allProducts.filter(p => String(p["Category"]).trim() === String(catName).trim());
         
+        // 除錯檢查：如果抓回來的資料不是陣列
+        if (!Array.isArray(allProducts)) {
+            throw new Error("GAS returned invalid data format");
+        }
+
+        const filtered = allProducts.filter(p => {
+            // 強制轉型為字串並去除空格後比對
+            const pCat = p["Category"] ? String(p["Category"]).trim() : "";
+            const targetCat = catName ? String(catName).trim() : "";
+            return pCat === targetCat;
+        });
+        
+        if (filtered.length === 0) {
+            app.innerHTML = `
+                <div class="text-center py-20">
+                    <p class="text-gray-500 mb-4">分類「${catName}」中沒有找到任何產品。</p>
+                    <button onclick="switchPage('Product Catalog')" class="text-blue-600 underline">返回目錄</button>
+                    <div class="mt-4 p-4 bg-gray-100 text-xs text-left inline-block">
+                        除錯資訊：GAS 總共抓到 ${allProducts.length} 筆資料
+                    </div>
+                </div>`;
+            return;
+        }
+
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
             const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
@@ -147,10 +171,12 @@ async function renderCategoryList() {
                     <div class="p-4 text-center"><p class="text-xs text-blue-600 font-bold mb-1">${code}</p><h4 class="font-bold text-gray-800 line-clamp-2">${name}</h4></div>
                 </div>`;
         }).join('');
+
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-        app.innerHTML = `<div class="max-w-6xl mx-auto px-4 text-left"><nav class="flex text-gray-500 text-sm mb-8 italic"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a><span class="mx-2">&gt;</span><span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml || `<p class="col-span-full text-center py-10 text-gray-400">No products found in category: ${catName}</p>`}</div></div>`;
+        app.innerHTML = `<div class="max-w-6xl mx-auto px-4 text-left"><nav class="flex text-gray-500 text-sm mb-8 italic"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a><span class="mx-2">&gt;</span><span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml}</div></div>`;
     } catch (e) { 
-        app.innerHTML = `<div class="text-center py-20 text-red-500 font-bold">Failed to load category.<br><span class="text-sm font-normal">Please ensure GAS URL is correct and set to 'Anyone' access.</span></div>`; 
+        console.error("Detailed Error:", e);
+        app.innerHTML = `<div class="text-center py-20 text-red-500 font-bold">無法載入產品資料。<br><span class="text-sm font-normal text-gray-400">請確認 GAS 部署是否設為「所有人」以及網址是否正確。</span></div>`; 
     }
 }
 
@@ -263,3 +289,4 @@ async function loadPage(pageName, updateUrl = true) {
 }
 
 initWebsite();
+
