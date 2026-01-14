@@ -7,15 +7,18 @@ let currentPage = 'Content';
 let rawDataCache = {};
 let allProductsCache = null;
 
-// --- 修正後的跳轉函式：確保中文參數不報錯 ---
+// --- 修正後的跳轉函式：確保導覽列同步更新 ---
 function switchPage(page, params = {}) {
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', page);
     for (const key in params) {
-        // 使用 encodeURIComponent 確保中文分類不失效
         u.searchParams.set(key, params[key]);
     }
     window.history.pushState({}, '', u);
+    
+    // 關鍵：更新當前頁面標記並重新渲染導覽列
+    currentPage = page;
+    renderNav(); 
     loadPage(page, false); 
 }
 
@@ -32,13 +35,20 @@ async function fetchSheetData(sheetName) {
     } catch (e) { return []; }
 }
 
+// --- 強化後的 GAS 抓取：增加錯誤提示 ---
 async function fetchGASProducts() {
     if (allProductsCache) return allProductsCache;
     try {
         const response = await fetch(GAS_PRODUCT_URL);
-        allProductsCache = await response.json();
+        if (!response.ok) throw new Error("GAS Network Error");
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error("Data format error");
+        allProductsCache = data;
         return allProductsCache;
-    } catch (e) { throw e; }
+    } catch (e) {
+        console.error("GAS Fetch Failed:", e);
+        throw e;
+    }
 }
 
 function handleRouting() {
@@ -70,8 +80,8 @@ function updateLangButton() {
 function toggleLang() {
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
     updateLangButton();
-    renderNav(); // 立即刷新導覽列文字
-    loadPage(currentPage, false); // 立即刷新頁面內容
+    renderNav();
+    loadPage(currentPage, false);
 }
 
 function renderLogoAndStores() {
@@ -95,6 +105,7 @@ function renderLogoAndStores() {
     });
 }
 
+// --- 修正：確保 active 狀態根據 currentPage 正確切換 ---
 async function renderNav() {
     const nav = document.getElementById('main-nav');
     const langIdx = (currentLang === 'zh') ? 1 : 2;
@@ -104,8 +115,13 @@ async function renderNav() {
         const data = rawDataCache[tab];
         const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
         const displayName = (titleRow && titleRow[langIdx]) ? titleRow[langIdx] : tab;
+        
+        // 判斷邏輯：如果是分類頁或產品頁，則讓 "Product Catalog" 保持底線
         let isActive = (currentPage === tab) ? 'active' : '';
-        if ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog') isActive = 'active';
+        if ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog') {
+            isActive = 'active';
+        }
+        
         navHtml += `<li class="nav-item ${isActive} px-6 py-3 cursor-pointer" onclick="switchPage('${tab}')">${displayName}</li>`;
     }
     nav.innerHTML = navHtml;
@@ -119,7 +135,6 @@ async function renderCategoryList() {
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
     try {
         const allProducts = await fetchGASProducts();
-        // 增加 trim() 避免空格導致的比對失敗
         const filtered = allProducts.filter(p => String(p["Category"]).trim() === String(catName).trim());
         
         let itemsHtml = filtered.map(item => {
@@ -133,8 +148,10 @@ async function renderCategoryList() {
                 </div>`;
         }).join('');
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-        app.innerHTML = `<div class="max-w-6xl mx-auto px-4"><nav class="flex text-gray-500 text-sm mb-8 italic"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a><span class="mx-2">&gt;</span><span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml || `<p class="col-span-full text-center py-10 text-gray-400">No products found in category: ${catName}</p>`}</div></div>`;
-    } catch (e) { app.innerHTML = `<div class="text-center py-20 text-red-500">Failed to load category. Check internet or GAS URL.</div>`; }
+        app.innerHTML = `<div class="max-w-6xl mx-auto px-4 text-left"><nav class="flex text-gray-500 text-sm mb-8 italic"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a><span class="mx-2">&gt;</span><span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml || `<p class="col-span-full text-center py-10 text-gray-400">No products found in category: ${catName}</p>`}</div></div>`;
+    } catch (e) { 
+        app.innerHTML = `<div class="text-center py-20 text-red-500 font-bold">Failed to load category.<br><span class="text-sm font-normal">Please ensure GAS URL is correct and set to 'Anyone' access.</span></div>`; 
+    }
 }
 
 // --- 渲染產品詳情 ---
@@ -164,7 +181,6 @@ async function renderProductDetail() {
 async function loadPage(pageName, updateUrl = true) {
     currentPage = pageName;
     const app = document.getElementById('app');
-    // 強制根據當前語系設定正確的 langIdx
     const langIdx = (currentLang === 'zh') ? 1 : 2;
 
     if (updateUrl) switchPage(pageName);
@@ -175,24 +191,18 @@ async function loadPage(pageName, updateUrl = true) {
     if (!rawDataCache[pageName]) { rawDataCache[pageName] = await fetchSheetData(pageName); }
     const data = rawDataCache[pageName];
 
-    // --- 根據 pageName 渲染內容 ---
+    // --- 分頁內容渲染邏輯 ---
     if (pageName === "Product Catalog") {
         const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
-        // 修正：PDF 按鈕根據當前語言選擇關鍵字
         const pdfKey = (currentLang === 'zh') ? 'chinese pdf button' : 'english pdf button';
-        const catKey = 'categories';
-
         let pdfHtml = ''; let catHtml = '';
         data.forEach(row => {
             const rowKey = (row[0] || "").toLowerCase().trim();
             const displayText = row[langIdx];
             const imgUrl = (row[3] || "").trim();
             const valE = (row[4] || "").trim();
-
-            if (rowKey.includes(pdfKey) && valE) {
-                pdfHtml += `<a href="${valE}" target="_blank" class="bg-red-600 text-white font-bold py-3 px-8 rounded-full mb-4 inline-block">${displayText}</a>`;
-            }
-            if (rowKey.includes(catKey) && displayText) {
+            if (rowKey.includes(pdfKey) && valE) pdfHtml += `<a href="${valE}" target="_blank" class="bg-red-600 text-white font-bold py-3 px-8 rounded-full mb-4 inline-block">${displayText}</a>`;
+            if (rowKey.includes('categories') && displayText) {
                 catHtml += `<div class="category-card group cursor-pointer" onclick="switchPage('category', {cat: '${valE}'})"><div class="category-img-container"><img src="${imgUrl}" class="w-full h-full object-cover"></div><div class="p-5 text-center bg-white border-t"><h4 class="font-bold text-gray-800 text-lg group-hover:text-blue-600 transition">${displayText}</h4></div></div>`;
             }
         });
@@ -223,7 +233,7 @@ async function loadPage(pageName, updateUrl = true) {
             const target = (currentLang === 'zh') ? 'chinese content' : 'english content';
             if (key.includes(target) && row[3]) contentImages += `<img src="${row[3]}" class="home-bottom-image mb-8 max-w-2xl mx-auto block">`;
         });
-        app.innerHTML = `<div class="flex flex-col items-center py-10 w-full"><h1 class="text-4xl font-black mb-12">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="w-full px-4">${contentImages}</div></div>`;
+        app.innerHTML = `<div class="flex flex-col items-center py-10 w-full"><h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="w-full px-4">${contentImages}</div></div>`;
     }
     else if (pageName === "Join Us") {
         const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
@@ -238,7 +248,7 @@ async function loadPage(pageName, updateUrl = true) {
             }
         });
         let jobsHtml = Object.values(jobs).map(job => `<div class="bg-white border rounded-2xl p-8 text-left shadow-sm"><h3 class="text-2xl font-black mb-4 border-b pb-4 text-gray-800">${job.title}</h3><p class="text-gray-600 leading-relaxed" style="white-space: pre-line;">${job.desc}</p></div>`).join('');
-        app.innerHTML = `<div class="flex flex-col items-center py-10 px-4"><h1 class="text-4xl font-black mb-12">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="grid md:grid-cols-2 gap-8 w-full max-w-6xl">${jobsHtml}</div></div>`;
+        app.innerHTML = `<div class="flex flex-col items-center py-10 px-4"><h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="grid md:grid-cols-2 gap-8 w-full max-w-6xl">${jobsHtml}</div></div>`;
     }
     else if (pageName === "Contact Us") {
         const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
@@ -247,7 +257,7 @@ async function loadPage(pageName, updateUrl = true) {
             if (row[0].toLowerCase().includes('info') && row[langIdx]) info += `<p class="text-xl text-gray-700 mb-4 font-medium">${row[langIdx]}</p>`;
             if (row[0].toLowerCase().includes('map') && row[4]) map = row[4];
         });
-        app.innerHTML = `<div class="flex flex-col items-center py-10 px-4 text-center"><h1 class="text-4xl font-black mb-12">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="w-full max-w-2xl border-y py-8 mb-16">${info}</div><iframe src="${map}" width="100%" height="500" class="max-w-6xl rounded-2xl shadow-sm border" loading="lazy"></iframe></div>`;
+        app.innerHTML = `<div class="flex flex-col items-center py-10 px-4 text-center"><h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="w-full max-w-2xl border-y py-8 mb-16">${info}</div><iframe src="${map}" width="100%" height="500" class="max-w-6xl rounded-2xl shadow-sm border" loading="lazy"></iframe></div>`;
     }
     window.scrollTo(0, 0);
 }
