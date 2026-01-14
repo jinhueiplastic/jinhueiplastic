@@ -7,7 +7,7 @@ let currentPage = 'Content';
 let rawDataCache = {};
 let allProductsCache = null;
 
-// --- 修正後的跳轉函式：確保導覽列同步更新 ---
+// 統一跳轉並處理導覽列狀態
 function switchPage(page, params = {}) {
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', page);
@@ -16,9 +16,8 @@ function switchPage(page, params = {}) {
     }
     window.history.pushState({}, '', u);
     
-    // 關鍵：更新當前頁面標記並重新渲染導覽列
     currentPage = page;
-    renderNav(); 
+    renderNav(); // 立即重新渲染導覽列以更新底線
     loadPage(page, false); 
 }
 
@@ -35,18 +34,16 @@ async function fetchSheetData(sheetName) {
     } catch (e) { return []; }
 }
 
-// --- 強化後的 GAS 抓取：增加錯誤提示 ---
 async function fetchGASProducts() {
     if (allProductsCache) return allProductsCache;
     try {
         const response = await fetch(GAS_PRODUCT_URL);
-        if (!response.ok) throw new Error("GAS Network Error");
         const data = await response.json();
-        if (!Array.isArray(data)) throw new Error("Data format error");
+        if (data.error) throw new Error(data.error);
         allProductsCache = data;
         return allProductsCache;
     } catch (e) {
-        console.error("GAS Fetch Failed:", e);
+        console.error("GAS Error:", e);
         throw e;
     }
 }
@@ -54,10 +51,8 @@ async function fetchGASProducts() {
 function handleRouting() {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
-    if (page) {
-        if (tabs.includes(page) || page === 'category' || page === 'product') {
-            currentPage = page;
-        }
+    if (page && (tabs.includes(page) || page === 'category' || page === 'product')) {
+        currentPage = page;
     }
 }
 
@@ -105,7 +100,6 @@ function renderLogoAndStores() {
     });
 }
 
-// --- 修正：確保 active 狀態根據 currentPage 正確切換 ---
 async function renderNav() {
     const nav = document.getElementById('main-nav');
     const langIdx = (currentLang === 'zh') ? 1 : 2;
@@ -116,8 +110,8 @@ async function renderNav() {
         const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
         const displayName = (titleRow && titleRow[langIdx]) ? titleRow[langIdx] : tab;
         
-        // 判斷邏輯：如果是分類頁或產品頁，則讓 "Product Catalog" 保持底線
         let isActive = (currentPage === tab) ? 'active' : '';
+        // 關鍵修正：分類頁與詳情頁時，"Product Catalog" 保持 active
         if ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog') {
             isActive = 'active';
         }
@@ -127,40 +121,15 @@ async function renderNav() {
     nav.innerHTML = navHtml;
 }
 
-// --- 渲染分類清單 ---
 async function renderCategoryList() {
     const params = new URLSearchParams(window.location.search);
     const catName = params.get('cat');
     const app = document.getElementById('app');
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
-    
     try {
         const allProducts = await fetchGASProducts();
+        const filtered = allProducts.filter(p => String(p["Category"]).trim() === String(catName).trim());
         
-        // 除錯檢查：如果抓回來的資料不是陣列
-        if (!Array.isArray(allProducts)) {
-            throw new Error("GAS returned invalid data format");
-        }
-
-        const filtered = allProducts.filter(p => {
-            // 強制轉型為字串並去除空格後比對
-            const pCat = p["Category"] ? String(p["Category"]).trim() : "";
-            const targetCat = catName ? String(catName).trim() : "";
-            return pCat === targetCat;
-        });
-        
-        if (filtered.length === 0) {
-            app.innerHTML = `
-                <div class="text-center py-20">
-                    <p class="text-gray-500 mb-4">分類「${catName}」中沒有找到任何產品。</p>
-                    <button onclick="switchPage('Product Catalog')" class="text-blue-600 underline">返回目錄</button>
-                    <div class="mt-4 p-4 bg-gray-100 text-xs text-left inline-block">
-                        除錯資訊：GAS 總共抓到 ${allProducts.length} 筆資料
-                    </div>
-                </div>`;
-            return;
-        }
-
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
             const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
@@ -171,16 +140,13 @@ async function renderCategoryList() {
                     <div class="p-4 text-center"><p class="text-xs text-blue-600 font-bold mb-1">${code}</p><h4 class="font-bold text-gray-800 line-clamp-2">${name}</h4></div>
                 </div>`;
         }).join('');
-
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-        app.innerHTML = `<div class="max-w-6xl mx-auto px-4 text-left"><nav class="flex text-gray-500 text-sm mb-8 italic"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a><span class="mx-2">&gt;</span><span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml}</div></div>`;
+        app.innerHTML = `<div class="max-w-6xl mx-auto px-4 text-left"><nav class="flex text-gray-500 text-sm mb-8 italic"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a><span class="mx-2">&gt;</span><span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml || `<p class="col-span-full text-center py-10">此分類暫無商品。</p>`}</div></div>`;
     } catch (e) { 
-        console.error("Detailed Error:", e);
-        app.innerHTML = `<div class="text-center py-20 text-red-500 font-bold">無法載入產品資料。<br><span class="text-sm font-normal text-gray-400">請確認 GAS 部署是否設為「所有人」以及網址是否正確。</span></div>`; 
+        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。請檢查試算表 ID 或 GAS 權限。</div>`; 
     }
 }
 
-// --- 渲染產品詳情 ---
 async function renderProductDetail() {
     const params = new URLSearchParams(window.location.search);
     const itemCode = params.get('id');
@@ -188,7 +154,7 @@ async function renderProductDetail() {
     try {
         const allProducts = await fetchGASProducts();
         const item = allProducts.find(p => String(p["Item code (ERP)"]).trim() == String(itemCode).trim());
-        if (!item) { app.innerHTML = `<div class="text-center py-20">Product not found.</div>`; return; }
+        if (!item) { app.innerHTML = `<div class="text-center py-20">找不到商品。</div>`; return; }
         const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
         const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
         const desc = (currentLang === 'zh') ? item["中文描述"] : item["英文描述"];
@@ -201,15 +167,13 @@ async function renderProductDetail() {
                     <div class="w-full md:w-1/2"><h1 class="text-3xl font-black mb-2 text-gray-900">${name}</h1><p class="text-xl text-blue-600 font-bold mb-6">${itemCode}</p><div class="border-y py-6 mb-6"><p><span class="text-gray-400 mr-4">${currentLang === 'zh' ? '包裝規格' : 'Packing'}</span> <b>${item["Pcs / Packing"]} ${item["計量單位"]}</b></p></div><h4 class="font-bold text-gray-900 mb-3">${currentLang === 'zh' ? '商品描述' : 'Description'}</h4><p class="text-gray-600 leading-loose" style="white-space: pre-line;">${desc}</p></div>
                 </div>
             </div>`;
-    } catch (e) { app.innerHTML = `Error loading product.`; }
+    } catch (e) { app.innerHTML = `載入錯誤。`; }
 }
 
 async function loadPage(pageName, updateUrl = true) {
-    currentPage = pageName;
+    if (updateUrl) switchPage(pageName);
     const app = document.getElementById('app');
     const langIdx = (currentLang === 'zh') ? 1 : 2;
-
-    if (updateUrl) switchPage(pageName);
 
     if (pageName === 'category') { renderCategoryList(); return; }
     if (pageName === 'product') { renderProductDetail(); return; }
@@ -217,23 +181,21 @@ async function loadPage(pageName, updateUrl = true) {
     if (!rawDataCache[pageName]) { rawDataCache[pageName] = await fetchSheetData(pageName); }
     const data = rawDataCache[pageName];
 
-    // --- 分頁內容渲染邏輯 ---
+    // 其他頁面渲染（About Us, Contact Us, 等...）保持不變
     if (pageName === "Product Catalog") {
         const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
         const pdfKey = (currentLang === 'zh') ? 'chinese pdf button' : 'english pdf button';
         let pdfHtml = ''; let catHtml = '';
         data.forEach(row => {
             const rowKey = (row[0] || "").toLowerCase().trim();
-            const displayText = row[langIdx];
-            const imgUrl = (row[3] || "").trim();
-            const valE = (row[4] || "").trim();
-            if (rowKey.includes(pdfKey) && valE) pdfHtml += `<a href="${valE}" target="_blank" class="bg-red-600 text-white font-bold py-3 px-8 rounded-full mb-4 inline-block">${displayText}</a>`;
-            if (rowKey.includes('categories') && displayText) {
-                catHtml += `<div class="category-card group cursor-pointer" onclick="switchPage('category', {cat: '${valE}'})"><div class="category-img-container"><img src="${imgUrl}" class="w-full h-full object-cover"></div><div class="p-5 text-center bg-white border-t"><h4 class="font-bold text-gray-800 text-lg group-hover:text-blue-600 transition">${displayText}</h4></div></div>`;
+            if (rowKey.includes(pdfKey) && row[4]) pdfHtml += `<a href="${row[4]}" target="_blank" class="bg-red-600 text-white font-bold py-3 px-8 rounded-full mb-4 inline-block">${row[langIdx]}</a>`;
+            if (rowKey.includes('categories') && row[langIdx]) {
+                catHtml += `<div class="category-card group cursor-pointer" onclick="switchPage('category', {cat: '${row[4]}'})"><div class="category-img-container"><img src="${row[3]}" class="w-full h-full object-cover"></div><div class="p-5 text-center bg-white border-t"><h4 class="font-bold text-gray-800 text-lg group-hover:text-blue-600 transition">${row[langIdx]}</h4></div></div>`;
             }
         });
         app.innerHTML = `<div class="flex flex-col items-center py-10 w-full"><h1 class="text-4xl font-black mb-6 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="mb-10">${pdfHtml}</div><div class="grid grid-cols-2 md:grid-cols-4 gap-8 w-full max-w-6xl px-4">${catHtml}</div></div>`;
-    } 
+    }
+    // ... (其餘頁面渲染邏輯與上個版本一致，為節省篇幅略)
     else if (pageName === "Content" || pageName === "About Us") {
         let upperImages = ''; let companyNames = ''; let introContent = ''; let addressBlock = ''; let bottomImages = '';
         data.forEach(row => {
@@ -289,4 +251,3 @@ async function loadPage(pageName, updateUrl = true) {
 }
 
 initWebsite();
-
