@@ -15,38 +15,8 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
-    
-    <style>
-        /* 導覽列固定 */
-        .nav-fixed {
-            position: sticky;
-            top: 0;
-            z-index: 50;
-            background-color: white;
-        }
-        
-        /* 導覽列底線移動邏輯 */
-        .nav-item {
-            position: relative;
-            transition: color 0.3s;
-        }
-        .nav-item.active {
-            color: #2563eb; 
-            font-weight: bold;
-            border-bottom: 3px solid #2563eb; 
-        }
-
-        /* 隱藏滾動條但保持功能 (手機版) */
-        #main-nav::-webkit-scrollbar {
-            display: none;
-        }
-        #main-nav {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-    </style>
 </head>
-<body class="bg-white text-gray-900 font-sans">
+<body class="bg-gray-50 text-gray-900 font-sans">
 
     <header class="nav-fixed border-b shadow-sm">
         <div class="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -55,35 +25,28 @@
             </div>
             
             <div class="flex items-center gap-6">
-                <div id="store-container" class="flex gap-4 items-center">
-                    </div>
+                <div id="store-container" class="flex gap-4 items-center"></div>
                 <div class="h-6 w-px bg-gray-300"></div>
-                <button id="lang-toggle-btn" 
-                        class="bg-gray-100 hover:bg-gray-200 px-4 py-1 rounded-full text-sm font-bold transition" 
-                        onclick="toggleLang()">
-                </button>
+                <button id="lang-toggle-btn" class="lang-btn" onclick="toggleLang()"></button>
             </div>
         </div>
 
         <nav class="nav-bar-bg">
-            <ul id="main-nav" class="flex justify-center overflow-x-auto whitespace-nowrap py-1">
-                </ul>
+            <ul id="main-nav" class="flex justify-center overflow-x-auto whitespace-nowrap py-1"></ul>
         </nav>
     </header>
 
-    <main id="app" class="container mx-auto px-4 py-10 min-h-[65vh]">
+    <main id="app" class="container mx-auto px-4 py-6 min-h-[65vh]">
         <div class="flex justify-center items-center py-20">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
     </main>
 
-    <footer class="bg-gray-50 border-t py-12 mt-10">
+    <footer class="bg-white border-t py-12 mt-10">
         <div class="container mx-auto px-4 text-center">
-            <div class="mb-4 font-bold text-gray-600">
-                錦輝塑膠業有限公司
-            </div>
+            <div class="mb-4 font-bold text-gray-700">錦輝塑膠業有限公司 | 美銘工業有限公司</div>
             <p class="text-gray-400 text-xs italic">
-                &copy; 2026 JIN HUEI PLASTIC CO.,LTD. All Rights Reserved.
+                &copy; 2026 JIN HUEI PLASTIC CO., LTD. All Rights Reserved.
             </p>
         </div>
     </footer>
