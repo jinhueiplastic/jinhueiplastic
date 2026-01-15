@@ -196,7 +196,6 @@ async function renderProductDetail() {
     const itemCode = params.get('id');
     const app = document.getElementById('app');
     
-    // 顯示載入中動畫
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
     
     try {
@@ -208,13 +207,10 @@ async function renderProductDetail() {
             return;
         }
 
-        // 解析多張圖片
         const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
         const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
         const desc = (currentLang === 'zh') ? item["中文描述"] : item["英文描述"];
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-        const packingLabel = (currentLang === 'zh') ? '包裝規格' : 'Packing';
-        const descLabel = (currentLang === 'zh') ? '商品描述' : 'Description';
 
         app.innerHTML = `
             <div class="max-w-6xl mx-auto px-4 text-left">
@@ -228,12 +224,14 @@ async function renderProductDetail() {
 
                 <div class="flex flex-col md:flex-row gap-12">
                     <div class="w-full md:w-1/2">
-                        <img id="main-prod-img" src="${images[0]}" class="w-full aspect-square object-cover rounded-2xl border shadow-sm transition duration-300">
+                        <img id="main-prod-img" src="${images[0]}" class="w-full aspect-square object-cover rounded-2xl border shadow-sm">
+                        
                         <div class="flex gap-3 mt-4 overflow-x-auto pb-2">
                             ${images.map(img => `
                                 <img src="${img}" 
-                                     onclick="document.getElementById('main-prod-img').src='${this.src}'" 
-                                     class="w-20 h-20 object-cover rounded-lg cursor-pointer border-2 border-transparent hover:border-blue-500 transition shadow-sm">
+                                     onclick="document.getElementById('main-prod-img').src='${img}'" 
+                                     class="w-20 h-20 object-cover rounded-lg cursor-pointer border-2 border-transparent hover:border-blue-500 transition shadow-sm bg-white"
+                                     onerror="this.style.display='none'">
                             `).join('')}
                         </div>
                     </div>
@@ -244,12 +242,12 @@ async function renderProductDetail() {
                         
                         <div class="border-y py-6 mb-6">
                             <p class="flex items-center">
-                                <span class="text-gray-400 w-24">${packingLabel}</span>
+                                <span class="text-gray-400 w-24">${currentLang === 'zh' ? '包裝規格' : 'Packing'}</span>
                                 <b class="text-gray-800">${item["Pcs / Packing"] || '--'} ${item["計量單位"] || ''}</b>
                             </p>
                         </div>
 
-                        <h4 class="font-bold text-gray-900 mb-3">${descLabel}</h4>
+                        <h4 class="font-bold text-gray-900 mb-3">${currentLang === 'zh' ? '商品描述' : 'Description'}</h4>
                         <p class="text-gray-600 leading-loose" style="white-space: pre-line;">${desc}</p>
                     </div>
                 </div>
@@ -322,4 +320,5 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
