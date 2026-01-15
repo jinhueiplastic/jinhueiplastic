@@ -195,18 +195,68 @@ async function renderProductDetail() {
     const params = new URLSearchParams(window.location.search);
     const itemCode = params.get('id');
     const app = document.getElementById('app');
-    const allProducts = await fetchGASProducts();
-    const item = allProducts.find(p => String(p["Item code (ERP)"]).trim() == String(itemCode).trim());
-    if (!item) return;
-    const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
-    const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
-    const desc = (currentLang === 'zh') ? item["中文描述"] : item["英文描述"];
-    app.innerHTML = `<div class="max-w-6xl mx-auto px-4">
-        <div class="flex flex-col md:flex-row gap-12 text-left">
-            <div class="w-full md:w-1/2"><img id="main-prod-img" src="${images[0]}" class="w-full rounded-2xl border shadow-sm"></div>
-            <div class="w-full md:w-1/2"><h1 class="text-3xl font-black mb-2">${name}</h1><p class="text-xl text-blue-600 font-bold mb-6">${itemCode}</p><p class="text-gray-600 leading-loose" style="white-space: pre-line;">${desc}</p></div>
-        </div>
-    </div>`;
+    
+    // 顯示載入中動畫
+    app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
+    
+    try {
+        const allProducts = await fetchGASProducts();
+        const item = allProducts.find(p => String(p["Item code (ERP)"]).trim() == String(itemCode).trim());
+        
+        if (!item) {
+            app.innerHTML = `<div class="text-center py-20">找不到商品內容。</div>`;
+            return;
+        }
+
+        // 解析多張圖片
+        const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
+        const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
+        const desc = (currentLang === 'zh') ? item["中文描述"] : item["英文描述"];
+        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
+        const packingLabel = (currentLang === 'zh') ? '包裝規格' : 'Packing';
+        const descLabel = (currentLang === 'zh') ? '商品描述' : 'Description';
+
+        app.innerHTML = `
+            <div class="max-w-6xl mx-auto px-4 text-left">
+                <nav class="flex text-gray-500 text-sm mb-8 italic">
+                    <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a>
+                    <span class="mx-2">&gt;</span>
+                    <a href="javascript:void(0)" onclick="switchPage('category', {cat: '${item["Category"]}'})" class="hover:text-blue-600">${item["Category"]}</a>
+                    <span class="mx-2">&gt;</span>
+                    <span class="text-gray-900 font-bold">${itemCode}</span>
+                </nav>
+
+                <div class="flex flex-col md:flex-row gap-12">
+                    <div class="w-full md:w-1/2">
+                        <img id="main-prod-img" src="${images[0]}" class="w-full aspect-square object-cover rounded-2xl border shadow-sm transition duration-300">
+                        <div class="flex gap-3 mt-4 overflow-x-auto pb-2">
+                            ${images.map(img => `
+                                <img src="${img}" 
+                                     onclick="document.getElementById('main-prod-img').src='${this.src}'" 
+                                     class="w-20 h-20 object-cover rounded-lg cursor-pointer border-2 border-transparent hover:border-blue-500 transition shadow-sm">
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="w-full md:w-1/2">
+                        <h1 class="text-3xl font-black mb-2 text-gray-900">${name}</h1>
+                        <p class="text-xl text-blue-600 font-bold mb-6">${itemCode}</p>
+                        
+                        <div class="border-y py-6 mb-6">
+                            <p class="flex items-center">
+                                <span class="text-gray-400 w-24">${packingLabel}</span>
+                                <b class="text-gray-800">${item["Pcs / Packing"] || '--'} ${item["計量單位"] || ''}</b>
+                            </p>
+                        </div>
+
+                        <h4 class="font-bold text-gray-900 mb-3">${descLabel}</h4>
+                        <p class="text-gray-600 leading-loose" style="white-space: pre-line;">${desc}</p>
+                    </div>
+                </div>
+            </div>`;
+    } catch (e) {
+        app.innerHTML = `<div class="text-center py-20 text-red-500">詳情頁載入錯誤。</div>`;
+    }
 }
 
 function renderProductCatalog(data, langIdx) {
@@ -272,3 +322,4 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
