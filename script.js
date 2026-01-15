@@ -250,4 +250,13 @@ async function loadPage(pageName, updateUrl = true) {
     window.scrollTo(0, 0);
 }
 
+// 監聽瀏覽器「上一頁」或「下一頁」動作
+window.onpopstate = function(event) {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page') || 'Content'; // 預設首頁
+    loadPage(page, false); // 第二個參數設為 false，避免再次 pushState 造成死循環
+    renderNav();           // 確保導覽列底線同步更新
+};
+
 initWebsite();
+
