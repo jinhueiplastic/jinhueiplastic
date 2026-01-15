@@ -193,7 +193,7 @@ async function renderCategoryList() {
 
 // --- 新增：將文字中的 Markdown 表格語法轉換為 HTML 表格 ---
 function parseMarkdownTable(text) {
-    if (!text.includes('|')) return text; // 如果沒有表格符號，直接回傳原文字
+    if (!text.includes('|')) return text; 
 
     const lines = text.split('\n');
     let inTable = false;
@@ -201,31 +201,50 @@ function parseMarkdownTable(text) {
     let tableBuffer = [];
 
     lines.forEach(line => {
-        if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
-            if (!inTable) {
-                inTable = true;
-                html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm">';
-            }
-            const cells = line.split('|').filter(cell => cell.trim() !== '' || line.indexOf('|') !== line.lastIndexOf('|'));
-            // 移除前後空白的儲存格
-            if (line.trim().match(/^[|:\s-]+$/)) return; // 跳過分隔線層 (|---|---|)
+        const trimmedLine = line.trim();
+        // 判斷是否為表格行：包含 | 且不是分隔線 (如 |---|)
+        if (trimmedLine.startsWith('|') || trimmedLine.includes('|')) {
+            // 分離欄位並過濾掉頭尾因 | 產生的空字串
+            const cells = line.split('|')
+                              .map(c => c.trim())
+                              .filter((c, index, arr) => {
+                                  // 只有當欄位在中間，或者雖然在頭尾但不是空值時才保留
+                                  if (index === 0 && c === "") return false;
+                                  if (index === arr.length - 1 && c === "") return false;
+                                  return true;
+                              });
 
-            const tag = tableBuffer.length === 0 ? 'th' : 'td';
-            const rowClass = tableBuffer.length === 0 ? 'bg-gray-100 font-bold' : 'bg-white';
-            
-            html += `<tr class="${rowClass}">`;
-            cells.forEach(cell => {
-                html += `<${tag} class="border border-gray-300 px-4 py-2 text-left">${cell.trim()}</${tag}>`;
-            });
-            html += '</tr>';
-            tableBuffer.push(cells);
+            // 跳過 Markdown 的分隔線行 (|---|---|)
+            if (trimmedLine.match(/^[|:\s-]+$/)) return;
+
+            if (cells.length > 0) {
+                if (!inTable) {
+                    inTable = true;
+                    html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
+                }
+
+                const isHeader = tableBuffer.length === 0;
+                const tag = isHeader ? 'th' : 'td';
+                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white hover:bg-gray-50';
+                
+                html += `<tr class="${rowClass}">`;
+                cells.forEach(cell => {
+                    html += `<${tag} class="border border-gray-300 px-4 py-3 text-left">${cell}</${tag}>`;
+                });
+                html += '</tr>';
+                tableBuffer.push(cells);
+            }
         } else {
             if (inTable) {
                 html += '</table></div>';
                 inTable = false;
                 tableBuffer = [];
             }
-            html += line + '<br>';
+            if (trimmedLine !== "") {
+                html += `<p class="mb-2">${line}</p>`;
+            } else {
+                html += '<div class="h-2"></div>'; // 空行間距
+            }
         }
     });
 
@@ -364,6 +383,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
