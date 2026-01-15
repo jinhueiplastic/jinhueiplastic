@@ -191,6 +191,49 @@ async function renderCategoryList() {
     app.innerHTML = `<div class="max-w-6xl mx-auto px-4"><nav class="text-gray-500 text-sm mb-8"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')">${breadcrumb}</a> > <span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml}</div></div>`;
 }
 
+// --- 新增：將文字中的 Markdown 表格語法轉換為 HTML 表格 ---
+function parseMarkdownTable(text) {
+    if (!text.includes('|')) return text; // 如果沒有表格符號，直接回傳原文字
+
+    const lines = text.split('\n');
+    let inTable = false;
+    let html = '';
+    let tableBuffer = [];
+
+    lines.forEach(line => {
+        if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+            if (!inTable) {
+                inTable = true;
+                html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm">';
+            }
+            const cells = line.split('|').filter(cell => cell.trim() !== '' || line.indexOf('|') !== line.lastIndexOf('|'));
+            // 移除前後空白的儲存格
+            if (line.trim().match(/^[|:\s-]+$/)) return; // 跳過分隔線層 (|---|---|)
+
+            const tag = tableBuffer.length === 0 ? 'th' : 'td';
+            const rowClass = tableBuffer.length === 0 ? 'bg-gray-100 font-bold' : 'bg-white';
+            
+            html += `<tr class="${rowClass}">`;
+            cells.forEach(cell => {
+                html += `<${tag} class="border border-gray-300 px-4 py-2 text-left">${cell.trim()}</${tag}>`;
+            });
+            html += '</tr>';
+            tableBuffer.push(cells);
+        } else {
+            if (inTable) {
+                html += '</table></div>';
+                inTable = false;
+                tableBuffer = [];
+            }
+            html += line + '<br>';
+        }
+    });
+
+    if (inTable) html += '</table></div>';
+    return html;
+}
+
+// --- 修改後的商品詳情渲染 ---
 async function renderProductDetail() {
     const params = new URLSearchParams(window.location.search);
     const itemCode = params.get('id');
@@ -203,7 +246,7 @@ async function renderProductDetail() {
         const item = allProducts.find(p => String(p["Item code (ERP)"]).trim() == String(itemCode).trim());
         
         if (!item) {
-            app.innerHTML = `<div class="text-center py-20">找不到商品內容。</div>`;
+            app.innerHTML = `<div class="text-center py-20">找不到商品。</div>`;
             return;
         }
 
@@ -211,6 +254,9 @@ async function renderProductDetail() {
         const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
         const desc = (currentLang === 'zh') ? item["中文描述"] : item["英文描述"];
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
+
+        // 關鍵：將描述文字經過表格轉換函式處理
+        const formattedDesc = parseMarkdownTable(desc);
 
         app.innerHTML = `
             <div class="max-w-6xl mx-auto px-4 text-left">
@@ -225,13 +271,11 @@ async function renderProductDetail() {
                 <div class="flex flex-col md:flex-row gap-12">
                     <div class="w-full md:w-1/2">
                         <img id="main-prod-img" src="${images[0]}" class="w-full aspect-square object-cover rounded-2xl border shadow-sm">
-                        
                         <div class="flex gap-3 mt-4 overflow-x-auto pb-2">
                             ${images.map(img => `
                                 <img src="${img}" 
                                      onclick="document.getElementById('main-prod-img').src='${img}'" 
-                                     class="w-20 h-20 object-cover rounded-lg cursor-pointer border-2 border-transparent hover:border-blue-500 transition shadow-sm bg-white"
-                                     onerror="this.style.display='none'">
+                                     class="w-20 h-20 object-cover rounded-lg cursor-pointer border-2 border-transparent hover:border-blue-500 transition shadow-sm bg-white">
                             `).join('')}
                         </div>
                     </div>
@@ -248,7 +292,7 @@ async function renderProductDetail() {
                         </div>
 
                         <h4 class="font-bold text-gray-900 mb-3">${currentLang === 'zh' ? '商品描述' : 'Description'}</h4>
-                        <p class="text-gray-600 leading-loose" style="white-space: pre-line;">${desc}</p>
+                        <div class="text-gray-600 leading-loose">${formattedDesc}</div>
                     </div>
                 </div>
             </div>`;
@@ -320,5 +364,6 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
