@@ -172,20 +172,34 @@ function renderJoinUs(data, langIdx, pageName) {
         </div>`;
 }
 
-// --- 修正後的類別列表渲染 (加入 Loading 與 語系優化) ---
+// --- 輔助函式：根據分類原始名，尋找 Product Catalog 分頁中對應語系的名稱 ---
+function getLocalizedCategoryName(rawCatName) {
+    const data = rawDataCache["Product Catalog"];
+    if (!data) return rawCatName;
+
+    const langIdx = (currentLang === 'zh') ? 1 : 2; // B欄是1, C欄是2
+    // 尋找第5欄(E欄, 連結名稱) 與原始名稱匹配的行
+    const row = data.find(r => r[4] && r[4].trim() === rawCatName.trim());
+    
+    return (row && row[langIdx]) ? row[langIdx] : rawCatName;
+}
+
+// --- 修正後的類別列表渲染 ---
 async function renderCategoryList() {
     const params = new URLSearchParams(window.location.search);
-    const catName = params.get('cat');
+    const rawCatName = params.get('cat');
     const app = document.getElementById('app');
-    const langIdx = (currentLang === 'zh') ? 1 : 2;
     
-    // 1. 立即顯示 Loading，避免使用者覺得壞掉
     app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
     
     try {
         const allProducts = await fetchGASProducts();
-        const filtered = allProducts.filter(p => String(p["Category"]).trim() === String(catName).trim());
+        const filtered = allProducts.filter(p => String(p["Category"]).trim() === String(rawCatName).trim());
         
+        // 取得對應語系的分類名稱 (從 Product Catalog 的 B或C 欄)
+        const localizedCatName = getLocalizedCategoryName(rawCatName);
+        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
+
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
             const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
@@ -196,20 +210,17 @@ async function renderCategoryList() {
             </div>`;
         }).join('');
 
-        // 2. 修正麵包屑語系：只顯示單一語言
-        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-        
         app.innerHTML = `
             <div class="max-w-6xl mx-auto px-4 text-left">
                 <nav class="text-gray-500 text-sm mb-8 italic">
                     <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a> 
                     <span class="mx-2">&gt;</span> 
-                    <span class="text-gray-900 font-bold">${catName}</span>
+                    <span class="text-gray-900 font-bold">${localizedCatName}</span>
                 </nav>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml || (currentLang === 'zh' ? '目前無產品' : 'No products found')}</div>
             </div>`;
     } catch (e) { 
-        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗，請稍後再試。</div>`; 
+        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
     }
 }
 
@@ -274,7 +285,7 @@ function parseMarkdownTable(text) {
     return html;
 }
 
-// --- 修正後的商品詳情渲染 (麵包屑顯示語系對應名稱) ---
+// --- 修正後的商品詳情渲染 ---
 async function renderProductDetail() {
     const params = new URLSearchParams(window.location.search);
     const itemCode = params.get('id');
@@ -291,24 +302,22 @@ async function renderProductDetail() {
             return;
         }
 
-        const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
+        const rawCatName = item["Category"];
+        const localizedCatName = getLocalizedCategoryName(rawCatName);
         const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
         const desc = (currentLang === 'zh') ? item["中文描述"] : item["英文描述"];
-        
-        // 3. 修正麵包屑語系邏輯
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-        const displayName = name; // 改為使用根據語系決定的名稱，而非 itemCode
-
         const formattedDesc = parseMarkdownTable(desc);
+        const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
 
         app.innerHTML = `
             <div class="max-w-6xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-500 text-sm mb-8 italic">
                     <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a>
                     <span class="mx-2">&gt;</span>
-                    <a href="javascript:void(0)" onclick="switchPage('category', {cat: '${item["Category"]}'})" class="hover:text-blue-600">${item["Category"]}</a>
+                    <a href="javascript:void(0)" onclick="switchPage('category', {cat: '${rawCatName}'})" class="hover:text-blue-600">${localizedCatName}</a>
                     <span class="mx-2">&gt;</span>
-                    <span class="text-gray-900 font-bold">${displayName}</span>
+                    <span class="text-gray-900 font-bold">${name}</span>
                 </nav>
 
                 <div class="flex flex-col md:flex-row gap-12">
@@ -407,6 +416,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
