@@ -172,23 +172,45 @@ function renderJoinUs(data, langIdx, pageName) {
         </div>`;
 }
 
+// --- 修正後的類別列表渲染 (加入 Loading 與 語系優化) ---
 async function renderCategoryList() {
     const params = new URLSearchParams(window.location.search);
     const catName = params.get('cat');
     const app = document.getElementById('app');
-    const allProducts = await fetchGASProducts();
-    const filtered = allProducts.filter(p => String(p["Category"]).trim() === String(catName).trim());
-    let itemsHtml = filtered.map(item => {
-        const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
-        const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
-        const code = item["Item code (ERP)"];
-        return `<div class="category-card group cursor-pointer" onclick="switchPage('product', {id: '${code}'})">
-            <div class="category-img-container"><img src="${img}" class="hover:scale-110 transition duration-500"></div>
-            <div class="p-4 text-center"><p class="text-xs text-blue-600 font-bold mb-1">${code}</p><h4 class="font-bold text-gray-800">${name}</h4></div>
-        </div>`;
-    }).join('');
-    const breadcrumb = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-    app.innerHTML = `<div class="max-w-6xl mx-auto px-4"><nav class="text-gray-500 text-sm mb-8"><a href="javascript:void(0)" onclick="switchPage('Product Catalog')">${breadcrumb}</a> > <span class="text-gray-900 font-bold">${catName}</span></nav><div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml}</div></div>`;
+    const langIdx = (currentLang === 'zh') ? 1 : 2;
+    
+    // 1. 立即顯示 Loading，避免使用者覺得壞掉
+    app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
+    
+    try {
+        const allProducts = await fetchGASProducts();
+        const filtered = allProducts.filter(p => String(p["Category"]).trim() === String(catName).trim());
+        
+        let itemsHtml = filtered.map(item => {
+            const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
+            const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
+            const code = item["Item code (ERP)"];
+            return `<div class="category-card group cursor-pointer" onclick="switchPage('product', {id: '${code}'})">
+                <div class="category-img-container"><img src="${img}" class="hover:scale-110 transition duration-500"></div>
+                <div class="p-4 text-center"><p class="text-xs text-blue-600 font-bold mb-1">${code}</p><h4 class="font-bold text-gray-800">${name}</h4></div>
+            </div>`;
+        }).join('');
+
+        // 2. 修正麵包屑語系：只顯示單一語言
+        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
+        
+        app.innerHTML = `
+            <div class="max-w-6xl mx-auto px-4 text-left">
+                <nav class="text-gray-500 text-sm mb-8 italic">
+                    <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a> 
+                    <span class="mx-2">&gt;</span> 
+                    <span class="text-gray-900 font-bold">${catName}</span>
+                </nav>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml || (currentLang === 'zh' ? '目前無產品' : 'No products found')}</div>
+            </div>`;
+    } catch (e) { 
+        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗，請稍後再試。</div>`; 
+    }
 }
 
 // --- 新增：將文字中的 Markdown 表格語法轉換為 HTML 表格 ---
@@ -252,7 +274,7 @@ function parseMarkdownTable(text) {
     return html;
 }
 
-// --- 修改後的商品詳情渲染 ---
+// --- 修正後的商品詳情渲染 (麵包屑顯示語系對應名稱) ---
 async function renderProductDetail() {
     const params = new URLSearchParams(window.location.search);
     const itemCode = params.get('id');
@@ -265,16 +287,18 @@ async function renderProductDetail() {
         const item = allProducts.find(p => String(p["Item code (ERP)"]).trim() == String(itemCode).trim());
         
         if (!item) {
-            app.innerHTML = `<div class="text-center py-20">找不到商品。</div>`;
+            app.innerHTML = `<div class="text-center py-20">找不到商品內容。</div>`;
             return;
         }
 
         const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
         const name = (currentLang === 'zh') ? item["Chinese product name"] : item["English product name"];
         const desc = (currentLang === 'zh') ? item["中文描述"] : item["英文描述"];
+        
+        // 3. 修正麵包屑語系邏輯
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
+        const displayName = name; // 改為使用根據語系決定的名稱，而非 itemCode
 
-        // 關鍵：將描述文字經過表格轉換函式處理
         const formattedDesc = parseMarkdownTable(desc);
 
         app.innerHTML = `
@@ -284,7 +308,7 @@ async function renderProductDetail() {
                     <span class="mx-2">&gt;</span>
                     <a href="javascript:void(0)" onclick="switchPage('category', {cat: '${item["Category"]}'})" class="hover:text-blue-600">${item["Category"]}</a>
                     <span class="mx-2">&gt;</span>
-                    <span class="text-gray-900 font-bold">${itemCode}</span>
+                    <span class="text-gray-900 font-bold">${displayName}</span>
                 </nav>
 
                 <div class="flex flex-col md:flex-row gap-12">
@@ -316,7 +340,7 @@ async function renderProductDetail() {
                 </div>
             </div>`;
     } catch (e) {
-        app.innerHTML = `<div class="text-center py-20 text-red-500">詳情頁載入錯誤。</div>`;
+        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`;
     }
 }
 
@@ -383,6 +407,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
