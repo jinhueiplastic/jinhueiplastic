@@ -1,6 +1,6 @@
 /* --- 基礎設定 --- */
 body {
-    padding-top: 0; /* 修正：移除大段空白 */
+    padding-top: 0; 
     background-color: #f9fafb;
     color: #111827;
     font-family: system-ui, -apple-system, sans-serif;
@@ -8,7 +8,7 @@ body {
 
 /* 導覽列固定 */
 .nav-fixed {
-    position: sticky; /* 改為 sticky 更符合現代佈局 */
+    position: sticky; 
     top: 0;
     width: 100%;
     z-index: 50;
@@ -104,13 +104,39 @@ p, .content-text, .job-desc, .contact-info p {
     object-fit: cover;
 }
 
-/* 模擬第一欄合併效果 */
-.merged-first-col td:first-child {
-    border-bottom: none; /* 移除底部橫線 */
-    vertical-align: middle; /* 垂直置中 */
+/* --- 表格第一欄合併置中效果 (強力修正版) --- */
+
+/* 1. 移除第一欄所有內部的下橫線 */
+.merged-first-col tr td:first-child {
+    border-bottom: none !important; 
+    border-top: none !important;    
+    vertical-align: middle !important;
+    background-color: #ffffff;
+    position: relative;
 }
 
-/* 確保最後一行底部橫線還在，保持表格完整 */
+/* 2. 為第一欄補上右側的垂直線，維持欄位區隔 */
+.merged-first-col td:first-child {
+    border-right: 1px solid #d1d5db !important;
+}
+
+/* 3. 確保表格的最外框依然存在 */
+.merged-first-col {
+    border: 1px solid #d1d5db !important;
+    border-collapse: collapse !important;
+}
+
+/* 4. 補上表頭 (Header) 下方的橫線 */
+.merged-first-col tr:first-child th {
+    border-bottom: 1px solid #d1d5db !important;
+}
+
+/* 5. 補上最後一行第一欄的底部橫線，封閉表格 */
 .merged-first-col tr:last-child td:first-child {
-    border-bottom: 1px solid #d1d5db; 
+    border-bottom: 1px solid #d1d5db !important;
+}
+
+/* 6. 針對手機版表格容器微調 */
+.overflow-x-auto {
+    border-radius: 0.5rem;
 }
