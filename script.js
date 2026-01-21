@@ -159,7 +159,6 @@ function parseMarkdownTable(text) {
     lines.forEach(line => {
         const trimmedLine = line.trim();
         if (trimmedLine.startsWith('|') || trimmedLine.includes('|')) {
-            // 修改過濾邏輯：保留中間的空儲存格，只過濾頭尾生成的空項
             const cells = line.split('|')
                               .map(c => c.trim())
                               .filter((c, index, arr) => {
@@ -173,14 +172,16 @@ function parseMarkdownTable(text) {
             if (cells.length > 0) {
                 if (!inTable) {
                     inTable = true;
-                    html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
+                    // 加入 merged-first-col 類別
+                    html += '<div class="overflow-x-auto my-4"><table class="merged-first-col min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
                 }
                 const isHeader = tableBuffer.length === 0;
                 const tag = isHeader ? 'th' : 'td';
-                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white hover:bg-gray-50';
+                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white';
                 
                 html += `<tr class="${rowClass}">`;
-                cells.forEach(cell => {
+                cells.forEach((cell, idx) => {
+                    // 如果是第一欄且為空值，樣式會由 CSS 處理合併感
                     html += `<${tag} class="border border-gray-300 px-4 py-3 text-left">${cell}</${tag}>`;
                 });
                 html += '</tr>';
@@ -384,3 +385,4 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
