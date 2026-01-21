@@ -149,86 +149,91 @@ function getLocalizedCategoryName(rawCatName) {
 }
 
 function parseMarkdownTable(text) {
-    if (!text || !text.includes('|')) return text; 
+    if (!text || !text.includes('|')) return text;
 
     const lines = text.split('\n');
-    let inTable = false;
-    let html = '';
-    let tableBuffer = [];
-    let hideLinesCols = []; 
+    let tableRows = [];
+    let hideCols = new Set();
 
-    lines.forEach(line => {
-        const trimmedLine = line.trim();
-        if (trimmedLine.startsWith('|') || trimmedLine.includes('|')) {
-            let cells = line.split('|')
-                            .map(c => c.trim())
-                            .filter((c, index, arr) => {
-                                if (index === 0 && c === "") return false;
-                                if (index === arr.length - 1 && c === "") return false;
-                                return true;
-                            });
-
-            if (trimmedLine.match(/^[|:\s-]+$/)) return;
-
-            if (cells.length > 0) {
-                if (!inTable) {
-                    // 偵測哪些標題有 #
-                    cells = cells.map((cell, idx) => {
-                        if (cell.startsWith('#')) {
-                            hideLinesCols.push(idx);
-                            return cell.replace('#', '');
-                        }
-                        return cell;
-                    });
-                    inTable = true;
-                    html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
+    // 1. 預處理：解析文字並偵測 # 標記
+    const rawRows = lines.filter(line => line.trim().startsWith('|') && !line.trim().match(/^[|:\s-]+$/));
+    
+    tableRows = rawRows.map((line, rIdx) => {
+        let cells = line.split('|').map(c => c.trim()).filter((c, i, a) => i !== 0 && i !== a.length - 1);
+        
+        // 偵測第一行標題是否有 #
+        if (rIdx === 0) {
+            cells = cells.map((cell, cIdx) => {
+                if (cell.startsWith('#')) {
+                    hideCols.add(cIdx);
+                    return cell.replace('#', '');
                 }
-
-                const isHeader = tableBuffer.length === 0;
-                const tag = isHeader ? 'th' : 'td';
-                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white hover:bg-gray-50';
-                
-                html += `<tr class="${rowClass}">`;
-                cells.forEach((cell, idx) => {
-                    const isMerge = (!isHeader && cell === "^");
-                    const isHideCol = hideLinesCols.includes(idx);
-                    
-                    let borderStyle = 'border border-gray-300';
-                    let cellContent = cell;
-
-                    // 邏輯 A：如果是合併符號 ^
-                    if (isMerge) {
-                        borderStyle = 'border-l border-r border-gray-300 border-t-0 border-b-0';
-                        cellContent = ''; 
-                    } 
-                    // 邏輯 B：如果標題有 # (整欄隱藏內部橫線)
-                    else if (!isHeader && isHideCol) {
-                        borderStyle = 'border-l border-r border-gray-300 border-t-0 border-b-0';
-                    }
-                    
-                    html += `<${tag} class="${borderStyle} px-4 py-3 text-left" style="vertical-align: middle;">${cellContent}</${tag}>`;
-                });
-                html += '</tr>';
-                tableBuffer.push(cells);
-            }
-        } else {
-            if (inTable) { 
-                html += '</table></div>'; 
-                inTable = false; 
-                tableBuffer = []; 
-                hideLinesCols = [];
-            }
-            if (trimmedLine !== "") {
-                html += `<p class="mb-2">${line}</p>`;
-            } else {
-                html += '<div class="h-2"></div>';
-            }
+                return cell;
+            });
         }
+        return cells;
     });
-    if (inTable) html += '</table></div>';
+
+    if (tableRows.length === 0) return text;
+
+    // 2. 生成 HTML
+    let html = '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
+    
+    // 渲染標題
+    html += '<thead><tr>';
+    tableRows[0].forEach(cell => {
+        html += `<th>${cell}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    // 3. 渲染內容 (處理 Rowspan 與 # 隱藏線)
+    const dataRows = tableRows.slice(1);
+    const rowCount = dataRows.length;
+    const colCount = tableRows[0].length;
+    
+    // 用來記錄哪些單元格已經被 rowspan 覆蓋，不需要重複渲染
+    let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
+
+    for (let r = 0; r < rowCount; r++) {
+        html += '<tr>';
+        for (let c = 0; c < colCount; c++) {
+            if (skipMap[r][c]) continue;
+
+            let cellContent = dataRows[r][c];
+            let rowspan = 1;
+
+            // 如果這一列標題有 #，或者內容是 ^，我們處理合併邏輯
+            // 向上合併 (^)
+            if (cellContent === '^') {
+                // 此處應避免出現孤立的 ^，實際上正常的邏輯會由下方的「向下搜尋」處理
+                html += '<td></td>';
+                continue;
+            }
+
+            // 向下搜尋有多少個 ^
+            for (let nextR = r + 1; nextR < rowCount; nextR++) {
+                if (dataRows[nextR][c] === '^') {
+                    rowspan++;
+                    skipMap[nextR][c] = true;
+                } else {
+                    break;
+                }
+            }
+
+            const isHideCol = hideCols.has(c);
+            // 如果是標題加了 # 的列，且不是正在進行 rowspan 的單元格
+            // 我們給它一個特殊的 class 來移除內部橫線
+            const cellClass = isHideCol ? 'no-border-col' : '';
+            const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+            
+            html += `<td${rowspanAttr} class="${cellClass}">${cellContent}</td>`;
+        }
+        html += '</tr>';
+    }
+
+    html += '</tbody></table></div>';
     return html;
 }
-
 // --- 分頁渲染函數 ---
 
 async function renderCategoryList() {
@@ -414,6 +419,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
