@@ -27,7 +27,6 @@ body {
     color: white;
     border: none;
     transition: 0.2s;
-    min-width: 60px;
 }
 
 .nav-bar-bg { background-color: #154f9c; }
@@ -39,11 +38,42 @@ body {
 }
 .nav-item.active { 
     color: #ffffff; 
-    border-bottom: 3px solid #ffffff !important; 
+    border-bottom-color: #ffffff; 
 }
 
-/* 隱藏導覽滾動條 */
-#main-nav::-webkit-scrollbar { display: none; }
+/* --- 自定義表格樣式 (無 important) --- */
+.custom-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #d1d5db;
+    background-color: white;
+    font-size: 0.875rem;
+}
+
+.custom-data-table th,
+.custom-data-table td {
+    border: 1px solid #d1d5db;
+    padding: 12px 16px;
+    text-align: left;
+    vertical-align: middle; /* 關鍵：rowspan 會自動讓內容在此置中 */
+}
+
+.custom-data-table thead th {
+    background-color: #f3f4f6;
+    color: #374151;
+    font-weight: 700;
+}
+
+/* 針對標題有 # 的列：隱藏內部橫線，但保留左右線與整個格子的外框 */
+.custom-data-table td.no-border-col {
+    border-top: none;
+    border-bottom: none;
+}
+
+/* 確保每一列的第一個和最後一個格子的外邊框依然存在 */
+.custom-data-table tr:last-child td.no-border-col {
+    border-bottom: 1px solid #d1d5db;
+}
 
 /* --- 圖片 Grid 系統 --- */
 .image-grid-container {
@@ -58,101 +88,12 @@ body {
     .image-grid-container {
         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     }
-    .image-grid-container:has(> :nth-child(3)) {
-        grid-template-columns: repeat(3, 1fr);
-    }
 }
 
 .home-bottom-image {
     width: 100%;
-    height: auto;
-    object-fit: cover;
     border-radius: 0.8rem;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-/* 重要：支援換行 */
-p, .content-text, .job-desc, .contact-info p {
-    white-space: pre-line;
-}
-
-/* Product Catalog 卡片樣式 */
-.category-card {
-    background: white;
-    border-radius: 1rem;
-    overflow: hidden;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-    border: 1px solid #f3f4f6;
-    display: flex;
-    flex-direction: column;
-}
-
-.category-card:hover {
-    transform: translateY(-5px);
-}
-
-.category-img-container {
-    aspect-ratio: 1 / 1;
-    overflow: hidden;
-    background-color: #f9fafb;
-}
-
-.category-img-container img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-/* --- 表格第一欄合併置中效果 (強力修正版) --- */
-
-/* 1. 移除第一欄所有內部的下橫線 */
-.merged-first-col tr td:first-child {
-    border-bottom: none !important; 
-    border-top: none !important;    
-    vertical-align: middle !important;
-    background-color: #ffffff;
-    position: relative;
-}
-
-/* 2. 為第一欄補上右側的垂直線，維持欄位區隔 */
-.merged-first-col td:first-child {
-    border-right: 1px solid #d1d5db !important;
-}
-
-/* 3. 確保表格的最外框依然存在 */
-.merged-first-col {
-    border: 1px solid #d1d5db !important;
-    border-collapse: collapse !important;
-}
-
-/* 4. 補上表頭 (Header) 下方的橫線 */
-.merged-first-col tr:first-child th {
-    border-bottom: 1px solid #d1d5db !important;
-}
-
-/* 5. 補上最後一行第一欄的底部橫線，封閉表格 */
-.merged-first-col tr:last-child td:first-child {
-    border-bottom: 1px solid #d1d5db !important;
-}
-
-/* 6. 針對手機版表格容器微調 */
-.overflow-x-auto {
-    border-radius: 0.5rem;
-}
-
-/* 確保最後一行封底 */
-table tr:last-child td {
-    border-bottom: 1px solid #d1d5db !important;
-}
-
-/* 強制移除頂部邊框 */
-.border-t-0 {
-    border-top-width: 0px !important;
-}
-
-/* 強制移除底部邊框 (用於合併) */
-.border-b-0 {
-    border-bottom-width: 0px !important;
-}
-
+p { white-space: pre-line; }
