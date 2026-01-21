@@ -100,6 +100,11 @@ body {
     border-bottom: none;
 }
 
+/* 額外補強：確保有 rowspan 的儲存格左右邊框完整，但上下不重複出現線條 */
+.custom-data-table td[rowspan] {
+    background-color: #ffffff; /* 確保背景不透出 */
+}
+
 /* 確保合併列的最後一個儲存格有底線 */
 .custom-data-table tr:last-child td.no-border-col {
     border-bottom: 1px solid #d1d5db;
@@ -146,3 +151,4 @@ p { white-space: pre-line; }
 .content-image-wrapper img:hover {
     transform: scale(1.01); /* 滑鼠滑過微幅放大 */
 }
+
