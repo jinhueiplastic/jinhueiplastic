@@ -155,7 +155,7 @@ function parseMarkdownTable(text) {
     let inTable = false;
     let html = '';
     let tableBuffer = [];
-    let hideFirstColLines = false; // 是否隱藏第一欄橫線的開關
+    let hideLinesCols = []; // 紀錄哪些索引的欄位需要隱藏橫線
 
     lines.forEach(line => {
         const trimmedLine = line.trim();
@@ -168,17 +168,18 @@ function parseMarkdownTable(text) {
                                 return true;
                             });
 
-            // 跳過分隔線層
             if (trimmedLine.match(/^[|:\s-]+$/)) return;
 
             if (cells.length > 0) {
-                // 檢查第一行(標題)是否有隱藏暗號 #
-                if (!inTable && cells[0].startsWith('#')) {
-                    hideFirstColLines = true;
-                    cells[0] = cells[0].replace('#', ''); // 移除暗號，不讓使用者看到
-                }
-
+                // 如果是標題行，偵測哪些欄位有 #
                 if (!inTable) {
+                    cells = cells.map((cell, idx) => {
+                        if (cell.startsWith('#')) {
+                            hideLinesCols.push(idx); // 紀錄該欄位索引
+                            return cell.replace('#', ''); // 移除 # 符號
+                        }
+                        return cell;
+                    });
                     inTable = true;
                     html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
                 }
@@ -189,10 +190,10 @@ function parseMarkdownTable(text) {
                 
                 html += `<tr class="${rowClass}">`;
                 cells.forEach((cell, idx) => {
-                    // 根據暗號與是否為第一欄，動態決定 CSS
                     let borderStyle = 'border border-gray-300';
-                    if (!isHeader && idx === 0 && hideFirstColLines) {
-                        // 如果啟動了隱藏開關，第一欄移除底部與頂部線，只留左右線
+                    
+                    // 如果該欄位在「隱藏清單」中，且不是標題，則移除上下線
+                    if (!isHeader && hideLinesCols.includes(idx)) {
                         borderStyle = 'border-l border-r border-gray-300';
                     }
                     
@@ -206,7 +207,7 @@ function parseMarkdownTable(text) {
                 html += '</table></div>'; 
                 inTable = false; 
                 tableBuffer = []; 
-                hideFirstColLines = false; // 結束表格，重設開關
+                hideLinesCols = []; // 重置
             }
             if (trimmedLine !== "") {
                 html += `<p class="mb-2">${line}</p>`;
@@ -404,6 +405,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
