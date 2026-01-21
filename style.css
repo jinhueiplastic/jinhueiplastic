@@ -103,3 +103,14 @@ p, .content-text, .job-desc, .contact-info p {
     height: 100%;
     object-fit: cover;
 }
+
+/* 模擬第一欄合併效果 */
+.merged-first-col td:first-child {
+    border-bottom: none; /* 移除底部橫線 */
+    vertical-align: middle; /* 垂直置中 */
+}
+
+/* 確保最後一行底部橫線還在，保持表格完整 */
+.merged-first-col tr:last-child td:first-child {
+    border-bottom: 1px solid #d1d5db; 
+}
