@@ -170,11 +170,12 @@ function parseMarkdownTable(text) {
             if (trimmedLine.match(/^[|:\s-]+$/)) return;
 
             if (cells.length > 0) {
-                if (!inTable) {
-                    inTable = true;
-                    // 加入 merged-first-col 類別
-                    html += '<div class="overflow-x-auto my-4"><table class="merged-first-col min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
-                }
+                // 在 parseMarkdownTable 裡面找到這行並確認類別名稱
+if (!inTable) {
+    inTable = true;
+    // 確保這裡有加上 merged-first-col
+    html += '<div class="overflow-x-auto my-4"><table class="merged-first-col min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
+}
                 const isHeader = tableBuffer.length === 0;
                 const tag = isHeader ? 'th' : 'td';
                 const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white';
@@ -385,4 +386,5 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
