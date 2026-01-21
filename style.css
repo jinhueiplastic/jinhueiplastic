@@ -146,3 +146,12 @@ table tr:last-child td {
     border-bottom: 1px solid #d1d5db !important;
 }
 
+/* 讓表格儲存格內容垂直置中 */
+table td, table th {
+    vertical-align: middle !important;
+}
+
+/* 移除頂部邊框的強力設定 */
+.border-t-0 {
+    border-top-width: 0px !important;
+}
