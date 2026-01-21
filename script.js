@@ -149,91 +149,110 @@ function getLocalizedCategoryName(rawCatName) {
 }
 
 function parseMarkdownTable(text) {
-    if (!text || !text.includes('|')) return text;
+    if (!text) return "";
 
     const lines = text.split('\n');
-    let tableRows = [];
+    let html = '';
+    let tableBuffer = [];
     let hideCols = new Set();
+    let isProcessingTable = false;
 
-    // 1. 預處理：解析文字並偵測 # 標記
-    const rawRows = lines.filter(line => line.trim().startsWith('|') && !line.trim().match(/^[|:\s-]+$/));
-    
-    tableRows = rawRows.map((line, rIdx) => {
-        let cells = line.split('|').map(c => c.trim()).filter((c, i, a) => i !== 0 && i !== a.length - 1);
-        
-        // 偵測第一行標題是否有 #
-        if (rIdx === 0) {
-            cells = cells.map((cell, cIdx) => {
-                if (cell.startsWith('#')) {
-                    hideCols.add(cIdx);
-                    return cell.replace('#', '');
-                }
-                return cell;
-            });
+    // 處理每一行
+    for (let i = 0; i <= lines.length; i++) {
+        const line = lines[i] ? lines[i].trim() : null;
+        const isTableLine = line && line.startsWith('|') && line.includes('|');
+        const isSeparator = line && line.match(/^[|:\s-]+$/);
+
+        // 當遇到表格行且不是分隔線時，加入緩衝區
+        if (isTableLine && !isSeparator) {
+            isProcessingTable = true;
+            let cells = line.split('|')
+                            .map(c => c.trim())
+                            .filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
+            tableBuffer.push(cells);
+            continue;
         }
-        return cells;
-    });
 
-    if (tableRows.length === 0) return text;
+        // 當表格結束（遇到非表格行或文本末尾），開始渲染表格
+        if ((!isTableLine || i === lines.length) && isProcessingTable) {
+            if (tableBuffer.length > 0) {
+                // 1. 偵測標題中的 # 標記
+                let headerCells = tableBuffer[0].map((cell, cIdx) => {
+                    if (cell.startsWith('#')) {
+                        hideCols.add(cIdx);
+                        return cell.replace('#', '');
+                    }
+                    return cell;
+                });
 
-    // 2. 生成 HTML
-    let html = '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
-    
-    // 渲染標題
-    html += '<thead><tr>';
-    tableRows[0].forEach(cell => {
-        html += `<th>${cell}</th>`;
-    });
-    html += '</tr></thead><tbody>';
+                html += '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
+                html += `<thead><tr>${headerCells.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>`;
 
-    // 3. 渲染內容 (處理 Rowspan 與 # 隱藏線)
-    const dataRows = tableRows.slice(1);
-    const rowCount = dataRows.length;
-    const colCount = tableRows[0].length;
-    
-    // 用來記錄哪些單元格已經被 rowspan 覆蓋，不需要重複渲染
-    let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
+                // 2. 處理資料行與 Rowspan
+                const dataRows = tableBuffer.slice(1);
+                const rowCount = dataRows.length;
+                const colCount = headerCells.length;
+                let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
 
-    for (let r = 0; r < rowCount; r++) {
-        html += '<tr>';
-        for (let c = 0; c < colCount; c++) {
-            if (skipMap[r][c]) continue;
+                for (let r = 0; r < rowCount; r++) {
+                    html += '<tr>';
+                    for (let c = 0; c < colCount; c++) {
+                        if (skipMap[r][c]) continue;
 
-            let cellContent = dataRows[r][c];
-            let rowspan = 1;
+                        let cellContent = dataRows[r][c];
+                        let rowspan = 1;
 
-            // 如果這一列標題有 #，或者內容是 ^，我們處理合併邏輯
-            // 向上合併 (^)
-            if (cellContent === '^') {
-                // 此處應避免出現孤立的 ^，實際上正常的邏輯會由下方的「向下搜尋」處理
-                html += '<td></td>';
-                continue;
-            }
+                        // 向下搜尋有幾個 ^ 需要合併
+                        if (cellContent !== '^') {
+                            for (let nextR = r + 1; nextR < rowCount; nextR++) {
+                                if (dataRows[nextR][c] === '^') {
+                                    rowspan++;
+                                    skipMap[nextR][c] = true;
+                                } else {
+                                    break;
+                                }
+                            }
+                        } else {
+                            // 處理孤立的 ^ (正常不應發生，預防萬一)
+                            html += '<td class="no-border-col"></td>';
+                            continue;
+                        }
 
-            // 向下搜尋有多少個 ^
-            for (let nextR = r + 1; nextR < rowCount; nextR++) {
-                if (dataRows[nextR][c] === '^') {
-                    rowspan++;
-                    skipMap[nextR][c] = true;
-                } else {
-                    break;
+                        const isHideCol = hideCols.has(c);
+                        const cellClass = isHideCol ? 'no-border-col' : '';
+                        const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+                        
+                        html += `<td${rowspanAttr} class="${cellClass}">${cellContent}</td>`;
+                    }
+                    html += '</tr>';
                 }
+                html += '</tbody></table></div>';
             }
-
-            const isHideCol = hideCols.has(c);
-            // 如果是標題加了 # 的列，且不是正在進行 rowspan 的單元格
-            // 我們給它一個特殊的 class 來移除內部橫線
-            const cellClass = isHideCol ? 'no-border-col' : '';
-            const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-            
-            html += `<td${rowspanAttr} class="${cellClass}">${cellContent}</td>`;
+            // 重置表格狀態
+            tableBuffer = [];
+            hideCols = new Set();
+            isProcessingTable = false;
         }
-        html += '</tr>';
+
+        // 處理非表格行（普通文字或圖片網址）
+        if (line && !isTableLine && !isSeparator) {
+            // 圖片網址偵測
+            const isImageUrl = line.match(/^https?:\/\/.*\.(jpg|jpeg|png|webp|gif|svg)$/i);
+            if (isImageUrl) {
+                html += `<div class="content-image-wrapper my-6">
+                            <img src="${line}" alt="產品相關圖片" class="max-w-full h-auto rounded-lg shadow-md mx-auto">
+                         </div>`;
+            } else {
+                html += `<p class="mb-2">${line}</p>`;
+            }
+        } else if (line === "") {
+            html += '<div class="h-4"></div>';
+        }
     }
 
-    html += '</tbody></table></div>';
     return html;
 }
+
 // --- 分頁渲染函數 ---
 
 async function renderCategoryList() {
@@ -419,6 +438,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
