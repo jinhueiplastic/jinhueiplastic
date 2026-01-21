@@ -140,3 +140,8 @@ p, .content-text, .job-desc, .contact-info p {
 .overflow-x-auto {
     border-radius: 0.5rem;
 }
+
+/* 確保表格最後一行第一欄有底線 */
+table tr:last-child td:first-child {
+    border-bottom: 1px solid #d1d5db !important;
+}
