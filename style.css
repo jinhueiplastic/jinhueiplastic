@@ -128,3 +128,21 @@ body {
 
 p { white-space: pre-line; }
 #main-nav::-webkit-scrollbar { display: none; }
+
+/* 內容區圖片容器 */
+.content-image-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center; /* 圖片置中 */
+}
+
+.content-image-wrapper img {
+    max-width: 100%; /* 確保手機版不會爆掉 */
+    height: auto;
+    border: 1px solid #e5e7eb;
+    transition: transform 0.3s ease;
+}
+
+.content-image-wrapper img:hover {
+    transform: scale(1.01); /* 滑鼠滑過微幅放大 */
+}
