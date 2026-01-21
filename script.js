@@ -154,8 +154,7 @@ function parseMarkdownTable(text) {
     const lines = text.split('\n');
     let inTable = false;
     let html = '';
-    let tableBuffer = [];
-    let hideLinesCols = []; // 紀錄哪些索引的欄位需要隱藏橫線
+    let tableBuffer = []; // 儲存已處理過的行數據，用來比對下一行
 
     lines.forEach(line => {
         const trimmedLine = line.trim();
@@ -171,34 +170,39 @@ function parseMarkdownTable(text) {
             if (trimmedLine.match(/^[|:\s-]+$/)) return;
 
             if (cells.length > 0) {
-                // 如果是標題行，偵測哪些欄位有 #
                 if (!inTable) {
-                    cells = cells.map((cell, idx) => {
-                        if (cell.startsWith('#')) {
-                            hideLinesCols.push(idx); // 紀錄該欄位索引
-                            return cell.replace('#', ''); // 移除 # 符號
-                        }
-                        return cell;
-                    });
                     inTable = true;
                     html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
                 }
 
                 const isHeader = tableBuffer.length === 0;
                 const tag = isHeader ? 'th' : 'td';
-                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white hover:bg-gray-50';
+                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white';
                 
                 html += `<tr class="${rowClass}">`;
+                
                 cells.forEach((cell, idx) => {
-                    let borderStyle = 'border border-gray-300';
+                    // 偵測合併標記：如果是 ^ 且不是標題行
+                    const isMerge = (!isHeader && cell === "^");
                     
-                    // 如果該欄位在「隱藏清單」中，且不是標題，則移除上下線
-                    if (!isHeader && hideLinesCols.includes(idx)) {
-                        borderStyle = 'border-l border-r border-gray-300';
+                    // 如果這格是合併標記，移除頂部邊框；如果下方那格是合併標記，移除底部邊框
+                    // 這裡我們採用最簡單的方法：如果現在這格是 ^，就移除它的頂部線，且不顯示文字
+                    let cellStyle = 'border border-gray-300';
+                    let cellContent = cell;
+
+                    if (isMerge) {
+                        // 移除頂部邊框，讓它跟上面看起來連在一起
+                        cellStyle = 'border-l border-r border-b border-gray-300 border-t-0';
+                        cellContent = ''; // 不顯示 ^ 符號
                     }
+
+                    // 額外處理：如果「下一行」的同一欄是 ^，則這一格要移除底部邊框
+                    // 但因為我們是逐行渲染，所以簡單做法是：
+                    // 在 CSS 中設定，只要 cell 內容是空的，垂直置中。
                     
-                    html += `<${tag} class="${borderStyle} px-4 py-3 text-left">${cell}</${tag}>`;
+                    html += `<${tag} class="${cellStyle} px-4 py-3 text-left vertical-middle">${cellContent}</${tag}>`;
                 });
+                
                 html += '</tr>';
                 tableBuffer.push(cells);
             }
@@ -207,7 +211,6 @@ function parseMarkdownTable(text) {
                 html += '</table></div>'; 
                 inTable = false; 
                 tableBuffer = []; 
-                hideLinesCols = []; // 重置
             }
             if (trimmedLine !== "") {
                 html += `<p class="mb-2">${line}</p>`;
@@ -405,6 +408,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
