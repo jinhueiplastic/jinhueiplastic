@@ -13,6 +13,7 @@ body {
     width: 100%;
     z-index: 50;
     background: white;
+    border-bottom: 1px solid #e5e7eb;
 }
 
 .logo-img { height: 60px; width: auto; object-fit: contain; display: block; }
@@ -41,7 +42,36 @@ body {
     border-bottom-color: #ffffff; 
 }
 
-/* --- 自定義表格樣式 (無 important) --- */
+/* --- 產品資料卡 (Category Card) 樣式 --- */
+.category-card {
+    background: white;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: 1px solid #f3f4f6;
+    display: flex;
+    flex-direction: column;
+}
+
+.category-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.category-img-container {
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background-color: #f9fafb;
+}
+
+.category-img-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* --- 自定義表格樣式 (Rowspan 專用版) --- */
 .custom-data-table {
     width: 100%;
     border-collapse: collapse;
@@ -55,7 +85,7 @@ body {
     border: 1px solid #d1d5db;
     padding: 12px 16px;
     text-align: left;
-    vertical-align: middle; /* 關鍵：rowspan 會自動讓內容在此置中 */
+    vertical-align: middle;
 }
 
 .custom-data-table thead th {
@@ -64,13 +94,13 @@ body {
     font-weight: 700;
 }
 
-/* 針對標題有 # 的列：隱藏內部橫線，但保留左右線與整個格子的外框 */
+/* 針對標題有 # 的列：隱藏內部橫線 */
 .custom-data-table td.no-border-col {
     border-top: none;
     border-bottom: none;
 }
 
-/* 確保每一列的第一個和最後一個格子的外邊框依然存在 */
+/* 確保合併列的最後一個儲存格有底線 */
 .custom-data-table tr:last-child td.no-border-col {
     border-bottom: 1px solid #d1d5db;
 }
@@ -97,3 +127,4 @@ body {
 }
 
 p { white-space: pre-line; }
+#main-nav::-webkit-scrollbar { display: none; }
