@@ -141,7 +141,8 @@ p, .content-text, .job-desc, .contact-info p {
     border-radius: 0.5rem;
 }
 
-/* 確保表格最後一行第一欄有底線 */
-table tr:last-child td:first-child {
+/* 確保表格最後一行的所有儲存格都有底線，防止隱藏橫線的欄位在底部破洞 */
+table tr:last-child td {
     border-bottom: 1px solid #d1d5db !important;
 }
+
