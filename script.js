@@ -155,41 +155,59 @@ function parseMarkdownTable(text) {
     let inTable = false;
     let html = '';
     let tableBuffer = [];
+    let hideFirstColLines = false; // 是否隱藏第一欄橫線的開關
 
     lines.forEach(line => {
         const trimmedLine = line.trim();
         if (trimmedLine.startsWith('|') || trimmedLine.includes('|')) {
-            const cells = line.split('|')
-                              .map(c => c.trim())
-                              .filter((c, index, arr) => {
-                                  if (index === 0 && c === "") return false;
-                                  if (index === arr.length - 1 && c === "") return false;
-                                  return true;
-                              });
+            let cells = line.split('|')
+                            .map(c => c.trim())
+                            .filter((c, index, arr) => {
+                                if (index === 0 && c === "") return false;
+                                if (index === arr.length - 1 && c === "") return false;
+                                return true;
+                            });
 
+            // 跳過分隔線層
             if (trimmedLine.match(/^[|:\s-]+$/)) return;
 
             if (cells.length > 0) {
-                // 在 parseMarkdownTable 裡面找到這行並確認類別名稱
-if (!inTable) {
-    inTable = true;
-    // 確保這裡有加上 merged-first-col
-    html += '<div class="overflow-x-auto my-4"><table class="merged-first-col min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
-}
+                // 檢查第一行(標題)是否有隱藏暗號 #
+                if (!inTable && cells[0].startsWith('#')) {
+                    hideFirstColLines = true;
+                    cells[0] = cells[0].replace('#', ''); // 移除暗號，不讓使用者看到
+                }
+
+                if (!inTable) {
+                    inTable = true;
+                    html += '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 text-sm shadow-sm">';
+                }
+
                 const isHeader = tableBuffer.length === 0;
                 const tag = isHeader ? 'th' : 'td';
-                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white';
+                const rowClass = isHeader ? 'bg-gray-100 font-bold text-gray-700' : 'bg-white hover:bg-gray-50';
                 
                 html += `<tr class="${rowClass}">`;
                 cells.forEach((cell, idx) => {
-                    // 如果是第一欄且為空值，樣式會由 CSS 處理合併感
-                    html += `<${tag} class="border border-gray-300 px-4 py-3 text-left">${cell}</${tag}>`;
+                    // 根據暗號與是否為第一欄，動態決定 CSS
+                    let borderStyle = 'border border-gray-300';
+                    if (!isHeader && idx === 0 && hideFirstColLines) {
+                        // 如果啟動了隱藏開關，第一欄移除底部與頂部線，只留左右線
+                        borderStyle = 'border-l border-r border-gray-300';
+                    }
+                    
+                    html += `<${tag} class="${borderStyle} px-4 py-3 text-left">${cell}</${tag}>`;
                 });
                 html += '</tr>';
                 tableBuffer.push(cells);
             }
         } else {
-            if (inTable) { html += '</table></div>'; inTable = false; tableBuffer = []; }
+            if (inTable) { 
+                html += '</table></div>'; 
+                inTable = false; 
+                tableBuffer = []; 
+                hideFirstColLines = false; // 結束表格，重設開關
+            }
             if (trimmedLine !== "") {
                 html += `<p class="mb-2">${line}</p>`;
             } else {
@@ -386,5 +404,6 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
