@@ -154,44 +154,32 @@ function parseMarkdownTable(text) {
     const lines = text.split('\n');
     let html = '';
     let tableBuffer = [];
-    let hideCols = new Set();
     let isProcessingTable = false;
 
-    // 處理每一行
     for (let i = 0; i <= lines.length; i++) {
         const line = lines[i] ? lines[i].trim() : null;
         const isTableLine = line && line.startsWith('|') && line.includes('|');
         const isSeparator = line && line.match(/^[|:\s-]+$/);
 
-        // 當遇到表格行且不是分隔線時，加入緩衝區
         if (isTableLine && !isSeparator) {
             isProcessingTable = true;
-            let cells = line.split('|')
-                            .map(c => c.trim())
-                            .filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
+            let cells = line.split('|').map(c => c.trim()).filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
             tableBuffer.push(cells);
             continue;
         }
 
-        // 當表格結束（遇到非表格行或文本末尾），開始渲染表格
         if ((!isTableLine || i === lines.length) && isProcessingTable) {
             if (tableBuffer.length > 0) {
-                // 1. 偵測標題中的 # 標記
-                let headerCells = tableBuffer[0].map((cell, cIdx) => {
-                    if (cell.startsWith('#')) {
-                        hideCols.add(cIdx);
-                        return cell.replace('#', '');
-                    }
-                    return cell;
-                });
-
                 html += '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
-                html += `<thead><tr>${headerCells.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>`;
+                
+                // 處理 Header
+                html += '<thead><tr>';
+                tableBuffer[0].forEach(cell => html += `<th>${cell}</th>`);
+                html += '</tr></thead><tbody>';
 
-                // 2. 處理資料行與 Rowspan
                 const dataRows = tableBuffer.slice(1);
                 const rowCount = dataRows.length;
-                const colCount = headerCells.length;
+                const colCount = tableBuffer[0].length;
                 let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
 
                 for (let r = 0; r < rowCount; r++) {
@@ -201,55 +189,64 @@ function parseMarkdownTable(text) {
 
                         let cellContent = dataRows[r][c];
                         let rowspan = 1;
+                        let colspan = 1;
 
-                        // 向下搜尋有幾個 ^ 需要合併
-                        if (cellContent !== '^') {
+                        // --- 處理 Colspan (橫向合併: 偵測右邊是否有 >) ---
+                        for (let nextC = c + 1; nextC < colCount; nextC++) {
+                            if (dataRows[r][nextC] === '>') {
+                                colspan++;
+                                skipMap[r][nextC] = true;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        // --- 處理 Rowspan (縱向合併: 偵測下面是否有 ^) ---
+                        if (cellContent !== '^' && cellContent !== '>') {
                             for (let nextR = r + 1; nextR < rowCount; nextR++) {
                                 if (dataRows[nextR][c] === '^') {
                                     rowspan++;
                                     skipMap[nextR][c] = true;
+                                    // 同時也要標記被合併區域的 colspan
+                                    for(let spanC = 1; spanC < colspan; spanC++) {
+                                        skipMap[nextR][c + spanC] = true;
+                                    }
                                 } else {
                                     break;
                                 }
                             }
-                        } else {
-                            // 處理孤立的 ^ (正常不應發生，預防萬一)
-                            html += '<td class="no-border-col"></td>';
-                            continue;
+                        } else { continue; }
+
+                        // --- 處理內容隱藏線條 (# 標記) ---
+                        let cellClass = "";
+                        if (cellContent.startsWith('#')) {
+                            cellClass = "no-border-cell";
+                            cellContent = cellContent.substring(1); // 移除 #
                         }
 
-                        const isHideCol = hideCols.has(c);
-                        const cellClass = isHideCol ? 'no-border-col' : '';
                         const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+                        const colspanAttr = colspan > 1 ? ` colspan="${colspan}"` : '';
                         
-                        html += `<td${rowspanAttr} class="${cellClass}">${cellContent}</td>`;
+                        html += `<td${rowspanAttr}${colspanAttr} class="${cellClass}">${cellContent}</td>`;
                     }
                     html += '</tr>';
                 }
                 html += '</tbody></table></div>';
             }
-            // 重置表格狀態
             tableBuffer = [];
-            hideCols = new Set();
             isProcessingTable = false;
         }
 
-        // 處理非表格行（普通文字或圖片網址）
+        // 普通文本與圖片處理
         if (line && !isTableLine && !isSeparator) {
-            // 圖片網址偵測
             const isImageUrl = line.match(/^https?:\/\/.*\.(jpg|jpeg|png|webp|gif|svg)$/i);
             if (isImageUrl) {
-                html += `<div class="content-image-wrapper my-6">
-                            <img src="${line}" alt="產品相關圖片" class="max-w-full h-auto rounded-lg shadow-md mx-auto">
-                         </div>`;
+                html += `<div class="content-image-wrapper my-6"><img src="${line}" class="max-w-full h-auto rounded-lg shadow-md mx-auto"></div>`;
             } else {
                 html += `<p class="mb-2">${line}</p>`;
             }
-        } else if (line === "") {
-            html += '<div class="h-4"></div>';
         }
     }
-
     return html;
 }
 
@@ -438,6 +435,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
