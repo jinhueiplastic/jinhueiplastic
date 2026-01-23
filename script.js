@@ -111,8 +111,6 @@ async function renderNav() {
     nav.innerHTML = navHtml;
 }
 
-// --- 頁面渲染邏輯 ---
-
 async function loadPage(pageName, updateUrl = true) {
     if (updateUrl) switchPage(pageName);
     const app = document.getElementById('app');
@@ -138,8 +136,6 @@ async function loadPage(pageName, updateUrl = true) {
     window.scrollTo(0, 0);
 }
 
-// --- 核心輔助函式 ---
-
 function getLocalizedCategoryName(rawCatName) {
     const data = rawDataCache["Product Catalog"];
     if (!data) return rawCatName;
@@ -150,94 +146,63 @@ function getLocalizedCategoryName(rawCatName) {
 
 function parseMarkdownTable(text) {
     if (!text) return "";
-
     const lines = text.split('\n');
     let html = '';
     let tableBuffer = [];
     let isProcessingTable = false;
-
     for (let i = 0; i <= lines.length; i++) {
         const line = lines[i] ? lines[i].trim() : null;
         const isTableLine = line && line.startsWith('|') && line.includes('|');
         const isSeparator = line && line.match(/^[|:\s-]+$/);
-
         if (isTableLine && !isSeparator) {
             isProcessingTable = true;
             let cells = line.split('|').map(c => c.trim()).filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
             tableBuffer.push(cells);
             continue;
         }
-
         if ((!isTableLine || i === lines.length) && isProcessingTable) {
             if (tableBuffer.length > 0) {
                 html += '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
-                
-                // 處理 Header
                 html += '<thead><tr>';
                 tableBuffer[0].forEach(cell => html += `<th>${cell}</th>`);
                 html += '</tr></thead><tbody>';
-
                 const dataRows = tableBuffer.slice(1);
                 const rowCount = dataRows.length;
                 const colCount = tableBuffer[0].length;
                 let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
-
                 for (let r = 0; r < rowCount; r++) {
                     html += '<tr>';
                     for (let c = 0; c < colCount; c++) {
                         if (skipMap[r][c]) continue;
-
                         let cellContent = dataRows[r][c];
-                        let rowspan = 1;
-                        let colspan = 1;
-
-                        // --- 處理 Colspan (橫向合併: 偵測右邊是否有 >) ---
+                        let rowspan = 1; let colspan = 1;
                         for (let nextC = c + 1; nextC < colCount; nextC++) {
                             if (dataRows[r][nextC] === '>') {
-                                colspan++;
-                                skipMap[r][nextC] = true;
-                            } else {
-                                break;
-                            }
+                                colspan++; skipMap[r][nextC] = true;
+                            } else break;
                         }
-
-                        // --- 處理 Rowspan (縱向合併: 偵測下面是否有 ^) ---
                         if (cellContent !== '^' && cellContent !== '>') {
                             for (let nextR = r + 1; nextR < rowCount; nextR++) {
                                 if (dataRows[nextR][c] === '^') {
-                                    rowspan++;
-                                    skipMap[nextR][c] = true;
-                                    // 同時也要標記被合併區域的 colspan
-                                    for(let spanC = 1; spanC < colspan; spanC++) {
-                                        skipMap[nextR][c + spanC] = true;
-                                    }
-                                } else {
-                                    break;
-                                }
+                                    rowspan++; skipMap[nextR][c] = true;
+                                    for(let spanC = 1; spanC < colspan; spanC++) skipMap[nextR][c + spanC] = true;
+                                } else break;
                             }
-                        } else { continue; }
-
-                        // --- 處理內容隱藏線條 (# 標記) ---
+                        } else continue;
                         let cellClass = "";
                         if (cellContent.startsWith('#')) {
-                            cellClass = "no-border-cell";
-                            cellContent = cellContent.substring(1); // 移除 #
+                            cellClass = "no-border-cell"; cellContent = cellContent.substring(1);
                         }
-
                         const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
                         const colspanAttr = colspan > 1 ? ` colspan="${colspan}"` : '';
-                        
                         html += `<td${rowspanAttr}${colspanAttr} class="${cellClass}">${cellContent}</td>`;
                     }
                     html += '</tr>';
                 }
                 html += '</tbody></table></div>';
             }
-            tableBuffer = [];
-            isProcessingTable = false;
+            tableBuffer = []; isProcessingTable = false;
         }
-
-        // 普通文本與圖片處理
         if (line && !isTableLine && !isSeparator) {
             const isImageUrl = line.match(/^https?:\/\/.*\.(jpg|jpeg|png|webp|gif|svg)$/i);
             if (isImageUrl) {
@@ -250,21 +215,16 @@ function parseMarkdownTable(text) {
     return html;
 }
 
-// --- 分頁渲染函數 ---
-
 async function renderCategoryList() {
     const params = new URLSearchParams(window.location.search);
     const rawCatName = params.get('cat');
     const app = document.getElementById('app');
-    
     app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
-    
     try {
         const allProducts = await fetchGASProducts();
         const filtered = allProducts.filter(p => String(p["Category"] || "").trim() === String(rawCatName).trim());
         const localizedCatName = getLocalizedCategoryName(rawCatName);
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
             const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
@@ -274,15 +234,14 @@ async function renderCategoryList() {
                 <div class="p-4 text-center"><p class="text-xs text-blue-600 font-bold mb-1">${code}</p><h4 class="font-bold text-gray-800">${name}</h4></div>
             </div>`;
         }).join('');
-
         app.innerHTML = `
-            <div class="max-w-6xl mx-auto px-4 text-left">
+            <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="text-gray-500 text-sm mb-8 italic">
                     <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a> 
                     <span class="mx-2">&gt;</span> 
                     <span class="text-gray-900 font-bold">${localizedCatName}</span>
                 </nav>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">${itemsHtml || '<p>No products.</p>'}</div>
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">${itemsHtml || '<p>No products.</p>'}</div>
             </div>`;
     } catch (e) { app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; }
 }
@@ -291,31 +250,26 @@ async function renderProductDetail() {
     const params = new URLSearchParams(window.location.search);
     const itemCode = params.get('id');
     const app = document.getElementById('app');
-    
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
-    
     try {
         const allProducts = await fetchGASProducts();
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
-        
         if (!item) {
             app.innerHTML = `<div class="text-center py-20">找不到商品內容。</div>`;
             return;
         }
-
         const rawCatName = item["Category"] || "";
         const localizedCatName = getLocalizedCategoryName(rawCatName);
         const name = (currentLang === 'zh') ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
         const desc = (currentLang === 'zh') ? (item["中文描述"] || "") : (item["英文描述"] || "");
         const packing = item["Pcs / Packing"] || "--";
         const unit = item["計量單位"] || "";
-
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
         const formattedDesc = parseMarkdownTable(desc);
         const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
 
         app.innerHTML = `
-            <div class="max-w-6xl mx-auto px-4 text-left">
+            <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-500 text-sm mb-8 italic">
                     <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a>
                     <span class="mx-2">&gt;</span>
@@ -324,26 +278,37 @@ async function renderProductDetail() {
                     <span class="text-gray-900 font-bold">${name}</span>
                 </nav>
 
-                <div class="flex flex-col md:flex-row gap-12">
-                    <div class="w-full md:w-1/2">
-                        <img id="main-prod-img" src="${images[0] || ''}" class="w-full aspect-square object-cover rounded-2xl border shadow-sm" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
-                        <div class="flex gap-3 mt-4 overflow-x-auto pb-2">
+                <div class="product-layout-container">
+                    <div class="product-image-side">
+                        <img id="main-prod-img" src="${images[0] || ''}" class="detail-main-img" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
+                        <div class="flex gap-2 mt-4 overflow-x-auto pb-2 justify-center">
                             ${images.map(img => `
-                                <img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-20 h-20 object-cover rounded-lg cursor-pointer border-2 border-transparent hover:border-blue-500 transition shadow-sm bg-white">
+                                <img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-16 h-16 object-cover rounded-lg cursor-pointer border hover:border-blue-500 transition bg-white">
                             `).join('')}
                         </div>
                     </div>
-                    <div class="w-full md:w-1/2">
-                        <h1 class="text-3xl font-black mb-2 text-gray-900">${name}</h1>
-                        <p class="text-xl text-blue-600 font-bold mb-6">${itemCode}</p>
-                        <div class="border-y py-6 mb-6">
-                            <p class="flex items-center">
-                                <span class="text-gray-400 w-24">${currentLang === 'zh' ? '包裝規格' : 'Packing'}</span>
-                                <b class="text-gray-800">${packing} ${unit}</b>
-                            </p>
+
+                    <div class="product-info-side">
+                        <h1 class="text-4xl font-black mb-2 text-gray-900">${name}</h1>
+                        <p class="text-2xl text-blue-600 font-bold mb-6">${itemCode}</p>
+                        
+                        <div class="bg-gray-50 rounded-xl p-6 mb-8 border border-gray-100">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <span class="text-gray-400 block text-sm">${currentLang === 'zh' ? '包裝規格' : 'Packing'}</span>
+                                    <b class="text-lg text-gray-800">${packing} ${unit}</b>
+                                </div>
+                                <div>
+                                    <span class="text-gray-400 block text-sm">${currentLang === 'zh' ? '分類' : 'Category'}</span>
+                                    <b class="text-lg text-gray-800">${localizedCatName}</b>
+                                </div>
+                            </div>
                         </div>
-                        <h4 class="font-bold text-gray-900 mb-3">${currentLang === 'zh' ? '商品描述' : 'Description'}</h4>
-                        <div class="text-gray-600 leading-loose">${formattedDesc}</div>
+
+                        <div class="prose prose-blue max-w-none">
+                            <h4 class="font-bold text-gray-900 mb-4 pb-2 border-b">${currentLang === 'zh' ? '商品描述與規格' : 'Specifications'}</h4>
+                            <div class="text-gray-600">${formattedDesc}</div>
+                        </div>
                     </div>
                 </div>
             </div>`;
@@ -380,7 +345,7 @@ function renderProductCatalog(data, langIdx) {
             catHtml += `<div class="category-card group cursor-pointer" onclick="switchPage('category', {cat: '${row[4]}'})"><div class="category-img-container"><img src="${row[3]}"></div><div class="p-5 text-center bg-white border-t"><h4 class="font-bold text-gray-800">${row[langIdx]}</h4></div></div>`;
         }
     });
-    app.innerHTML = `<div class="flex flex-col items-center py-6 w-full"><div class="grid grid-cols-2 md:grid-cols-4 gap-8 w-full max-w-6xl px-4">${catHtml}</div></div>`;
+    app.innerHTML = `<div class="flex flex-col items-center py-6 w-full"><div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 w-full max-w-7xl px-4">${catHtml}</div></div>`;
 }
 
 function renderAboutOrContent(data, langIdx, pageName) {
@@ -409,7 +374,7 @@ function renderBusinessScope(data, langIdx, pageName) {
     data.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
         const target = (currentLang === 'zh') ? 'chinese content' : 'english content';
-        if (key.includes(target) && row[3]) contentImages += `<img src="${row[3]}" class="home-bottom-image mb-8 max-w-2xl mx-auto block">`;
+        if (key.includes(target) && row[3]) contentImages += `<img src="${row[3]}" class="home-bottom-image mb-8 max-w-4xl mx-auto block">`;
     });
     app.innerHTML = `<div class="flex flex-col items-center py-10 w-full"><h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="w-full px-4">${contentImages}</div></div>`;
 }
@@ -435,12 +400,3 @@ window.onpopstate = function() {
 };
 
 initWebsite();
-
-
-
-
-
-
-
-
-
