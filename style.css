@@ -28,7 +28,7 @@ body {
 
 .lang-btn {
     cursor: pointer;
-    padding: 4px 12px; /* 縮減 padding */
+    padding: 4px 12px;
     border-radius: 6px;
     font-weight: 600;
     background-color: #1d4ed8;
@@ -52,7 +52,7 @@ body {
 /* --- 產品資料卡 (Category Card) 樣式 --- */
 .category-card {
     background: white;
-    border-radius: 0.75rem; /* 圓角微縮 */
+    border-radius: 0.75rem;
     overflow: hidden;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -84,14 +84,14 @@ body {
     border-collapse: collapse;
     border: 1px solid #d1d5db;
     background-color: white;
-    font-size: 0.85rem; /* 字體微縮 */
+    font-size: 0.85rem;
     margin-bottom: 1rem;
 }
 
 .custom-data-table th,
 .custom-data-table td {
     border: 1px solid #d1d5db;
-    padding: 6px 6px; /* 從 12/16 縮減至 6/10，節省空間 */
+    padding: 6px 6px;
     text-align: left;
     vertical-align: middle;
 }
@@ -102,13 +102,11 @@ body {
     font-weight: 700;
 }
 
-/* 單一儲存格隱藏上下線 */
 .custom-data-table td.no-border-cell {
     border-top: none;
     border-bottom: none;
 }
 
-/* 確保最後一行封閉表格 */
 .custom-data-table tr:last-child td {
     border-bottom: 1px solid #d1d5db;
 }
@@ -116,15 +114,14 @@ body {
 /* --- 圖片 Grid 系統 --- */
 .image-grid-container {
     display: grid;
-    gap: 12px; /* 間距縮減 */
+    gap: 12px;
     width: 100%;
-    max-width: 1400px; /* 加寬 */
+    max-width: 1400px;
     margin: 0 auto;
 }
 
 @media (min-width: 768px) {
     .image-grid-container {
-        /* 卡片最小寬度縮小，讓橫向能放更多個 */
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     }
 }
@@ -135,11 +132,10 @@ body {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-/* 描述內容優化：縮短行距與段落間隙 */
 p { 
     white-space: pre-line; 
-    line-height: 1.4; /* 行距變窄 */
-    margin-bottom: 0.5rem; /* 段落間距變小 */
+    line-height: 1.4; 
+    margin-bottom: 0.5rem; 
 }
 
 #main-nav::-webkit-scrollbar { display: none; }
@@ -149,7 +145,7 @@ p {
     width: 100%;
     display: flex;
     justify-content: center;
-    margin: 10px 0; /* 縮小圖片上下間距 */
+    margin: 10px 0;
 }
 
 .content-image-wrapper img {
@@ -164,3 +160,33 @@ p {
     transform: scale(1.01);
 }
 
+/* --- 商品內頁 1:2 佈局樣式 --- */
+.product-layout-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+@media (min-width: 768px) {
+    .product-layout-container {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+    .product-image-side {
+        flex: 1; /* 1份 */
+        position: sticky;
+        top: 100px;
+    }
+    .product-info-side {
+        flex: 2; /* 2份 (1:2) */
+    }
+}
+
+.detail-main-img {
+    width: 100%;
+    max-width: 500px; /* 限制最大寬度避免過大 */
+    margin: 0 auto;
+    border-radius: 1rem;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
