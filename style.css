@@ -8,7 +8,7 @@ body {
 
 /* 強制利用完整空間：覆蓋 Tailwind 預設的 container 寬度 */
 .container {
-    max-width: 1400px;
+    max-width: 1800px;
     margin-left: auto;
     margin-right: auto;
 }
@@ -91,7 +91,7 @@ body {
 .custom-data-table th,
 .custom-data-table td {
     border: 1px solid #d1d5db;
-    padding: 6px 10px; /* 從 12/16 縮減至 6/10，節省空間 */
+    padding: 6px 6px; /* 從 12/16 縮減至 6/10，節省空間 */
     text-align: left;
     vertical-align: middle;
 }
@@ -163,3 +163,4 @@ p {
 .content-image-wrapper img:hover {
     transform: scale(1.01);
 }
+
