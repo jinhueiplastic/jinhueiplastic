@@ -259,18 +259,26 @@ function parseMarkdownTable(text) {
     let html = '';
     let tableBuffer = [];
     let isProcessingTable = false;
+    
     for (let i = 0; i <= lines.length; i++) {
-        const line = lines[i] ? lines[i].trim() : null;
+        // 這裡保持原有的 null 判定邏輯，但不要自動 .trim() 掉所有空行
+        // 這樣我們才能偵測到 Google Sheet 裡的「隔行」
+        const rawLine = lines[i];
+        const line = rawLine !== undefined ? rawLine.trim() : null;
+        
         const isTableLine = line && line.startsWith('|') && line.includes('|');
         const isSeparator = line && line.match(/^[|:\s-]+$/);
+        
         if (isTableLine && !isSeparator) {
             isProcessingTable = true;
             let cells = line.split('|').map(c => c.trim()).filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
             tableBuffer.push(cells);
             continue;
         }
+        
         if ((!isTableLine || i === lines.length) && isProcessingTable) {
             if (tableBuffer.length > 0) {
+                // --- 這裡開始是您原本強大的表格渲染邏輯，完全保留 ---
                 html += '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
                 html += '<thead><tr>';
                 tableBuffer[0].forEach(cell => html += `<th>${cell}</th>`);
@@ -309,14 +317,21 @@ function parseMarkdownTable(text) {
                     html += '</tr>';
                 }
                 html += '</tbody></table></div>';
+                // --- 表格渲染邏輯結束 ---
             }
             tableBuffer = []; isProcessingTable = false;
         }
-        if (line && !isTableLine && !isSeparator) {
+
+        // --- 核心修正：處理圖片與文字段落 ---
+        if (line !== null && !isTableLine && !isSeparator) {
             const isImageUrl = line.match(/^https?:\/\/.*\.(jpg|jpeg|png|webp|gif|svg)$/i);
             if (isImageUrl) {
                 html += `<div class="content-image-wrapper my-6"><img src="${line}" class="max-w-full h-auto rounded-lg shadow-md mx-auto"></div>`;
-            } else {
+            } else if (line === "" && i < lines.length) {
+                // 這是重點：如果遇到空行，補一個 <br> 標籤，達成 Google Sheet 中的隔行效果
+                html += `<br>`;
+            } else if (line !== "") {
+                // 您原本的文字包裝
                 html += `<p class="mb-2">${line}</p>`;
             }
         }
@@ -514,6 +529,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
