@@ -45,7 +45,12 @@ async function fetchGASProducts() {
 function handleRouting() {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
-    if (page && (tabs.includes(page) || page === 'category' || page === 'product')) {
+    const query = params.get('q'); // 取得搜尋字串
+
+    if (page === 'search' && query) {
+        currentPage = 'search';
+        executeSearch(query);
+    } else if (page && (tabs.includes(page) || page === 'category' || page === 'product')) {
         currentPage = page;
     }
 }
@@ -55,41 +60,45 @@ async function handleSearch() {
     const query = document.getElementById('product-search-input').value.toLowerCase().trim();
     if (!query) return;
 
+    // --- 新增：更新網址列，但不觸發頁面刷新 ---
+    const u = new URL(window.location.origin + window.location.pathname);
+    u.searchParams.set('page', 'search');
+    u.searchParams.set('q', query);
+    window.history.pushState({ type: 'search', query: query }, '', u);
+    // ---------------------------------------
+
+    executeSearch(query); // 將搜尋邏輯拆分出來
+}
+
+// 抽離出來的搜尋執行邏輯
+async function executeSearch(query) {
     const app = document.getElementById('app');
     app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
         const allProducts = await fetchGASProducts();
-        
-        // 取得物件的所有鍵名 (Keys)，用來根據順序抓取欄位
         const filtered = allProducts.filter(p => {
             const keys = Object.keys(p);
-            
-            // 1. 檢查 A 欄 (索引 0): 必須有資料
             const colA = String(p[keys[0]] || "").trim();
             if (!colA) return false; 
 
-            // 2. 獲取各個欄位的內容 (根據您的描述對應索引)
-            // B欄=索引1, D欄=索引3, G欄=索引6, AH欄=索引33 (A=0, B=1... AH=33)
-            const itemCode = String(p[keys[1]] || "").toLowerCase(); // B欄
-            const chineseName = String(p[keys[3]] || "").toLowerCase(); // D欄
-            const englishName = String(p[keys[6]] || "").toLowerCase(); // G欄
-            
-            // AH 欄通常是第 34 欄，索引值為 33
-            // 我們保險起見，也搜尋名為 "搜尋關鍵字" 的鍵
+            const itemCode = String(p[keys[1]] || "").toLowerCase();
+            const chineseName = String(p[keys[3]] || "").toLowerCase();
+            const englishName = String(p[keys[6]] || "").toLowerCase();
             const searchKeywords = String(p["搜尋關鍵字"] || p[keys[33]] || "").toLowerCase();
             
-            // 3. 比對邏輯
-            return itemCode.includes(query) || 
-                   chineseName.includes(query) || 
-                   englishName.includes(query) ||
-                   searchKeywords.includes(query);
+            return itemCode.includes(query) || chineseName.includes(query) || 
+                   englishName.includes(query) || searchKeywords.includes(query);
         });
 
         renderSearchResults(filtered, query);
+        
+        // 搜尋完畢後，確保搜尋框出現在頂部
+        if (!document.getElementById('product-search-input')) {
+            app.insertAdjacentHTML('afterbegin', `<div class="max-w-7xl mx-auto px-4">${getSearchBoxHtml()}</div>`);
+        }
     } catch (e) {
-        console.error("Search Error:", e);
-        app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯，請檢查資料欄位。</div>`;
+        app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯。</div>`;
     }
 }
 
@@ -207,7 +216,7 @@ async function loadPage(pageName, updateUrl = true) {
     const langIdx = (currentLang === 'zh') ? 1 : 2;
 
     // 先判斷是否為商品相關頁面，若是則先插入搜尋欄框架
-    const isProductPage = ['Product Catalog', 'category', 'product'].includes(pageName);
+    const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
 
     if (pageName === 'category') { await renderCategoryList(); }
     else if (pageName === 'product') { await renderProductDetail(); }
@@ -490,16 +499,22 @@ function renderContactUs(data, langIdx, pageName) {
     app.innerHTML = `<div class="flex flex-col items-center py-10 px-4 text-center"><h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="w-full max-w-2xl border-y py-8 mb-16">${info}</div><iframe src="${map}" width="100%" height="500" class="max-w-6xl rounded-2xl shadow-sm border" loading="lazy"></iframe></div>`;
 }
 
-// --- 事件監聽 ---
-window.onpopstate = function() {
+window.onpopstate = function(event) {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page') || 'Content';
-    currentPage = page;
-    loadPage(page, false);
+    const query = params.get('q');
+
+    if (page === 'search' && query) {
+        executeSearch(query);
+    } else {
+        currentPage = page;
+        loadPage(page, false);
+    }
     renderNav();
 };
 
 initWebsite();
+
 
 
 
