@@ -60,19 +60,24 @@ async function handleSearch() {
 
     try {
         const allProducts = await fetchGASProducts();
-        // 搜尋 B欄 (Item code), D欄 (Chinese product name), G欄 (English product name)
+        
+        // 搜尋邏輯：包含 ERP代碼(B)、中文名(D)、英文名(G)、以及搜尋關鍵字(AH)
         const filtered = allProducts.filter(p => {
             const itemCode = String(p["Item code (ERP)"] || "").toLowerCase();
             const chineseName = String(p["Chinese product name"] || "").toLowerCase();
             const englishName = String(p["English product name"] || "").toLowerCase();
+            // 新增：搜尋 AH 欄位的關鍵字
+            const searchKeywords = String(p["搜尋關鍵字"] || "").toLowerCase();
             
             return itemCode.includes(query) || 
                    chineseName.includes(query) || 
-                   englishName.includes(query);
+                   englishName.includes(query) ||
+                   searchKeywords.includes(query); // 只要關鍵字欄位包含搜尋詞即符合
         });
 
         renderSearchResults(filtered, query);
     } catch (e) {
+        console.error("Search Error:", e);
         app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯。</div>`;
     }
 }
@@ -484,4 +489,5 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
