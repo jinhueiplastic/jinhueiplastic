@@ -61,20 +61,25 @@ async function handleSearch() {
     try {
         const allProducts = await fetchGASProducts();
         
+        // 取得物件的所有鍵名 (Keys)，用來根據順序抓取欄位
         const filtered = allProducts.filter(p => {
-            // --- 關鍵修改：限制 A 欄必須有內容 ---
-            // 這裡假設 A 欄在 GAS 回傳的 JSON 鍵名為 "Status" 或 "A" 
-            // 根據您的 Google Sheet 結構，通常 GAS 會抓取第一列作為鍵名
-            // 如果您的 A 欄標頭是空的，請將下方引號內改為您的 A 欄標頭名稱
-            const status = String(p["Status"] || p["A"] || "").trim(); 
-            if (!status) return false; // 如果 A 欄是空的，直接剔除
-
-            // --- 原有的搜尋比對邏輯 ---
-            const itemCode = String(p["Item code (ERP)"] || "").toLowerCase();
-            const chineseName = String(p["Chinese product name"] || "").toLowerCase();
-            const englishName = String(p["English product name"] || "").toLowerCase();
-            const searchKeywords = String(p["搜尋關鍵字"] || "").toLowerCase();
+            const keys = Object.keys(p);
             
+            // 1. 檢查 A 欄 (索引 0): 必須有資料
+            const colA = String(p[keys[0]] || "").trim();
+            if (!colA) return false; 
+
+            // 2. 獲取各個欄位的內容 (根據您的描述對應索引)
+            // B欄=索引1, D欄=索引3, G欄=索引6, AH欄=索引33 (A=0, B=1... AH=33)
+            const itemCode = String(p[keys[1]] || "").toLowerCase(); // B欄
+            const chineseName = String(p[keys[3]] || "").toLowerCase(); // D欄
+            const englishName = String(p[keys[6]] || "").toLowerCase(); // G欄
+            
+            // AH 欄通常是第 34 欄，索引值為 33
+            // 我們保險起見，也搜尋名為 "搜尋關鍵字" 的鍵
+            const searchKeywords = String(p["搜尋關鍵字"] || p[keys[33]] || "").toLowerCase();
+            
+            // 3. 比對邏輯
             return itemCode.includes(query) || 
                    chineseName.includes(query) || 
                    englishName.includes(query) ||
@@ -84,7 +89,7 @@ async function handleSearch() {
         renderSearchResults(filtered, query);
     } catch (e) {
         console.error("Search Error:", e);
-        app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯。</div>`;
+        app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯，請檢查資料欄位。</div>`;
     }
 }
 
@@ -495,6 +500,7 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
 
