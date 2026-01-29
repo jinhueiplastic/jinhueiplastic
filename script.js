@@ -50,6 +50,80 @@ function handleRouting() {
     }
 }
 
+// --- 搜尋功能邏輯 ---
+async function handleSearch() {
+    const query = document.getElementById('product-search-input').value.toLowerCase().trim();
+    if (!query) return;
+
+    const app = document.getElementById('app');
+    app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
+
+    try {
+        const allProducts = await fetchGASProducts();
+        // 搜尋 B欄 (Item code), D欄 (Chinese product name), G欄 (English product name)
+        const filtered = allProducts.filter(p => {
+            const itemCode = String(p["Item code (ERP)"] || "").toLowerCase();
+            const chineseName = String(p["Chinese product name"] || "").toLowerCase();
+            const englishName = String(p["English product name"] || "").toLowerCase();
+            
+            return itemCode.includes(query) || 
+                   chineseName.includes(query) || 
+                   englishName.includes(query);
+        });
+
+        renderSearchResults(filtered, query);
+    } catch (e) {
+        app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯。</div>`;
+    }
+}
+
+function renderSearchResults(products, query) {
+    const app = document.getElementById('app');
+    const langIdx = (currentLang === 'zh') ? 1 : 2;
+    const title = currentLang === 'zh' ? `搜尋結果: ${query}` : `Search Results: ${query}`;
+    
+    let itemsHtml = products.map(item => {
+        const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
+        const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
+        const code = item["Item code (ERP)"];
+        return `
+            <div class="category-card group cursor-pointer" onclick="switchPage('product', {id: '${code}'})">
+                <div class="category-img-container"><img src="${img}" class="hover:scale-110 transition duration-500"></div>
+                <div class="p-4 text-center">
+                    <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
+                    <h4 class="font-bold text-gray-800">${name}</h4>
+                </div>
+            </div>`;
+    }).join('');
+
+    app.innerHTML = `
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-2xl font-bold mb-8 pb-2 border-b">${title}</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                ${itemsHtml || `<p class="col-span-full text-center py-10 text-gray-400">${currentLang === 'zh' ? '找不到相關商品' : 'No products found'}</p>`}
+            </div>
+        </div>`;
+}
+
+// 產生搜尋欄的 HTML 結構
+function getSearchBoxHtml() {
+    const placeholder = currentLang === 'zh' ? '搜尋產品編號或名稱...' : 'Search item code or name...';
+    return `
+        <div class="flex justify-end mb-6">
+            <div class="relative w-full max-w-xs flex gap-2">
+                <input type="text" id="product-search-input" 
+                    class="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" 
+                    placeholder="${placeholder}"
+                    onkeypress="if(event.key === 'Enter') handleSearch()">
+                <button onclick="handleSearch()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </button>
+            </div>
+        </div>`;
+}
+
 async function initWebsite() {
     handleRouting();
     rawDataCache['Content'] = await fetchSheetData('Content');
@@ -116,23 +190,33 @@ async function loadPage(pageName, updateUrl = true) {
     const app = document.getElementById('app');
     const langIdx = (currentLang === 'zh') ? 1 : 2;
 
-    if (pageName === 'category') { renderCategoryList(); return; }
-    if (pageName === 'product') { renderProductDetail(); return; }
+    // 先判斷是否為商品相關頁面，若是則先插入搜尋欄框架
+    const isProductPage = ['Product Catalog', 'category', 'product'].includes(pageName);
 
-    if (!rawDataCache[pageName]) { rawDataCache[pageName] = await fetchSheetData(pageName); }
-    const data = rawDataCache[pageName];
+    if (pageName === 'category') { await renderCategoryList(); }
+    else if (pageName === 'product') { await renderProductDetail(); }
+    else {
+        if (!rawDataCache[pageName]) { rawDataCache[pageName] = await fetchSheetData(pageName); }
+        const data = rawDataCache[pageName];
 
-    if (pageName === "Product Catalog") {
-        renderProductCatalog(data, langIdx);
-    } else if (pageName === "Content" || pageName === "About Us") {
-        renderAboutOrContent(data, langIdx, pageName);
-    } else if (pageName === "Business Scope") {
-        renderBusinessScope(data, langIdx, pageName);
-    } else if (pageName === "Join Us") {
-        renderJoinUs(data, langIdx, pageName);
-    } else if (pageName === "Contact Us") {
-        renderContactUs(data, langIdx, pageName);
+        if (pageName === "Product Catalog") {
+            renderProductCatalog(data, langIdx);
+        } else if (pageName === "Content" || pageName === "About Us") {
+            renderAboutOrContent(data, langIdx, pageName);
+        } else if (pageName === "Business Scope") {
+            renderBusinessScope(data, langIdx, pageName);
+        } else if (pageName === "Join Us") {
+            renderJoinUs(data, langIdx, pageName);
+        } else if (pageName === "Contact Us") {
+            renderContactUs(data, langIdx, pageName);
+        }
     }
+
+    // 如果是商品相關頁面，在最前面加上搜尋框
+    if (isProductPage) {
+        app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
+    }
+
     window.scrollTo(0, 0);
 }
 
@@ -400,3 +484,4 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
