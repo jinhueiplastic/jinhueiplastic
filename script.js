@@ -61,18 +61,24 @@ async function handleSearch() {
     try {
         const allProducts = await fetchGASProducts();
         
-        // 搜尋邏輯：包含 ERP代碼(B)、中文名(D)、英文名(G)、以及搜尋關鍵字(AH)
         const filtered = allProducts.filter(p => {
+            // --- 關鍵修改：限制 A 欄必須有內容 ---
+            // 這裡假設 A 欄在 GAS 回傳的 JSON 鍵名為 "Status" 或 "A" 
+            // 根據您的 Google Sheet 結構，通常 GAS 會抓取第一列作為鍵名
+            // 如果您的 A 欄標頭是空的，請將下方引號內改為您的 A 欄標頭名稱
+            const status = String(p["Status"] || p["A"] || "").trim(); 
+            if (!status) return false; // 如果 A 欄是空的，直接剔除
+
+            // --- 原有的搜尋比對邏輯 ---
             const itemCode = String(p["Item code (ERP)"] || "").toLowerCase();
             const chineseName = String(p["Chinese product name"] || "").toLowerCase();
             const englishName = String(p["English product name"] || "").toLowerCase();
-            // 新增：搜尋 AH 欄位的關鍵字
             const searchKeywords = String(p["搜尋關鍵字"] || "").toLowerCase();
             
             return itemCode.includes(query) || 
                    chineseName.includes(query) || 
                    englishName.includes(query) ||
-                   searchKeywords.includes(query); // 只要關鍵字欄位包含搜尋詞即符合
+                   searchKeywords.includes(query);
         });
 
         renderSearchResults(filtered, query);
@@ -489,5 +495,6 @@ window.onpopstate = function() {
 };
 
 initWebsite();
+
 
 
