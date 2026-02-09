@@ -23,7 +23,7 @@ body {
     border-bottom: 1px solid #e5e7eb;
 }
 
-.logo-img { height: 60px; width: auto; object-fit: contain; display: block; }
+.logo-img { height: 50px; width: auto; object-fit: contain; display: block; }
 .store-img { height: 35px; width: auto; max-width: 100px; object-fit: contain; }
 
 .lang-btn {
@@ -43,6 +43,8 @@ body {
     font-weight: 700;
     transition: 0.3s;
     border-bottom: 3px solid transparent;
+    padding-top: 8px;    /* 數值愈小愈薄 */
+    padding-bottom: 8px; /* 數值愈小愈薄 */
 }
 .nav-item.active { 
     color: #ffffff; 
@@ -190,3 +192,4 @@ p {
     border: 1px solid #e5e7eb;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
+
