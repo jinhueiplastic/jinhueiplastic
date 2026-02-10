@@ -397,10 +397,6 @@ async function renderProductDetail() {
     
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
-    // 第二個試算表的 ID (存放 Categories 分頁)
-    const CATEGORY_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
-    const getCategorySheetUrl = `https://docs.google.com/spreadsheets/d/${CATEGORY_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
-
     try {
         const allProducts = await fetchGASProducts();
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
@@ -410,7 +406,7 @@ async function renderProductDetail() {
             return;
         }
 
-        // --- 定義基礎變數 ---
+        // --- 關鍵補齊：定義變數 ---
         const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
         const rawCatName = (item["Category"] || "").trim();
         const localizedCatName = getLocalizedCategoryName(rawCatName);
@@ -419,34 +415,23 @@ async function renderProductDetail() {
         const packing = item["Packing規格"] || "";
         const unit = item["Unit單位"] || "";
         const rawDesc = (currentLang === 'zh') ? (item["Description中文描述"] || "") : (item["English description英文描述"] || "");
-        const formattedDesc = parseMarkdownTable(rawDesc);
+        const formattedDesc = parseMarkdownTable(rawDesc); // 使用你寫好的表格解析功能
+        // -----------------------
 
-        // --- 抓取第二個試算表的 Categories 資料 ---
-        let categoryData = [];
-        try {
-            const catResp = await fetch(getCategorySheetUrl);
-            const catText = await catResp.text();
-            const catJson = JSON.parse(catText.substring(47).slice(0, -2));
-            categoryData = catJson.table.rows.map(row => 
-                row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
-            );
-        } catch (e) {
-            console.error("無法載入分類連結資料表:", e);
+        if (!rawDataCache["Product Catalog"]) {
+            rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
 
-        // 在 Categories 資料中尋找對應的列 (比對 E 欄，索引 4)
-        const catRow = categoryData.find(r => String(r[4] || "").trim() === rawCatName);
+        const catRow = rawDataCache["Product Catalog"].find(r => String(r[4] || "").trim() === rawCatName);
         
         let storeLinksHtml = '';
         if (catRow) {
-            // AI(34), AJ(35), AK(36), AL(37)
-            const storeColumns = [34, 35, 36, 37];
+            const storeColumns = [34, 35, 36, 37]; // AI, AJ, AK, AL
             storeColumns.forEach((colIdx, i) => {
                 const storeUrl = (catRow[colIdx] || "").trim();
                 const storeKey = `Store ${i + 1}`; 
                 
-                // 檢查網址是否存在，且全域變數 storeLogoMap 裡有對應的圖片
-                if (storeUrl && storeUrl !== "#" && storeUrl !== "" && storeLogoMap[storeKey]) {
+                if (storeUrl && storeUrl !== "#" && storeLogoMap[storeKey]) {
                     storeLinksHtml += `
                         <a href="${storeUrl}" target="_blank" class="inline-block hover:scale-110 transition ml-2">
                             <img src="${storeLogoMap[storeKey]}" alt="${storeKey}" class="h-10 w-auto shadow-sm rounded border bg-white p-1">
@@ -455,7 +440,7 @@ async function renderProductDetail() {
             });
         }
 
-        // --- 渲染 HTML ---
+        // 渲染 HTML (保持你原本的 template)
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-500 text-sm mb-8 italic">
@@ -466,17 +451,17 @@ async function renderProductDetail() {
                     <span class="text-gray-900 font-bold">${name}</span>
                 </nav>
 
-                <div class="flex flex-col md:flex-row gap-10">
-                    <div class="w-full md:w-1/2">
-                        <img id="main-prod-img" src="${images[0] || ''}" class="w-full rounded-xl shadow-lg border" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
-                        <div class="flex gap-2 mt-4 overflow-x-auto pb-2">
+                <div class="product-layout-container flex flex-col md:flex-row gap-10">
+                    <div class="product-image-side w-full md:w-1/2">
+                        <img id="main-prod-img" src="${images[0] || ''}" class="detail-main-img w-full rounded-xl shadow-lg" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
+                        <div class="flex gap-2 mt-4 overflow-x-auto pb-2 justify-center">
                             ${images.map(img => `
                                 <img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-16 h-16 object-cover rounded-lg cursor-pointer border hover:border-blue-500 transition bg-white">
                             `).join('')}
                         </div>
                     </div>
 
-                    <div class="w-full md:w-1/2">
+                    <div class="product-info-side w-full md:w-1/2">
                         <div class="flex items-center flex-wrap gap-4 mb-2">
                             <h1 class="text-4xl font-black text-gray-900">${name}</h1>
                             <div class="flex items-center gap-2">${storeLinksHtml}</div>
@@ -504,7 +489,7 @@ async function renderProductDetail() {
                 </div>
             </div>`;
     } catch (e) { 
-        console.error("Error:", e); 
+        console.error("Error rendering product detail:", e); 
         app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
     }
 }
@@ -599,6 +584,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
