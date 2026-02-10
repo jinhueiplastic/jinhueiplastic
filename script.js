@@ -398,7 +398,6 @@ async function renderProductDetail() {
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
-        // 1. 抓取 GAS 產品資料
         const allProducts = await fetchGASProducts();
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
         
@@ -407,98 +406,98 @@ async function renderProductDetail() {
             return;
         }
 
-        const rawCatName = (item["Category"] || item["分類"] || "").trim();
-        console.log("產品分類(Key):", rawCatName);
-
-        // 2. 準備 Logo 圖庫 (來源：主試算表 Product Catalog 分頁)
+        // --- 1. 建立 Logo 圖庫 (增加對空格的相容性) ---
         if (!rawDataCache["Product Catalog"]) {
             rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
+        
         const logoLibrary = {};
         rawDataCache["Product Catalog"].forEach(row => {
-            const storeName = String(row[0] || "").trim(); // A 欄: Store 1
-            const logoUrl = String(row[4] || "").trim();    // E 欄: Logo 網址
-            if (storeName.toLowerCase().startsWith("store")) {
-                logoLibrary[storeName] = logoUrl;
+            const rawName = String(row[0] || "").trim(); // A 欄: Store 1
+            const logoUrl = String(row[4] || "").trim(); // E 欄: Logo URL
+            if (rawName.toLowerCase().startsWith("store") && logoUrl) {
+                // 將 "Store 1" 轉為 "store1" 作為 Key，消除空格干擾
+                const cleanKey = rawName.toLowerCase().replace(/\s+/g, '');
+                logoLibrary[cleanKey] = logoUrl;
             }
         });
 
-        // 3. 抓取連結庫 (Categories 分頁) - 使用更穩定的 fetch 處理
-        const B_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
-        // 加上 tqx=out:csv 有時能繞過某些 JSONP 的 CORS 限制，或是確保 Sheet 已公開
-        const B_SHEET_URL = `https://docs.google.com/spreadsheets/d/${B_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
-        
-        const bResp = await fetch(B_SHEET_URL);
-        if (!bResp.ok) throw new Error("連結表抓取失敗，請確認試算表已公開共用");
-        
-        const bText = await bResp.text();
-        const bJson = JSON.parse(bText.substring(47).slice(0, -2));
-        const categoriesRows = bJson.table.rows.map(row => 
-            row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
-        );
-
-        // 比對 A 欄 (Index 0) 找出分類
-        const catRow = categoriesRows.find(r => String(r[0] || "").trim() === rawCatName);
-        
+        // --- 2. 處理該商品的專屬賣場連結 ---
         let storeLinksHtml = '';
-        if (catRow) {
-            // AI(34), AJ(35), AK(36), AL(37) 對應 Store 1, 2, 3, 4
-            [34, 35, 36, 37].forEach((colIdx, i) => {
-                const link = (catRow[colIdx] || "").trim();
-                const storeKey = `Store ${i + 1}`;
-                const logo = logoLibrary[storeKey];
+        // 這裡對應你商品資料（GAS）中的標題名稱
+        const storeMapping = [
+            { key: "Store 1網址", id: "store1" },
+            { key: "Store 2網址", id: "store2" },
+            { key: "Store 3網址", id: "store3" },
+            { key: "Store 4網址", id: "store4" }
+        ];
 
-                if (link && link !== "#" && logo) {
-                    storeLinksHtml += `
-                        <a href="${link}" target="_blank" class="hover:scale-110 transition shrink-0">
-                            <img src="${logo}" alt="${storeKey}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
-                        </a>`;
-                }
-            });
-        }
+        storeMapping.forEach(store => {
+            const storeUrl = (item[store.key] || "").trim();
+            const logoUrl = logoLibrary[store.id];
 
-        // 4. 準備 UI 資料
-        const localizedCatName = getLocalizedCategoryName(rawCatName);
+            if (storeUrl && storeUrl !== "#" && logoUrl) {
+                storeLinksHtml += `
+                    <a href="${storeUrl}" target="_blank" class="hover:scale-110 transition shrink-0 block">
+                        <img src="${logoUrl}" alt="${store.id}" class="h-10 w-auto shadow-sm rounded border bg-white p-1">
+                    </a>`;
+            }
+        });
+
+        // --- 3. 其他顯示資料 ---
+        const rawCatName = (item["Category"] || item["分類"] || "").trim();
+        const localizedCatName = typeof getLocalizedCategoryName === 'function' ? getLocalizedCategoryName(rawCatName) : rawCatName;
         const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
         const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
         const desc = (currentLang === 'zh') ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文描述"] || "");
         const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
         const unit = item["Unit單位"] || item["計量單位"] || "";
 
-        // 5. 渲染頁面
+        // --- 4. 渲染 HTML (調整按鈕靠右) ---
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
-                <nav class="flex text-gray-500 text-sm mb-6 italic">
+                <nav class="flex text-gray-400 text-sm mb-8 italic">
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${currentLang === 'zh' ? '商品目錄' : 'Product Catalog'}</span>
                     <span class="mx-2">&gt;</span>
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('category', {cat: '${rawCatName}'})">${localizedCatName}</span>
-                    <span class="mx-2">&gt;</span>
-                    <span class="text-gray-900 font-bold">${name}</span>
                 </nav>
 
-                <div class="flex flex-col md:flex-row gap-10">
+                <div class="flex flex-col md:flex-row gap-12">
                     <div class="w-full md:w-1/2">
-                        <img id="main-prod-img" src="${images[0] || ''}" class="w-full rounded-xl shadow-lg border">
-                        <div class="flex gap-2 mt-4 overflow-x-auto justify-center">
-                            ${images.map(img => `<img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-16 h-16 object-cover rounded-lg cursor-pointer border hover:border-blue-500">`).join('')}
+                        <img id="main-prod-img" src="${images[0] || ''}" class="w-full rounded-2xl shadow-xl border bg-white aspect-square object-contain" onerror="this.src='https://via.placeholder.com/600x600?text=No+Image'">
+                        <div class="flex gap-3 mt-6 overflow-x-auto pb-2">
+                            ${images.map(img => `<img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-20 h-20 object-cover rounded-lg cursor-pointer border-2 hover:border-blue-500 bg-white transition shadow-sm">`).join('')}
                         </div>
                     </div>
 
-                    <div class="w-full md:w-1/2">
-                        <div class="flex items-center gap-4 mb-2 flex-wrap">
-                            <h1 class="text-4xl font-black text-gray-900">${name}</h1>
-                            <div class="flex gap-2">${storeLinksHtml}</div>
-                        </div>
-                        <p class="text-2xl text-blue-600 font-bold mb-6">${itemCode}</p>
-                        <div class="bg-gray-50 rounded-xl p-6 mb-8 border border-gray-100 italic">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div><span class="text-gray-400 block text-sm">Packing</span><b class="text-lg text-gray-800">${packing} ${unit}</b></div>
-                                <div><span class="text-gray-400 block text-sm">Category</span><b class="text-lg text-gray-800">${localizedCatName}</b></div>
+                    <div class="w-full md:w-1/2 flex flex-col">
+                        <div class="flex items-start justify-between gap-4 mb-2">
+                            <h1 class="text-4xl font-black text-gray-900 leading-tight flex-1">${name}</h1>
+                            <div class="flex items-center gap-3 pt-1 justify-end">
+                                ${storeLinksHtml}
                             </div>
                         </div>
-                        <div class="prose max-w-none text-gray-600">
-                            <h4 class="font-bold text-gray-900 mb-4 pb-2 border-b">Specifications</h4>
-                            <div>${parseMarkdownTable(desc)}</div>
+                        
+                        <p class="text-2xl text-blue-600 font-bold mb-8">${itemCode}</p>
+                        
+                        <div class="bg-gray-50 rounded-2xl p-8 mb-8 border border-gray-100 shadow-sm">
+                            <div class="grid grid-cols-2 gap-8">
+                                <div>
+                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">Packing</span>
+                                    <b class="text-xl text-gray-800">${packing} ${unit}</b>
+                                </div>
+                                <div>
+                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">Category</span>
+                                    <b class="text-xl text-gray-800">${localizedCatName}</b>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="prose prose-slate max-w-none">
+                            <h4 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500 inline-block">Specifications</h4>
+                            <div class="text-gray-600 leading-relaxed mt-2">
+                                ${typeof parseMarkdownTable === 'function' ? parseMarkdownTable(desc) : desc}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -506,7 +505,7 @@ async function renderProductDetail() {
 
     } catch (e) { 
         console.error("渲染出錯:", e); 
-        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。請確認試算表已開啟共用權限。</div>`; 
+        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
     }
 }
 
@@ -600,6 +599,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
