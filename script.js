@@ -16,7 +16,7 @@ function renderLogoAndStores() {
     logoContainer.innerHTML = ''; storeContainer.innerHTML = '';
     
     data.forEach(row => {
-        const aCol = (row[0] || "").trim(); // 這裡不轉小寫，方便對應 Store 1
+        const aCol = (row[0] || "").trim(); // 保持原始大小寫比對 Store 1
         const imgUrl = (row[3] || "").trim();
         const linkUrl = (row[4] || "").trim() || "#";
         
@@ -24,11 +24,10 @@ function renderLogoAndStores() {
             logoContainer.innerHTML = `<a href="javascript:void(0)" onclick="switchPage('Content')"><img src="${imgUrl}" class="logo-img" alt="Logo"></a>`;
         }
         
-        // 這裡將 Store 1, Store 2... 的圖片存入 Map
+        // 這裡要確保 key 是 "Store 1", "Store 2" 等等
         if (aCol.startsWith('Store') && imgUrl) {
-            storeLogoMap[aCol] = imgUrl; // 存成 { "Store 1": "url", "Store 2": "url" }
+            storeLogoMap[aCol] = imgUrl; 
             
-            // 原有的 Header 顯示邏輯保持不變
             const a = document.createElement('a');
             a.href = linkUrl; a.target = "_blank";
             a.innerHTML = `<img src="${imgUrl}" class="store-img hover:opacity-75 transition">`;
@@ -181,10 +180,19 @@ function getSearchBoxHtml() {
 
 async function initWebsite() {
     handleRouting();
+    
+    // 1. 先抓取 Content (為了 Store Logo)
     rawDataCache['Content'] = await fetchSheetData('Content');
-    renderLogoAndStores();
+    renderLogoAndStores(); // 這步會填充 storeLogoMap
+    
+    // 2. 關鍵：先抓取 Product Catalog (為了分類名稱和賣場連結)
+    // 這樣後面 renderNav 或 renderProductDetail 執行時才拿得到資料
+    rawDataCache['Product Catalog'] = await fetchSheetData('Product Catalog');
+    
     updateLangButton();
-    await renderNav();
+    await renderNav(); // 這裡現在可以同步讀取快取了
+    
+    // 3. 最後才載入頁面
     loadPage(currentPage, false);
 }
 
@@ -198,27 +206,6 @@ function toggleLang() {
     updateLangButton();
     renderNav();
     loadPage(currentPage, false);
-}
-
-function renderLogoAndStores() {
-    const logoContainer = document.getElementById('logo-container');
-    const storeContainer = document.getElementById('store-container');
-    const data = rawDataCache['Content'] || [];
-    logoContainer.innerHTML = ''; storeContainer.innerHTML = '';
-    data.forEach(row => {
-        const aCol = (row[0] || "").toLowerCase().trim();
-        const imgUrl = (row[3] || "").trim();
-        const linkUrl = (row[4] || "").trim() || "#";
-        if (aCol === 'logo' && imgUrl) {
-            logoContainer.innerHTML = `<a href="javascript:void(0)" onclick="switchPage('Content')"><img src="${imgUrl}" class="logo-img" alt="Logo"></a>`;
-        }
-        if (aCol.includes('store') && imgUrl) {
-            const a = document.createElement('a');
-            a.href = linkUrl; a.target = "_blank";
-            a.innerHTML = `<img src="${imgUrl}" class="store-img hover:opacity-75 transition">`;
-            storeContainer.appendChild(a);
-        }
-    });
 }
 
 async function renderNav() {
@@ -593,6 +580,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
