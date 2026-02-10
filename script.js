@@ -406,25 +406,26 @@ async function renderProductDetail() {
             return;
         }
 
-// --- 1. 建立 Logo 圖庫 ---
+// --- 1. 建立 Logo 圖庫 (修正為 D 欄，並強化匹配) ---
         if (!rawDataCache["Product Catalog"]) {
             rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
         
         const logoLibrary = {};
-        // 先放一個保底的圖片，預防試算表連結失效
-        const DEFAULT_SHOPEE_LOGO = "https://res.cloudinary.com/dhnctvjs8/image/upload/v1770711397/JH_shopee_logo-Photoroom_andnpr.png";
-
         rawDataCache["Product Catalog"].forEach(row => {
+            // A 欄是索引 0 (Store 名稱), D 欄是索引 3 (圖片網址)
             const rawName = String(row[0] || "").trim(); 
-            const logoUrl = String(row[4] || "").trim(); 
+            const logoUrl = String(row[3] || "").trim(); // 修正：從 E(4) 改為 D(3)
+
             if (rawName.toLowerCase().startsWith("store") && logoUrl) {
+                // 將 "Store 2" 轉為 "store2" 作為唯一的 Key
                 const cleanKey = rawName.toLowerCase().replace(/\s+/g, '');
                 logoLibrary[cleanKey] = logoUrl;
+                console.log(`已載入圖標: ${cleanKey} -> ${logoUrl}`); // 調試用
             }
         });
 
-        // --- 2. 處理該商品的專屬賣場連結 ---
+        // --- 2. 處理賣場連結並對應正確的 Logo ---
         let storeLinksHtml = '';
         const storeMapping = [
             { key: "Store 1網址", id: "store1" },
@@ -435,16 +436,12 @@ async function renderProductDetail() {
 
         storeMapping.forEach(store => {
             const storeUrl = (item[store.key] || "").trim();
-            // 優先用試算表的圖，如果沒有或失效，就用你給我的這張連結
-            let logoUrl = logoLibrary[store.id] || DEFAULT_SHOPEE_LOGO;
+            const logoUrl = logoLibrary[store.id]; // 這裡會精確抓到 store1 或 store2 的圖
 
-            if (storeUrl && storeUrl !== "#") {
+            if (storeUrl && storeUrl !== "#" && logoUrl) {
                 storeLinksHtml += `
                     <a href="${storeUrl}" target="_blank" class="hover:scale-110 transition shrink-0 block">
-                        <img src="${logoUrl}" 
-                             alt="${store.id}" 
-                             class="h-10 w-auto shadow-sm rounded border bg-white p-1"
-                             onerror="this.src='${DEFAULT_SHOPEE_LOGO}';">
+                        <img src="${logoUrl}" alt="${store.id}" class="h-10 w-auto shadow-sm rounded border bg-white p-1">
                     </a>`;
             }
         });
@@ -611,6 +608,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
