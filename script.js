@@ -406,26 +406,23 @@ async function renderProductDetail() {
             return;
         }
 
-// --- 1. 建立 Logo 圖庫 (修正為 D 欄，並強化匹配) ---
+        // --- 1. 建立 Logo 圖庫 (A欄名稱, D欄圖片) ---
         if (!rawDataCache["Product Catalog"]) {
             rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
         
         const logoLibrary = {};
         rawDataCache["Product Catalog"].forEach(row => {
-            // A 欄是索引 0 (Store 名稱), D 欄是索引 3 (圖片網址)
-            const rawName = String(row[0] || "").trim(); 
-            const logoUrl = String(row[3] || "").trim(); // 修正：從 E(4) 改為 D(3)
-
+            const rawName = String(row[0] || "").trim(); // A 欄: Store 1, Store 2...
+            const logoUrl = String(row[3] || "").trim(); // D 欄: Logo URL (Index 3)
+            
             if (rawName.toLowerCase().startsWith("store") && logoUrl) {
-                // 將 "Store 2" 轉為 "store2" 作為唯一的 Key
                 const cleanKey = rawName.toLowerCase().replace(/\s+/g, '');
                 logoLibrary[cleanKey] = logoUrl;
-                console.log(`已載入圖標: ${cleanKey} -> ${logoUrl}`); // 調試用
             }
         });
 
-        // --- 2. 處理賣場連結並對應正確的 Logo ---
+        // --- 2. 處理 Store 1 ~ 4 賣場連結與 Logo ---
         let storeLinksHtml = '';
         const storeMapping = [
             { key: "Store 1網址", id: "store1" },
@@ -436,25 +433,28 @@ async function renderProductDetail() {
 
         storeMapping.forEach(store => {
             const storeUrl = (item[store.key] || "").trim();
-            const logoUrl = logoLibrary[store.id]; // 這裡會精確抓到 store1 或 store2 的圖
+            const logoUrl = logoLibrary[store.id];
 
             if (storeUrl && storeUrl !== "#" && logoUrl) {
+                // h-14 為放大後的尺寸，hover:scale-110 保持互動感
                 storeLinksHtml += `
                     <a href="${storeUrl}" target="_blank" class="hover:scale-110 transition shrink-0 block">
-                        <img src="${logoUrl}" alt="${store.id}" class="h-10 w-auto shadow-sm rounded border bg-white p-1">
+                        <img src="${logoUrl}" alt="${store.id}" class="h-14 w-auto shadow-md rounded-lg border bg-white p-1">
                     </a>`;
             }
         });
 
-        // --- 3. 語言切換邏輯 ---
+        // --- 3. 語言與資料準備 ---
         const isZH = (currentLang === 'zh');
         const rawCatName = (item["Category"] || item["分類"] || "").trim();
         const localizedCatName = typeof getLocalizedCategoryName === 'function' ? getLocalizedCategoryName(rawCatName) : rawCatName;
         
-        const labelCatalog = isZH ? '商品目錄' : 'Product Catalog';
-        const labelPacking = isZH ? '包裝規格' : 'Packing';
-        const labelCategory = isZH ? '商品分類' : 'Category';
-        const labelSpecs = isZH ? '商品描述與規格' : 'Specifications';
+        const labels = {
+            catalog: isZH ? '商品目錄' : 'Product Catalog',
+            packing: isZH ? '包裝規格' : 'Packing',
+            category: isZH ? '商品分類' : 'Category',
+            specs: isZH ? '商品描述與規格' : 'Specifications'
+        };
         
         const name = isZH ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
         const desc = isZH ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文名稱"] || "");
@@ -462,11 +462,11 @@ async function renderProductDetail() {
         const unit = item["Unit單位"] || item["計量單位"] || "";
         const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
 
-        // --- 4. 渲染 HTML ---
+        // --- 4. 渲染頁面 ---
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-400 text-sm mb-8 italic">
-                    <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${labelCatalog}</span>
+                    <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${labels.catalog}</span>
                     <span class="mx-2">&gt;</span>
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('category', {cat: '${rawCatName}'})">${localizedCatName}</span>
                 </nav>
@@ -482,7 +482,7 @@ async function renderProductDetail() {
                     <div class="w-full md:w-1/2 flex flex-col">
                         <div class="flex items-start justify-between gap-4 mb-2">
                             <h1 class="text-4xl font-black text-gray-900 leading-tight flex-1">${name}</h1>
-                            <div class="flex items-center gap-3 pt-1 justify-end">
+                            <div class="flex items-center gap-4 pt-1 justify-end">
                                 ${storeLinksHtml}
                             </div>
                         </div>
@@ -492,18 +492,18 @@ async function renderProductDetail() {
                         <div class="bg-gray-50 rounded-2xl p-8 mb-8 border border-gray-100 shadow-sm">
                             <div class="grid grid-cols-2 gap-8">
                                 <div>
-                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">${labelPacking}</span>
+                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">${labels.packing}</span>
                                     <b class="text-xl text-gray-800">${packing} ${unit}</b>
                                 </div>
                                 <div>
-                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">${labelCategory}</span>
+                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">${labels.category}</span>
                                     <b class="text-xl text-gray-800">${localizedCatName}</b>
                                 </div>
                             </div>
                         </div>
 
                         <div class="prose prose-slate max-w-none">
-                            <h4 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500 inline-block">${labelSpecs}</h4>
+                            <h4 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500 inline-block">${labels.specs}</h4>
                             <div class="text-gray-600 leading-relaxed mt-2">
                                 ${typeof parseMarkdownTable === 'function' ? parseMarkdownTable(desc) : desc}
                             </div>
@@ -608,6 +608,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
