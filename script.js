@@ -408,21 +408,31 @@ async function renderProductDetail() {
         }
 
         // 1. 準備基礎資料
-        const rawCatName = item["Category"] || "";
+        const rawCatName = (item["Category"] || "").trim();
         const localizedCatName = getLocalizedCategoryName(rawCatName);
         const name = (currentLang === 'zh') ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
-        const desc = (currentLang === 'zh') ? (item["中文描述"] || "") : (item["英文描述"] || "");
-        const packing = item["Pcs / Packing"] || "--";
-        const unit = item["計量單位"] || "";
+        // 注意：這裡的 key 必須與你的 GAS 輸出欄位名稱完全一致
+        const desc = (currentLang === 'zh') ? (item["Description中文描述"] || "") : (item["English description英文描述"] || "");
+        const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
+        const unit = item["Unit單位"] || item["計量單位"] || "";
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
         const formattedDesc = parseMarkdownTable(desc);
         const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
 
-        // 2. 獲取賣場連結 (從 Product Catalog 分頁)
-        if (!rawDataCache["Product Catalog"]) {
-            rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
-        }
-        const catRow = rawDataCache["Product Catalog"].find(r => String(r[4] || "").trim() === rawCatName.trim());
+        // 2. 獲取賣場連結 (從另一個試算表的 Categories 分頁)
+        const EXT_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
+        const extCatUrl = `https://docs.google.com/spreadsheets/d/${EXT_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
+        
+        // 抓取外部資料
+        const extResp = await fetch(extCatUrl);
+        const extText = await extResp.text();
+        const extJson = JSON.parse(extText.substring(47).slice(0, -2));
+        const categoriesRows = extJson.table.rows.map(row => 
+            row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
+        );
+
+        // 尋找對應分類的列 (比對 E 欄，索引 4)
+        const catRow = categoriesRows.find(r => String(r[4] || "").trim() === rawCatName);
         
         let storeLinksHtml = '';
         if (catRow) {
@@ -430,7 +440,7 @@ async function renderProductDetail() {
             [34, 35, 36, 37].forEach((colIdx, i) => {
                 const storeUrl = (catRow[colIdx] || "").trim();
                 const storeName = `Store ${i + 1}`;
-                if (storeUrl && storeLogoMap[storeName]) {
+                if (storeUrl && storeUrl !== "#" && storeLogoMap[storeName]) {
                     storeLinksHtml += `
                         <a href="${storeUrl}" target="_blank" class="inline-block hover:scale-110 transition">
                             <img src="${storeLogoMap[storeName]}" alt="${storeName}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
@@ -439,7 +449,7 @@ async function renderProductDetail() {
             });
         }
 
-        // 3. 統一渲染頁面
+        // 3. 統一渲染頁面 (保留原樣式)
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-500 text-sm mb-8 italic">
@@ -488,7 +498,7 @@ async function renderProductDetail() {
                 </div>
             </div>`;
     } catch (e) { 
-        console.error(e); 
+        console.error("Render Detail Error:", e); 
         app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
     }
 }
@@ -583,6 +593,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
