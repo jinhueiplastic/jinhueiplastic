@@ -402,29 +402,27 @@ async function renderProductDetail() {
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
         
         if (!item) {
-            app.innerHTML = `<div class="text-center py-20">找不到商品內容。</div>`;
+            app.innerHTML = `<div class="text-center py-20">${currentLang === 'zh' ? '找不到商品內容。' : 'Product not found.'}</div>`;
             return;
         }
 
-        // --- 1. 建立 Logo 圖庫 (增加對空格的相容性) ---
+        // --- 1. 建立 Logo 圖庫 (來源：主試算表 Product Catalog 分頁) ---
         if (!rawDataCache["Product Catalog"]) {
             rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
         
         const logoLibrary = {};
         rawDataCache["Product Catalog"].forEach(row => {
-            const rawName = String(row[0] || "").trim(); // A 欄: Store 1
-            const logoUrl = String(row[4] || "").trim(); // E 欄: Logo URL
+            const rawName = String(row[0] || "").trim(); // A 欄
+            const logoUrl = String(row[4] || "").trim(); // E 欄
             if (rawName.toLowerCase().startsWith("store") && logoUrl) {
-                // 將 "Store 1" 轉為 "store1" 作為 Key，消除空格干擾
                 const cleanKey = rawName.toLowerCase().replace(/\s+/g, '');
                 logoLibrary[cleanKey] = logoUrl;
             }
         });
 
-        // --- 2. 處理該商品的專屬賣場連結 ---
+        // --- 2. 處理該商品的專屬賣場連結 (從 GAS 商品資料抓取) ---
         let storeLinksHtml = '';
-        // 這裡對應你商品資料（GAS）中的標題名稱
         const storeMapping = [
             { key: "Store 1網址", id: "store1" },
             { key: "Store 2網址", id: "store2" },
@@ -435,7 +433,6 @@ async function renderProductDetail() {
         storeMapping.forEach(store => {
             const storeUrl = (item[store.key] || "").trim();
             const logoUrl = logoLibrary[store.id];
-
             if (storeUrl && storeUrl !== "#" && logoUrl) {
                 storeLinksHtml += `
                     <a href="${storeUrl}" target="_blank" class="hover:scale-110 transition shrink-0 block">
@@ -444,20 +441,27 @@ async function renderProductDetail() {
             }
         });
 
-        // --- 3. 其他顯示資料 ---
+        // --- 3. 語言切換邏輯 ---
+        const isZH = (currentLang === 'zh');
         const rawCatName = (item["Category"] || item["分類"] || "").trim();
         const localizedCatName = typeof getLocalizedCategoryName === 'function' ? getLocalizedCategoryName(rawCatName) : rawCatName;
-        const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
-        const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
-        const desc = (currentLang === 'zh') ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文描述"] || "");
+        
+        const labelCatalog = isZH ? '商品目錄' : 'Product Catalog';
+        const labelPacking = isZH ? '包裝規格' : 'Packing';
+        const labelCategory = isZH ? '商品分類' : 'Category';
+        const labelSpecs = isZH ? '商品描述與規格' : 'Specifications';
+        
+        const name = isZH ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
+        const desc = isZH ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文名稱"] || "");
         const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
         const unit = item["Unit單位"] || item["計量單位"] || "";
+        const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
 
-        // --- 4. 渲染 HTML (調整按鈕靠右) ---
+        // --- 4. 渲染 HTML ---
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-400 text-sm mb-8 italic">
-                    <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${currentLang === 'zh' ? '商品目錄' : 'Product Catalog'}</span>
+                    <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${labelCatalog}</span>
                     <span class="mx-2">&gt;</span>
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('category', {cat: '${rawCatName}'})">${localizedCatName}</span>
                 </nav>
@@ -483,18 +487,18 @@ async function renderProductDetail() {
                         <div class="bg-gray-50 rounded-2xl p-8 mb-8 border border-gray-100 shadow-sm">
                             <div class="grid grid-cols-2 gap-8">
                                 <div>
-                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">Packing</span>
+                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">${labelPacking}</span>
                                     <b class="text-xl text-gray-800">${packing} ${unit}</b>
                                 </div>
                                 <div>
-                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">Category</span>
+                                    <span class="text-gray-400 block text-xs uppercase tracking-wider mb-1">${labelCategory}</span>
                                     <b class="text-xl text-gray-800">${localizedCatName}</b>
                                 </div>
                             </div>
                         </div>
 
                         <div class="prose prose-slate max-w-none">
-                            <h4 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500 inline-block">Specifications</h4>
+                            <h4 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500 inline-block">${labelSpecs}</h4>
                             <div class="text-gray-600 leading-relaxed mt-2">
                                 ${typeof parseMarkdownTable === 'function' ? parseMarkdownTable(desc) : desc}
                             </div>
@@ -505,7 +509,7 @@ async function renderProductDetail() {
 
     } catch (e) { 
         console.error("渲染出錯:", e); 
-        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
+        app.innerHTML = `<div class="text-center py-20 text-red-500">${currentLang === 'zh' ? '載入失敗。' : 'Loading failed.'}</div>`; 
     }
 }
 
@@ -599,6 +603,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
