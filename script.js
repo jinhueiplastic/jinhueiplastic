@@ -397,12 +397,8 @@ async function renderProductDetail() {
     
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
-    // 資料表 B (Categories 連結庫) 的資訊
-    const B_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
-    const B_SHEET_URL = `https://docs.google.com/spreadsheets/d/${B_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
-
     try {
-        // 1. 抓取 GAS 產品資料
+        // --- 1. 抓取產品資料 ---
         const allProducts = await fetchGASProducts();
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
         
@@ -411,117 +407,103 @@ async function renderProductDetail() {
             return;
         }
 
-        // 產品基本資訊
-        const rawCatName = (item["Category"] || "").trim();
-        const localizedCatName = getLocalizedCategoryName(rawCatName);
-        const name = (currentLang === 'zh') ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
-        const desc = (currentLang === 'zh') ? (item["Description中文描述"] || "") : (item["English description英文描述"] || "");
+        // 產品基本資訊 (請確認 GAS 欄位名是 Category 還是 分類)
+        const rawCatName = (item["Category"] || item["分類"] || "").trim();
+        const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
+        const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
+        const desc = (currentLang === 'zh') ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文描述"] || "");
         const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
         const unit = item["Unit單位"] || item["計量單位"] || "";
-        const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
-        const formattedDesc = parseMarkdownTable(desc);
-        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
 
-        // 2. 建立 Store Logo Map (從資料表 A - Product Catalog 分頁)
-        // 確保 initWebsite 已經執行過抓取，若無則補抓
+        // --- 2. 從 Product Catalog 建立 Logo 庫 ---
         if (!rawDataCache["Product Catalog"]) {
             rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
-        
-        // 建立一個 local 的 logo 查找表
-        const tempLogoMap = {};
+        const logoLibrary = {}; 
         rawDataCache["Product Catalog"].forEach(row => {
-            const aCol = String(row[0] || "").trim(); // Store 1, Store 2...
-            const eCol = String(row[4] || "").trim(); // Logo 網址
-            if (aCol.startsWith('Store') && eCol) {
-                tempLogoMap[aCol] = eCol;
+            const storeName = String(row[0] || "").trim(); // A 欄: Store 1...
+            const logoUrl = String(row[4] || "").trim();    // E 欄: Logo 網址
+            if (storeName.startsWith("Store")) {
+                logoLibrary[storeName] = logoUrl;
             }
         });
 
-        // 3. 抓取資料表 B (Categories) 獲取該分類的賣場連結
+        // --- 3. 抓取連結庫 (Categories 分頁) ---
+        const B_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
+        const B_SHEET_URL = `https://docs.google.com/spreadsheets/d/${B_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
+        
         const bResp = await fetch(B_SHEET_URL);
         const bText = await bResp.text();
         const bJson = JSON.parse(bText.substring(47).slice(0, -2));
-        const categoriesData = bJson.table.rows.map(row => 
+        const categoriesRows = bJson.table.rows.map(row => 
             row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
         );
 
-        // 尋找對應分類的資料行 (比對 E 欄, Index 4)
-        const catRow = categoriesData.find(r => String(r[4] || "").trim() === rawCatName);
+        // 重點修正：比對 A 欄 (Index 0) 找出對應分類
+        const catRow = categoriesRows.find(r => String(r[0] || "").trim() === rawCatName);
         
         let storeLinksHtml = '';
         if (catRow) {
-            // AI(34)=Store 1, AJ(35)=Store 2, AK(36)=Store 3, AL(37)=Store 4
-            const linkColumns = [34, 35, 36, 37];
-            linkColumns.forEach((colIdx, i) => {
-                const storeUrl = (catRow[colIdx] || "").trim();
+            // AI(34), AJ(35), AK(36), AL(37)
+            [34, 35, 36, 37].forEach((colIdx, i) => {
+                const link = (catRow[colIdx] || "").trim();
                 const storeKey = `Store ${i + 1}`;
-                const logoUrl = tempLogoMap[storeKey];
+                const logo = logoLibrary[storeKey];
 
-                // 邏輯：連結有資料 且 找得到對應的 Logo 網址
-                if (storeUrl && storeUrl !== "#" && logoUrl) {
+                if (link && link !== "#" && logo) {
                     storeLinksHtml += `
-                        <a href="${storeUrl}" target="_blank" class="inline-block hover:scale-110 transition ml-2">
-                            <img src="${logoUrl}" alt="${storeKey}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
+                        <a href="${link}" target="_blank" class="inline-block hover:scale-110 transition ml-2">
+                            <img src="${logo}" alt="${storeKey}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
                         </a>`;
                 }
             });
         }
 
-        // 4. 渲染 HTML
+        // --- 4. 渲染 HTML (保留原排版) ---
+        const localizedCatName = getLocalizedCategoryName(rawCatName);
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-500 text-sm mb-8 italic">
-                    <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a>
+                    <a href="javascript:void(0)" onclick="switchPage('Product Catalog')" class="hover:text-blue-600">${currentLang === 'zh' ? '商品目錄' : 'Product Catalog'}</a>
                     <span class="mx-2">&gt;</span>
                     <a href="javascript:void(0)" onclick="switchPage('category', {cat: '${rawCatName}'})" class="hover:text-blue-600">${localizedCatName}</a>
                     <span class="mx-2">&gt;</span>
                     <span class="text-gray-900 font-bold">${name}</span>
                 </nav>
 
-                <div class="product-layout-container">
-                    <div class="product-image-side">
-                        <img id="main-prod-img" src="${images[0] || ''}" class="detail-main-img" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
-                        <div class="flex gap-2 mt-4 overflow-x-auto pb-2 justify-center">
-                            ${images.map(img => `
-                                <img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-16 h-16 object-cover rounded-lg cursor-pointer border hover:border-blue-500 transition bg-white">
-                            `).join('')}
+                <div class="product-layout-container flex flex-col md:row gap-10">
+                    <div class="product-image-side w-full md:w-1/2">
+                        <img id="main-prod-img" src="${images[0] || ''}" class="w-full rounded-xl shadow-lg border" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
+                        <div class="flex gap-2 mt-4 overflow-x-auto justify-center">
+                            ${images.map(img => `<img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-16 h-16 object-cover rounded-lg cursor-pointer border hover:border-blue-500">`).join('')}
                         </div>
                     </div>
 
-                    <div class="product-info-side">
+                    <div class="product-info-side w-full md:w-1/2">
                         <div class="flex items-center flex-wrap gap-4 mb-2">
                             <h1 class="text-4xl font-black text-gray-900">${name}</h1>
                             <div class="flex items-center gap-2">${storeLinksHtml}</div>
                         </div>
                         <p class="text-2xl text-blue-600 font-bold mb-6">${itemCode}</p>
-                        
                         <div class="bg-gray-50 rounded-xl p-6 mb-8 border border-gray-100">
                             <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <span class="text-gray-400 block text-sm">${currentLang === 'zh' ? '包裝規格' : 'Packing'}</span>
-                                    <b class="text-lg text-gray-800">${packing} ${unit}</b>
-                                </div>
-                                <div>
-                                    <span class="text-gray-400 block text-sm">${currentLang === 'zh' ? '分類' : 'Category'}</span>
-                                    <b class="text-lg text-gray-800">${localizedCatName}</b>
-                                </div>
+                                <div><span class="text-gray-400 block text-sm">Packing</span><b class="text-lg text-gray-800">${packing} ${unit}</b></div>
+                                <div><span class="text-gray-400 block text-sm">Category</span><b class="text-lg text-gray-800">${localizedCatName}</b></div>
                             </div>
                         </div>
-
-                        <div class="prose prose-blue max-w-none">
-                            <h4 class="font-bold text-gray-900 mb-4 pb-2 border-b">${currentLang === 'zh' ? '商品描述與規格' : 'Specifications'}</h4>
-                            <div class="text-gray-600">${formattedDesc}</div>
+                        <div class="prose max-w-none text-gray-600">
+                            <h4 class="font-bold text-gray-900 mb-4 pb-2 border-b">Specifications</h4>
+                            <div>${parseMarkdownTable(desc)}</div>
                         </div>
                     </div>
                 </div>
             </div>`;
+
     } catch (e) { 
-        console.error("Error Details:", e); 
+        console.error("渲染出錯:", e); 
         app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
     }
 }
-
 function renderJoinUs(data, langIdx, pageName) {
     const app = document.getElementById('app');
     const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
@@ -612,6 +594,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
