@@ -398,105 +398,115 @@ async function renderProductDetail() {
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
-        // --- 1. 抓取 GAS 產品資料 ---
+        // 1. 抓取 GAS 產品資料
         const allProducts = await fetchGASProducts();
-        if (!allProducts) throw new Error("無法取得 GAS 產品資料");
-
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
+        
         if (!item) {
-            app.innerHTML = `<div class="text-center py-20">找不到商品內容 (Code: ${itemCode})。</div>`;
+            app.innerHTML = `<div class="text-center py-20">找不到商品內容。</div>`;
             return;
         }
 
-        // 取得分類名稱 (優先抓 Category，沒有則抓 分類)
         const rawCatName = (item["Category"] || item["分類"] || "").trim();
-        console.log("當前產品分類:", rawCatName);
+        console.log("產品分類(Key):", rawCatName);
 
-        // --- 2. 獲取 Store Logo 圖片 (來源：Product Catalog 分頁) ---
-        // 假設 fetchSheetData 是你現有的函數，會抓取主試算表的資料
-        let catalogData = rawDataCache["Product Catalog"];
-        if (!catalogData) {
-            catalogData = await fetchSheetData("Product Catalog");
-            rawDataCache["Product Catalog"] = catalogData;
+        // 2. 準備 Logo 圖庫 (來源：主試算表 Product Catalog 分頁)
+        if (!rawDataCache["Product Catalog"]) {
+            rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
-
         const logoLibrary = {};
-        catalogData.forEach(row => {
-            const nameCol = String(row[0] || "").trim(); // A 欄: Store 1
-            const imgCol = String(row[4] || "").trim();  // E 欄: Logo URL
-            if (nameCol.toLowerCase().startsWith("store")) {
-                logoLibrary[nameCol] = imgCol;
+        rawDataCache["Product Catalog"].forEach(row => {
+            const storeName = String(row[0] || "").trim(); // A 欄: Store 1
+            const logoUrl = String(row[4] || "").trim();    // E 欄: Logo 網址
+            if (storeName.toLowerCase().startsWith("store")) {
+                logoLibrary[storeName] = logoUrl;
             }
         });
 
-        // --- 3. 獲取賣場連結 (來源：另一個試算表的 Categories 分頁) ---
+        // 3. 抓取連結庫 (Categories 分頁) - 使用更穩定的 fetch 處理
         const B_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
+        // 加上 tqx=out:csv 有時能繞過某些 JSONP 的 CORS 限制，或是確保 Sheet 已公開
         const B_SHEET_URL = `https://docs.google.com/spreadsheets/d/${B_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
         
         const bResp = await fetch(B_SHEET_URL);
+        if (!bResp.ok) throw new Error("連結表抓取失敗，請確認試算表已公開共用");
+        
         const bText = await bResp.text();
-        // 這裡處理 Google Sheet 的 JSONP 格式
         const bJson = JSON.parse(bText.substring(47).slice(0, -2));
         const categoriesRows = bJson.table.rows.map(row => 
             row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
         );
 
-        // 比對 A 欄 (Index 0) 是否等於分類原始名稱
+        // 比對 A 欄 (Index 0) 找出分類
         const catRow = categoriesRows.find(r => String(r[0] || "").trim() === rawCatName);
         
         let storeLinksHtml = '';
         if (catRow) {
-            // AI(34), AJ(35), AK(36), AL(37)
-            const storeCols = [34, 35, 36, 37];
-            storeCols.forEach((colIdx, i) => {
+            // AI(34), AJ(35), AK(36), AL(37) 對應 Store 1, 2, 3, 4
+            [34, 35, 36, 37].forEach((colIdx, i) => {
                 const link = (catRow[colIdx] || "").trim();
                 const storeKey = `Store ${i + 1}`;
                 const logo = logoLibrary[storeKey];
 
                 if (link && link !== "#" && logo) {
                     storeLinksHtml += `
-                        <a href="${link}" target="_blank" class="inline-block hover:scale-110 transition ml-2">
+                        <a href="${link}" target="_blank" class="hover:scale-110 transition shrink-0">
                             <img src="${logo}" alt="${storeKey}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
                         </a>`;
                 }
             });
         }
 
-        // --- 4. 準備其餘顯示資料 ---
-        const localizedCatName = typeof getLocalizedCategoryName === 'function' ? getLocalizedCategoryName(rawCatName) : rawCatName;
+        // 4. 準備 UI 資料
+        const localizedCatName = getLocalizedCategoryName(rawCatName);
         const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
         const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
         const desc = (currentLang === 'zh') ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文描述"] || "");
+        const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
+        const unit = item["Unit單位"] || item["計量單位"] || "";
 
-        // --- 5. 渲染 HTML ---
+        // 5. 渲染頁面
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
-                <nav class="flex text-gray-500 text-sm mb-8">
+                <nav class="flex text-gray-500 text-sm mb-6 italic">
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${currentLang === 'zh' ? '商品目錄' : 'Product Catalog'}</span>
                     <span class="mx-2">&gt;</span>
-                    <span class="text-gray-900 font-bold">${localizedCatName}</span>
+                    <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('category', {cat: '${rawCatName}'})">${localizedCatName}</span>
+                    <span class="mx-2">&gt;</span>
+                    <span class="text-gray-900 font-bold">${name}</span>
                 </nav>
 
                 <div class="flex flex-col md:flex-row gap-10">
                     <div class="w-full md:w-1/2">
-                        <img src="${images[0] || ''}" class="w-full rounded-xl border shadow-sm">
-                    </div>
-                    <div class="w-full md:w-1/2">
-                        <div class="flex items-center gap-4 mb-2">
-                            <h1 class="text-3xl font-bold text-gray-900">${name}</h1>
-                            <div class="flex">${storeLinksHtml}</div>
+                        <img id="main-prod-img" src="${images[0] || ''}" class="w-full rounded-xl shadow-lg border">
+                        <div class="flex gap-2 mt-4 overflow-x-auto justify-center">
+                            ${images.map(img => `<img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-16 h-16 object-cover rounded-lg cursor-pointer border hover:border-blue-500">`).join('')}
                         </div>
-                        <p class="text-xl text-blue-600 font-mono mb-4">${itemCode}</p>
-                        <div class="prose max-w-none border-t pt-4">
-                            ${typeof parseMarkdownTable === 'function' ? parseMarkdownTable(desc) : desc}
+                    </div>
+
+                    <div class="w-full md:w-1/2">
+                        <div class="flex items-center gap-4 mb-2 flex-wrap">
+                            <h1 class="text-4xl font-black text-gray-900">${name}</h1>
+                            <div class="flex gap-2">${storeLinksHtml}</div>
+                        </div>
+                        <p class="text-2xl text-blue-600 font-bold mb-6">${itemCode}</p>
+                        <div class="bg-gray-50 rounded-xl p-6 mb-8 border border-gray-100 italic">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div><span class="text-gray-400 block text-sm">Packing</span><b class="text-lg text-gray-800">${packing} ${unit}</b></div>
+                                <div><span class="text-gray-400 block text-sm">Category</span><b class="text-lg text-gray-800">${localizedCatName}</b></div>
+                            </div>
+                        </div>
+                        <div class="prose max-w-none text-gray-600">
+                            <h4 class="font-bold text-gray-900 mb-4 pb-2 border-b">Specifications</h4>
+                            <div>${parseMarkdownTable(desc)}</div>
                         </div>
                     </div>
                 </div>
             </div>`;
 
     } catch (e) { 
-        console.error("Critical Error in renderProductDetail:", e); 
-        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。請檢查 Console 報錯訊息。</div>`; 
+        console.error("渲染出錯:", e); 
+        app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。請確認試算表已開啟共用權限。</div>`; 
     }
 }
 
@@ -590,6 +600,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
