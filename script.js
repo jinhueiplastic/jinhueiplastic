@@ -395,10 +395,14 @@ async function renderProductDetail() {
     const itemCode = params.get('id');
     const app = document.getElementById('app');
     
-    // 顯示 Loading
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
+    // 資料表 B (Categories 連結庫) 的資訊
+    const B_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
+    const B_SHEET_URL = `https://docs.google.com/spreadsheets/d/${B_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
+
     try {
+        // 1. 抓取 GAS 產品資料
         const allProducts = await fetchGASProducts();
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
         
@@ -407,49 +411,64 @@ async function renderProductDetail() {
             return;
         }
 
-        // 1. 準備基礎資料
+        // 產品基本資訊
         const rawCatName = (item["Category"] || "").trim();
         const localizedCatName = getLocalizedCategoryName(rawCatName);
         const name = (currentLang === 'zh') ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
-        // 注意：這裡的 key 必須與你的 GAS 輸出欄位名稱完全一致
         const desc = (currentLang === 'zh') ? (item["Description中文描述"] || "") : (item["English description英文描述"] || "");
         const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
         const unit = item["Unit單位"] || item["計量單位"] || "";
-        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
+        const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
         const formattedDesc = parseMarkdownTable(desc);
-        const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
+        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
 
-        // 2. 獲取賣場連結 (從另一個試算表的 Categories 分頁)
-        const EXT_SHEET_ID = '1z4-qAYgzzKh5wSeLaIGUkPnAfeM-Rb_CRaawTonVMI0';
-        const extCatUrl = `https://docs.google.com/spreadsheets/d/${EXT_SHEET_ID}/gviz/tq?tqx=out:json&sheet=Categories`;
+        // 2. 建立 Store Logo Map (從資料表 A - Product Catalog 分頁)
+        // 確保 initWebsite 已經執行過抓取，若無則補抓
+        if (!rawDataCache["Product Catalog"]) {
+            rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
+        }
         
-        // 抓取外部資料
-        const extResp = await fetch(extCatUrl);
-        const extText = await extResp.text();
-        const extJson = JSON.parse(extText.substring(47).slice(0, -2));
-        const categoriesRows = extJson.table.rows.map(row => 
+        // 建立一個 local 的 logo 查找表
+        const tempLogoMap = {};
+        rawDataCache["Product Catalog"].forEach(row => {
+            const aCol = String(row[0] || "").trim(); // Store 1, Store 2...
+            const eCol = String(row[4] || "").trim(); // Logo 網址
+            if (aCol.startsWith('Store') && eCol) {
+                tempLogoMap[aCol] = eCol;
+            }
+        });
+
+        // 3. 抓取資料表 B (Categories) 獲取該分類的賣場連結
+        const bResp = await fetch(B_SHEET_URL);
+        const bText = await bResp.text();
+        const bJson = JSON.parse(bText.substring(47).slice(0, -2));
+        const categoriesData = bJson.table.rows.map(row => 
             row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
         );
 
-        // 尋找對應分類的列 (比對 E 欄，索引 4)
-        const catRow = categoriesRows.find(r => String(r[4] || "").trim() === rawCatName);
+        // 尋找對應分類的資料行 (比對 E 欄, Index 4)
+        const catRow = categoriesData.find(r => String(r[4] || "").trim() === rawCatName);
         
         let storeLinksHtml = '';
         if (catRow) {
-            // AI:34, AJ:35, AK:36, AL:37
-            [34, 35, 36, 37].forEach((colIdx, i) => {
+            // AI(34)=Store 1, AJ(35)=Store 2, AK(36)=Store 3, AL(37)=Store 4
+            const linkColumns = [34, 35, 36, 37];
+            linkColumns.forEach((colIdx, i) => {
                 const storeUrl = (catRow[colIdx] || "").trim();
-                const storeName = `Store ${i + 1}`;
-                if (storeUrl && storeUrl !== "#" && storeLogoMap[storeName]) {
+                const storeKey = `Store ${i + 1}`;
+                const logoUrl = tempLogoMap[storeKey];
+
+                // 邏輯：連結有資料 且 找得到對應的 Logo 網址
+                if (storeUrl && storeUrl !== "#" && logoUrl) {
                     storeLinksHtml += `
-                        <a href="${storeUrl}" target="_blank" class="inline-block hover:scale-110 transition">
-                            <img src="${storeLogoMap[storeName]}" alt="${storeName}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
+                        <a href="${storeUrl}" target="_blank" class="inline-block hover:scale-110 transition ml-2">
+                            <img src="${logoUrl}" alt="${storeKey}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
                         </a>`;
                 }
             });
         }
 
-        // 3. 統一渲染頁面 (保留原樣式)
+        // 4. 渲染 HTML
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-500 text-sm mb-8 italic">
@@ -498,7 +517,7 @@ async function renderProductDetail() {
                 </div>
             </div>`;
     } catch (e) { 
-        console.error("Render Detail Error:", e); 
+        console.error("Error Details:", e); 
         app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
     }
 }
@@ -593,6 +612,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
