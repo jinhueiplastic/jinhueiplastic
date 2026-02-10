@@ -395,6 +395,7 @@ async function renderProductDetail() {
     const itemCode = params.get('id');
     const app = document.getElementById('app');
     
+    // 顯示 Loading
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
@@ -402,45 +403,43 @@ async function renderProductDetail() {
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
         
         if (!item) {
-            app.innerHTML = `<div class="text-center py-20 text-red-500">找不到該商品。</div>`;
+            app.innerHTML = `<div class="text-center py-20">找不到商品內容。</div>`;
             return;
         }
 
-        // --- 關鍵補齊：定義變數 ---
-        const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
-        const rawCatName = (item["Category"] || "").trim();
+        // 1. 準備基礎資料
+        const rawCatName = item["Category"] || "";
         const localizedCatName = getLocalizedCategoryName(rawCatName);
+        const name = (currentLang === 'zh') ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
+        const desc = (currentLang === 'zh') ? (item["中文描述"] || "") : (item["英文描述"] || "");
+        const packing = item["Pcs / Packing"] || "--";
+        const unit = item["計量單位"] || "";
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
-        const images = item["圖片"] ? item["圖片"].split(",").map(img => img.trim()) : [];
-        const packing = item["Packing規格"] || "";
-        const unit = item["Unit單位"] || "";
-        const rawDesc = (currentLang === 'zh') ? (item["Description中文描述"] || "") : (item["English description英文描述"] || "");
-        const formattedDesc = parseMarkdownTable(rawDesc); // 使用你寫好的表格解析功能
-        // -----------------------
+        const formattedDesc = parseMarkdownTable(desc);
+        const images = item["圖片"] ? item["圖片"].split(",").map(s => s.trim()) : [];
 
+        // 2. 獲取賣場連結 (從 Product Catalog 分頁)
         if (!rawDataCache["Product Catalog"]) {
             rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
         }
-
-        const catRow = rawDataCache["Product Catalog"].find(r => String(r[4] || "").trim() === rawCatName);
+        const catRow = rawDataCache["Product Catalog"].find(r => String(r[4] || "").trim() === rawCatName.trim());
         
         let storeLinksHtml = '';
         if (catRow) {
-            const storeColumns = [34, 35, 36, 37]; // AI, AJ, AK, AL
-            storeColumns.forEach((colIdx, i) => {
+            // AI:34, AJ:35, AK:36, AL:37
+            [34, 35, 36, 37].forEach((colIdx, i) => {
                 const storeUrl = (catRow[colIdx] || "").trim();
-                const storeKey = `Store ${i + 1}`; 
-                
-                if (storeUrl && storeUrl !== "#" && storeLogoMap[storeKey]) {
+                const storeName = `Store ${i + 1}`;
+                if (storeUrl && storeLogoMap[storeName]) {
                     storeLinksHtml += `
-                        <a href="${storeUrl}" target="_blank" class="inline-block hover:scale-110 transition ml-2">
-                            <img src="${storeLogoMap[storeKey]}" alt="${storeKey}" class="h-10 w-auto shadow-sm rounded border bg-white p-1">
+                        <a href="${storeUrl}" target="_blank" class="inline-block hover:scale-110 transition">
+                            <img src="${storeLogoMap[storeName]}" alt="${storeName}" class="h-9 w-auto shadow-sm rounded border bg-white p-1">
                         </a>`;
                 }
             });
         }
 
-        // 渲染 HTML (保持你原本的 template)
+        // 3. 統一渲染頁面
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-500 text-sm mb-8 italic">
@@ -451,9 +450,9 @@ async function renderProductDetail() {
                     <span class="text-gray-900 font-bold">${name}</span>
                 </nav>
 
-                <div class="product-layout-container flex flex-col md:flex-row gap-10">
-                    <div class="product-image-side w-full md:w-1/2">
-                        <img id="main-prod-img" src="${images[0] || ''}" class="detail-main-img w-full rounded-xl shadow-lg" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
+                <div class="product-layout-container">
+                    <div class="product-image-side">
+                        <img id="main-prod-img" src="${images[0] || ''}" class="detail-main-img" onerror="this.src='https://via.placeholder.com/400?text=No+Image'">
                         <div class="flex gap-2 mt-4 overflow-x-auto pb-2 justify-center">
                             ${images.map(img => `
                                 <img src="${img}" onclick="document.getElementById('main-prod-img').src='${img}'" class="w-16 h-16 object-cover rounded-lg cursor-pointer border hover:border-blue-500 transition bg-white">
@@ -461,7 +460,7 @@ async function renderProductDetail() {
                         </div>
                     </div>
 
-                    <div class="product-info-side w-full md:w-1/2">
+                    <div class="product-info-side">
                         <div class="flex items-center flex-wrap gap-4 mb-2">
                             <h1 class="text-4xl font-black text-gray-900">${name}</h1>
                             <div class="flex items-center gap-2">${storeLinksHtml}</div>
@@ -489,7 +488,7 @@ async function renderProductDetail() {
                 </div>
             </div>`;
     } catch (e) { 
-        console.error("Error rendering product detail:", e); 
+        console.error(e); 
         app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`; 
     }
 }
@@ -584,6 +583,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
