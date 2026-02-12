@@ -269,20 +269,15 @@ async function loadPage(pageName, updateUrl = true) {
 
 async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
-    
-    // --- A. 處理原本 Content 頁面的文字與影片 ---
     let companyNames = ''; 
     let introContent = ''; 
     let youtubeEmbed = '';
 
     contentData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
-        
-        // 偵測 Youtube (從 E 欄/Index 4 抓取 iframe)
         if (key.includes('youtube') && row[4]) {
             youtubeEmbed = `<div class="youtube-container shadow-2xl rounded-2xl overflow-hidden">${row[4]}</div>`;
         }
-        
         if (key.includes('company name')) {
             companyNames += `<div class="mb-6"><h2 class="text-4xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
         }
@@ -294,10 +289,7 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // --- B. 準備商品分類資料 (往左捲動) ---
-    if (!rawDataCache['Product Catalog']) {
-        rawDataCache['Product Catalog'] = await fetchSheetData('Product Catalog');
-    }
+    if (!rawDataCache['Product Catalog']) rawDataCache['Product Catalog'] = await fetchSheetData('Product Catalog');
     const catalogData = rawDataCache['Product Catalog'];
     let categoryItems = '';
     catalogData.forEach(row => {
@@ -315,19 +307,13 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // --- C. 準備 About Us 圖片資料 (往右捲動) ---
-    if (!rawDataCache['About Us']) {
-        rawDataCache['About Us'] = await fetchSheetData('About Us');
-    }
+    if (!rawDataCache['About Us']) rawDataCache['About Us'] = await fetchSheetData('About Us');
     const aboutData = rawDataCache['About Us'];
     let aboutImages = '';
     aboutData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
         if (key.includes('upper image') && row[3]) {
-            aboutImages += `
-                <div class="shrink-0 w-80 h-52 overflow-hidden rounded-xl shadow-lg border bg-white">
-                    <img src="${row[3]}" class="w-full h-full object-cover">
-                </div>`;
+            aboutImages += `<div class="shrink-0 w-80 h-52 overflow-hidden rounded-xl shadow-lg border bg-white"><img src="${row[3]}" class="w-full h-full object-cover"></div>`;
         }
     });
 
@@ -336,43 +322,34 @@ async function renderHome(contentData, langIdx) {
     const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
     const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
-// --- D. 渲染完整 HTML ---
+    // --- D. 渲染完整 HTML ---
     app.innerHTML = `
         <div class="w-full flex flex-col items-center">
-            
             <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-12 items-center text-left py-16">
                 <div class="w-full md:w-1/2">${companyNames}</div>
                 <div class="w-full md:w-1/2">${youtubeEmbed}</div>
             </div>
 
             ${(introContent.trim()) ? `
-            <div class="w-full bg-white pb-16">
+            <div class="w-full bg-white mb-16">
                 <div class="max-w-4xl mx-auto px-4 text-center">
-                    <div class="prose prose-lg max-w-none text-gray-600">
-                        ${introContent}
-                    </div>
+                    <div class="prose prose-lg max-w-none text-gray-600">${introContent}</div>
                 </div>
-            </div>
-            ` : ''}
+            </div>` : ''}
 
             <div class="w-full mb-16">
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-blue-600 pl-4">${titleCat}</h2>
                 </div>
-                <div class="marquee-container">
-                    ${leftMarquee}
-                </div>
+                <div class="marquee-container">${leftMarquee}</div>
             </div>
 
             <div class="w-full bg-gray-50 py-16">
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-gray-400 pl-4">${titleGallery}</h2>
                 </div>
-                <div class="marquee-container no-pause">
-                    ${rightMarquee}
-                </div>
+                <div class="marquee-container no-pause">${rightMarquee}</div>
             </div>
-
         </div>`;
 }
 
@@ -672,13 +649,9 @@ function renderAboutOrContent(data, langIdx, pageName) {
 
     data.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
-
-        // 1. 偵測 Upper Images (D欄/Index 3)
         if (key.includes('upper image') && row[3]) {
             upperImages += `<img src="${row[3]}" class="home-bottom-image">`;
         }
-
-        // 2. 偵測文字與地址資料
         if (key.includes('company name')) {
             companyNames += `<div class="mb-6"><h2 class="text-3xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
         }
@@ -691,24 +664,17 @@ function renderAboutOrContent(data, langIdx, pageName) {
         if (key.includes('address')) {
             addressBlock += `<p class="text-lg font-medium text-gray-500">${row[langIdx]}</p>`;
         }
-        
-        // 3. 偵測 Bottom Images (D欄/Index 3)
         if (key.includes('bottom image') && row[3]) {
             bottomImages += `<img src="${row[3]}" class="home-bottom-image">`;
         }
     });
 
-    // 渲染邏輯
     if (pageName === "About Us") {
         app.innerHTML = `
             <div class="w-full flex flex-col items-center py-10">
-                <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left mb-16">
-                    <div class="w-full md:w-1/3">${companyNames}</div>
-                    <div class="w-full md:w-2/3">${introContent}</div>
-                </div>
-
+                
                 ${upperImages ? `
-                    <div class="w-full bg-gray-50 py-10 mb-16">
+                    <div class="w-full bg-gray-50 py-12 mb-16">
                         <div class="max-w-7xl mx-auto px-4">
                             <div class="image-grid-container justify-center">
                                 ${upperImages}
@@ -716,12 +682,16 @@ function renderAboutOrContent(data, langIdx, pageName) {
                         </div>
                     </div>
                 ` : ''}
+
+                <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left mb-16">
+                    <div class="w-full md:w-1/3">${companyNames}</div>
+                    <div class="w-full md:w-2/3">${introContent}</div>
+                </div>
                 
                 <div class="text-center py-10 w-full border-t px-4">${addressBlock}</div>
                 ${bottomImages ? `<div class="image-grid-container px-4 mt-10 justify-center">${bottomImages}</div>` : ''}
             </div>`;
     } else {
-        // 其他頁面（例如備用的 Content 渲染邏輯）
         app.innerHTML = `
             <div class="flex flex-col items-center text-center py-10 w-full px-4">
                 <div class="w-full mb-8">${companyNames}</div>
@@ -769,36 +739,3 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
