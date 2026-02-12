@@ -226,6 +226,11 @@ p {
     animation-play-state: paused;
 }
 
+/* 取消特定走馬燈的滑鼠暫停效果 */
+.no-pause:hover .marquee-content {
+    animation-play-state: running !important;
+}
+
 @keyframes scroll-left {
     0% { transform: translateX(0); }
     100% { transform: translateX(-50%); }
@@ -235,4 +240,5 @@ p {
     0% { transform: translateX(-50%); }
     100% { transform: translateX(0); }
 }
+
 
