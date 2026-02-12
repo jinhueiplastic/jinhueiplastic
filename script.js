@@ -669,33 +669,39 @@ function renderAboutOrContent(data, langIdx, pageName) {
     let introContent = ''; 
     let addressBlock = ''; 
     let bottomImages = '';
-    let youtubeEmbed = ''; 
 
     data.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
-        
-        // 1. 偵測 Youtube (E欄/Index 4)
-        if (key === 'youtube' && row[4]) {
-            youtubeEmbed = `<div class="youtube-container w-full flex justify-center">${row[4]}</div>`;
-        }
 
-        // 2. 偵測 Upper Images (D欄/Index 3)
+        // 1. 偵測 Upper Images (D欄/Index 3)
         if (key.includes('upper image') && row[3]) {
             upperImages += `<img src="${row[3]}" class="home-bottom-image">`;
         }
 
-        if (key.includes('company name')) companyNames += `<div class="mb-6"><h2 class="text-3xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
-        if (key.includes('introduction title')) introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
-        if (key.includes('introduction') && !key.includes('title')) introContent += `<p class="text-lg leading-loose text-gray-700 mb-6" style="white-space: pre-line;">${row[langIdx]}</p>`;
-        if (key.includes('address')) addressBlock += `<p class="text-lg font-medium text-gray-500">${row[langIdx]}</p>`;
-        if (key.includes('bottom image') && row[3]) bottomImages += `<img src="${row[3]}" class="home-bottom-image">`;
+        // 2. 偵測文字與地址資料
+        if (key.includes('company name')) {
+            companyNames += `<div class="mb-6"><h2 class="text-3xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
+        }
+        if (key.includes('introduction title')) {
+            introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
+        }
+        if (key.includes('introduction') && !key.includes('title')) {
+            introContent += `<p class="text-lg leading-loose text-gray-700 mb-6" style="white-space: pre-line;">${row[langIdx]}</p>`;
+        }
+        if (key.includes('address')) {
+            addressBlock += `<p class="text-lg font-medium text-gray-500">${row[langIdx]}</p>`;
+        }
+        
+        // 3. 偵測 Bottom Images (D欄/Index 3)
+        if (key.includes('bottom image') && row[3]) {
+            bottomImages += `<img src="${row[3]}" class="home-bottom-image">`;
+        }
     });
 
+    // 渲染邏輯
     if (pageName === "About Us") {
         app.innerHTML = `
             <div class="w-full flex flex-col items-center py-10">
-                ${youtubeEmbed ? `<div class="w-full px-4 mb-16">${youtubeEmbed}</div>` : ''}
-                
                 <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left mb-16">
                     <div class="w-full md:w-1/3">${companyNames}</div>
                     <div class="w-full md:w-2/3">${introContent}</div>
@@ -715,7 +721,7 @@ function renderAboutOrContent(data, langIdx, pageName) {
                 ${bottomImages ? `<div class="image-grid-container px-4 mt-10 justify-center">${bottomImages}</div>` : ''}
             </div>`;
     } else {
-        // 其他頁面維持原樣
+        // 其他頁面（例如備用的 Content 渲染邏輯）
         app.innerHTML = `
             <div class="flex flex-col items-center text-center py-10 w-full px-4">
                 <div class="w-full mb-8">${companyNames}</div>
@@ -763,6 +769,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
