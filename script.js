@@ -235,7 +235,6 @@ async function loadPage(pageName, updateUrl = true) {
     const app = document.getElementById('app');
     const langIdx = (currentLang === 'zh') ? 1 : 2;
 
-    // 先判斷是否為商品相關頁面，若是則先插入搜尋欄框架
     const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
 
     if (pageName === 'category') { await renderCategoryList(); }
@@ -244,9 +243,12 @@ async function loadPage(pageName, updateUrl = true) {
         if (!rawDataCache[pageName]) { rawDataCache[pageName] = await fetchSheetData(pageName); }
         const data = rawDataCache[pageName];
 
-        if (pageName === "Product Catalog") {
+        // --- 修改這裡：將 Content 獨立出來 ---
+        if (pageName === "Content") {
+            renderHome(data, langIdx); 
+        } else if (pageName === "Product Catalog") {
             renderProductCatalog(data, langIdx);
-        } else if (pageName === "Content" || pageName === "About Us") {
+        } else if (pageName === "About Us") {
             renderAboutOrContent(data, langIdx, pageName);
         } else if (pageName === "Business Scope") {
             renderBusinessScope(data, langIdx, pageName);
@@ -263,6 +265,76 @@ async function loadPage(pageName, updateUrl = true) {
     }
 
     window.scrollTo(0, 0);
+}
+
+async function renderHome(contentData, langIdx) {
+    const app = document.getElementById('app');
+    
+    // 1. 準備商品分類資料 (往左捲動)
+    // 確保我們有 Product Catalog 的資料
+    if (!rawDataCache['Product Catalog']) {
+        rawDataCache['Product Catalog'] = await fetchSheetData('Product Catalog');
+    }
+    const catalogData = rawDataCache['Product Catalog'];
+    
+    let categoryItems = '';
+    catalogData.forEach(row => {
+        // A欄包含 categories，且 E欄(Index 4)有分類名稱，D欄(Index 3)有圖片
+        if (row[0].toLowerCase().trim().includes('categories') && row[4]) {
+            const catName = row[4];
+            const displayName = row[langIdx] || catName;
+            const imgUrl = row[3];
+            categoryItems += `
+                <div class="flex flex-col items-center gap-2 shrink-0 w-64" onclick="switchPage('category', {cat: '${catName}'})">
+                    <div class="w-full aspect-video overflow-hidden rounded-xl shadow-md border hover:scale-105 transition duration-300 cursor-pointer">
+                        <img src="${imgUrl}" class="w-full h-full object-cover">
+                    </div>
+                    <span class="font-bold text-gray-700 mt-2">${displayName}</span>
+                </div>`;
+        }
+    });
+
+    // 2. 準備 About Us 圖片資料 (往右捲動)
+    if (!rawDataCache['About Us']) {
+        rawDataCache['About Us'] = await fetchSheetData('About Us');
+    }
+    const aboutData = rawDataCache['About Us'];
+    
+    let aboutImages = '';
+    aboutData.forEach(row => {
+        const key = (row[0] || "").toLowerCase().trim();
+        // A欄包含 upper image，D欄(Index 3)有圖片
+        if (key.includes('upper image') && row[3]) {
+            aboutImages += `
+                <div class="shrink-0 w-80 h-52 overflow-hidden rounded-xl shadow-lg border">
+                    <img src="${row[3]}" class="w-full h-full object-cover">
+                </div>`;
+        }
+    });
+
+    // 3. 組合 HTML
+    const leftMarquee = `<div class="marquee-content animate-scroll-left">${categoryItems}${categoryItems}</div>`;
+    const rightMarquee = `<div class="marquee-content animate-scroll-right">${aboutImages}${aboutImages}</div>`;
+
+    const titleCat = currentLang === 'zh' ? '熱門分類' : 'Popular Categories';
+    const titleGallery = currentLang === 'zh' ? '廠房與產品展示' : 'Gallery';
+
+    app.innerHTML = `
+        <div class="w-full flex flex-col gap-16 py-10">
+            <div class="w-full">
+                <h2 class="max-w-7xl mx-auto px-4 text-2xl font-black mb-8 text-left border-l-4 border-blue-600 ml-4">${titleCat}</h2>
+                <div class="marquee-container">
+                    ${leftMarquee}
+                </div>
+            </div>
+
+            <div class="w-full">
+                <h2 class="max-w-7xl mx-auto px-4 text-2xl font-black mb-8 text-left border-l-4 border-gray-400 ml-4">${titleGallery}</h2>
+                <div class="marquee-container bg-gray-50 py-10">
+                    ${rightMarquee}
+                </div>
+            </div>
+        </div>`;
 }
 
 function getLocalizedCategoryName(rawCatName) {
@@ -652,6 +724,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
