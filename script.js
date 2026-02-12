@@ -280,7 +280,7 @@ async function renderHome(contentData, langIdx) {
         
         // 偵測 Youtube (從 E 欄/Index 4 抓取 iframe)
         if (key.includes('youtube') && row[4]) {
-            youtubeEmbed = `<div class="youtube-container w-full shadow-2xl rounded-2xl overflow-hidden">${row[4]}</div>`;
+            youtubeEmbed = `<div class="youtube-container shadow-2xl rounded-2xl overflow-hidden">${row[4]}</div>`;
         }
         
         if (key.includes('company name')) {
@@ -763,6 +763,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
