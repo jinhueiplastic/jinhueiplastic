@@ -368,7 +368,7 @@ async function renderHome(contentData, langIdx) {
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-gray-400 pl-4">${titleGallery}</h2>
                 </div>
-                <div class="marquee-container">
+                <div class="marquee-container no-pause">
                     ${rightMarquee}
                 </div>
             </div>
@@ -763,6 +763,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
