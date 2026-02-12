@@ -563,10 +563,10 @@ function renderAboutOrContent(data, langIdx, pageName) {
     data.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
         
-        // 偵測 Youtube 並從 E 欄 (Index 4) 抓取 iframe
+        // 1. 偵測 Youtube (A欄: Youtube, E欄: iframe)
         if (key === 'youtube' && row[4]) {
-            // 增加 mb-8 確保影片與下方文字有間距
-            youtubeEmbed = `<div class="youtube-container mb-8 w-full flex justify-center">${row[4]}</div>`;
+            // 這裡移除 mb-8，改在下方容器加間距
+            youtubeEmbed = `<div class="youtube-container w-full flex justify-center">${row[4]}</div>`;
         }
 
         if (key.includes('upper image') && row[3]) upperImages += `<img src="${row[3]}" class="home-bottom-image">`;
@@ -580,14 +580,14 @@ function renderAboutOrContent(data, langIdx, pageName) {
     if (pageName === "About Us") {
         app.innerHTML = `
             <div class="w-full flex flex-col items-center py-10">
-                ${upperImages ? `<div class="image-grid-container px-4 mb-16">${upperImages}</div>` : ''}
+                ${youtubeEmbed ? `<div class="w-full px-4 mb-16">${youtubeEmbed}</div>` : ''}
                 
                 <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left">
                     <div class="w-full md:w-1/3">${companyNames}</div>
                     
                     <div class="w-full md:w-2/3">
-                        ${youtubeEmbed} 
                         ${introContent}
+                        ${upperImages ? `<div class="image-grid-container mt-10">${upperImages}</div>` : ''}
                     </div>
                 </div>
                 
@@ -595,7 +595,6 @@ function renderAboutOrContent(data, langIdx, pageName) {
                 ${bottomImages ? `<div class="image-grid-container px-4 mt-10">${bottomImages}</div>` : ''}
             </div>`;
     } else {
-        // 其他頁面維持原樣
         app.innerHTML = `
             <div class="flex flex-col items-center text-center py-10 w-full px-4">
                 <div class="w-full mb-8">${companyNames}</div>
@@ -643,6 +642,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
