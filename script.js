@@ -563,13 +563,16 @@ function renderAboutOrContent(data, langIdx, pageName) {
     data.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
         
-        // 1. 偵測 Youtube (A欄: Youtube, E欄: iframe)
+        // 1. 偵測 Youtube (E欄/Index 4)
         if (key === 'youtube' && row[4]) {
-            // 這裡移除 mb-8，改在下方容器加間距
             youtubeEmbed = `<div class="youtube-container w-full flex justify-center">${row[4]}</div>`;
         }
 
-        if (key.includes('upper image') && row[3]) upperImages += `<img src="${row[3]}" class="home-bottom-image">`;
+        // 2. 偵測 Upper Images (D欄/Index 3)
+        if (key.includes('upper image') && row[3]) {
+            upperImages += `<img src="${row[3]}" class="home-bottom-image">`;
+        }
+
         if (key.includes('company name')) companyNames += `<div class="mb-6"><h2 class="text-3xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
         if (key.includes('introduction title')) introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
         if (key.includes('introduction') && !key.includes('title')) introContent += `<p class="text-lg leading-loose text-gray-700 mb-6" style="white-space: pre-line;">${row[langIdx]}</p>`;
@@ -582,24 +585,31 @@ function renderAboutOrContent(data, langIdx, pageName) {
             <div class="w-full flex flex-col items-center py-10">
                 ${youtubeEmbed ? `<div class="w-full px-4 mb-16">${youtubeEmbed}</div>` : ''}
                 
-                <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left">
+                <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left mb-16">
                     <div class="w-full md:w-1/3">${companyNames}</div>
-                    
-                    <div class="w-full md:w-2/3">
-                        ${introContent}
-                        ${upperImages ? `<div class="image-grid-container mt-10">${upperImages}</div>` : ''}
-                    </div>
+                    <div class="w-full md:w-2/3">${introContent}</div>
                 </div>
+
+                ${upperImages ? `
+                    <div class="w-full bg-gray-50 py-10 mb-16">
+                        <div class="max-w-7xl mx-auto px-4">
+                            <div class="image-grid-container justify-center">
+                                ${upperImages}
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
                 
-                <div class="text-center py-10 w-full border-t mt-16 px-4">${addressBlock}</div>
-                ${bottomImages ? `<div class="image-grid-container px-4 mt-10">${bottomImages}</div>` : ''}
+                <div class="text-center py-10 w-full border-t px-4">${addressBlock}</div>
+                ${bottomImages ? `<div class="image-grid-container px-4 mt-10 justify-center">${bottomImages}</div>` : ''}
             </div>`;
     } else {
+        // 其他頁面維持原樣
         app.innerHTML = `
             <div class="flex flex-col items-center text-center py-10 w-full px-4">
                 <div class="w-full mb-8">${companyNames}</div>
                 <div class="w-full mb-8 text-gray-500">${addressBlock}</div>
-                <div class="image-grid-container px-4">${bottomImages}</div>
+                <div class="image-grid-container px-4 justify-center">${bottomImages}</div>
             </div>`;
     }
 }
@@ -642,6 +652,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
