@@ -241,4 +241,27 @@ p {
     100% { transform: translateX(0); }
 }
 
+/* YouTube 響應式容器 */
+.youtube-container {
+    position: relative;
+    width: 100%;
+    /* 使用 aspect-ratio 是現代網頁最簡單的方法 */
+    aspect-ratio: 16 / 9; 
+}
+
+.youtube-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    border: none;
+}
+
+/* 針對手機版的特別微調：如果覺得 16:9 在手機還是太佔空間，可以微調比例 */
+@media (max-width: 768px) {
+    .youtube-container {
+        aspect-ratio: 16 / 10; /* 手機版稍微扁一點點 */
+    }
+}
 
