@@ -201,4 +201,38 @@ p {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
+.marquee-container {
+    overflow: hidden;
+    white-space: nowrap;
+    width: 100%;
+    position: relative;
+}
+
+.marquee-content {
+    display: inline-flex;
+    gap: 1.5rem;
+    padding-left: 1.5rem;
+}
+
+.animate-scroll-left {
+    animation: scroll-left 40s linear infinite;
+}
+
+.animate-scroll-right {
+    animation: scroll-right 40s linear infinite;
+}
+
+.marquee-container:hover .marquee-content {
+    animation-play-state: paused;
+}
+
+@keyframes scroll-left {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
+@keyframes scroll-right {
+    0% { transform: translateX(-50%); }
+    100% { transform: translateX(0); }
+}
 
