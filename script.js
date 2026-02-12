@@ -553,9 +553,22 @@ function renderProductCatalog(data, langIdx) {
 
 function renderAboutOrContent(data, langIdx, pageName) {
     const app = document.getElementById('app');
-    let upperImages = ''; let companyNames = ''; let introContent = ''; let addressBlock = ''; let bottomImages = '';
+    let upperImages = ''; 
+    let companyNames = ''; 
+    let introContent = ''; 
+    let addressBlock = ''; 
+    let bottomImages = '';
+    let youtubeEmbed = ''; // 新增：用來存放 YouTube 的 iframe
+
     data.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
+        
+        // 1. 偵測 Youtube (A欄有 "Youtube"，抓取 E 欄/索引 4)
+        if (key === 'youtube' && row[4]) {
+            youtubeEmbed = `<div class="youtube-container my-10 w-full flex justify-center">${row[4]}</div>`;
+        }
+
+        // 原有的邏輯
         if (key.includes('upper image') && row[3]) upperImages += `<img src="${row[3]}" class="home-bottom-image">`;
         if (key.includes('company name')) companyNames += `<div class="mb-6"><h2 class="text-3xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
         if (key.includes('introduction title')) introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
@@ -563,10 +576,30 @@ function renderAboutOrContent(data, langIdx, pageName) {
         if (key.includes('address')) addressBlock += `<p class="text-lg font-medium text-gray-500">${row[langIdx]}</p>`;
         if (key.includes('bottom image') && row[3]) bottomImages += `<img src="${row[3]}" class="home-bottom-image">`;
     });
+
     if (pageName === "About Us") {
-        app.innerHTML = `<div class="w-full flex flex-col items-center py-10">${upperImages ? `<div class="image-grid-container px-4 mb-16">${upperImages}</div>` : ''}<div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left"><div class="w-full md:w-1/3">${companyNames}</div><div class="w-full md:w-2/3">${introContent}</div></div><div class="text-center py-10 w-full border-t mt-16 px-4">${addressBlock}</div>${bottomImages ? `<div class="image-grid-container px-4 mt-10">${bottomImages}</div>` : ''}</div>`;
+        app.innerHTML = `
+            <div class="w-full flex flex-col items-center py-10">
+                ${upperImages ? `<div class="image-grid-container px-4 mb-16">${upperImages}</div>` : ''}
+                
+                <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left">
+                    <div class="w-full md:w-1/3">${companyNames}</div>
+                    
+                    <div class="w-full md:w-2/3">
+                        ${introContent}
+                        ${youtubeEmbed} </div>
+                </div>
+                
+                <div class="text-center py-10 w-full border-t mt-16 px-4">${addressBlock}</div>
+                ${bottomImages ? `<div class="image-grid-container px-4 mt-10">${bottomImages}</div>` : ''}
+            </div>`;
     } else {
-        app.innerHTML = `<div class="flex flex-col items-center text-center py-10 w-full px-4"><div class="w-full mb-8">${companyNames}</div><div class="w-full mb-8 text-gray-500">${addressBlock}</div><div class="image-grid-container px-4">${bottomImages}</div></div>`;
+        app.innerHTML = `
+            <div class="flex flex-col items-center text-center py-10 w-full px-4">
+                <div class="w-full mb-8">${companyNames}</div>
+                <div class="w-full mb-8 text-gray-500">${addressBlock}</div>
+                <div class="image-grid-container px-4">${bottomImages}</div>
+            </div>`;
     }
 }
 
@@ -608,6 +641,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
