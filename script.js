@@ -270,8 +270,23 @@ async function loadPage(pageName, updateUrl = true) {
 async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
     
-    // 1. 準備商品分類資料 (往左捲動)
-    // 確保我們有 Product Catalog 的資料
+    // --- A. 處理原本 Content 頁面的文字簡介 ---
+    let companyNames = ''; 
+    let introContent = ''; 
+    contentData.forEach(row => {
+        const key = (row[0] || "").toLowerCase().trim();
+        if (key.includes('company name')) {
+            companyNames += `<div class="mb-6"><h2 class="text-4xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
+        }
+        if (key.includes('introduction title')) {
+            introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
+        }
+        if (key.includes('introduction') && !key.includes('title')) {
+            introContent += `<p class="text-lg leading-loose text-gray-700 mb-6" style="white-space: pre-line;">${row[langIdx]}</p>`;
+        }
+    });
+
+    // --- B. 準備商品分類資料 (往左捲動) ---
     if (!rawDataCache['Product Catalog']) {
         rawDataCache['Product Catalog'] = await fetchSheetData('Product Catalog');
     }
@@ -279,22 +294,21 @@ async function renderHome(contentData, langIdx) {
     
     let categoryItems = '';
     catalogData.forEach(row => {
-        // A欄包含 categories，且 E欄(Index 4)有分類名稱，D欄(Index 3)有圖片
         if (row[0].toLowerCase().trim().includes('categories') && row[4]) {
             const catName = row[4];
             const displayName = row[langIdx] || catName;
             const imgUrl = row[3];
             categoryItems += `
-                <div class="flex flex-col items-center gap-2 shrink-0 w-64" onclick="switchPage('category', {cat: '${catName}'})">
-                    <div class="w-full aspect-video overflow-hidden rounded-xl shadow-md border hover:scale-105 transition duration-300 cursor-pointer">
-                        <img src="${imgUrl}" class="w-full h-full object-cover">
+                <div class="flex flex-col items-center gap-2 shrink-0 w-64 group" onclick="switchPage('category', {cat: '${catName}'})">
+                    <div class="w-full aspect-square overflow-hidden rounded-2xl shadow-md border group-hover:border-blue-500 group-hover:shadow-xl transition-all duration-300 cursor-pointer bg-white">
+                        <img src="${imgUrl}" class="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500">
                     </div>
-                    <span class="font-bold text-gray-700 mt-2">${displayName}</span>
+                    <span class="font-bold text-gray-700 mt-2 group-hover:text-blue-600 transition-colors">${displayName}</span>
                 </div>`;
         }
     });
 
-    // 2. 準備 About Us 圖片資料 (往右捲動)
+    // --- C. 準備 About Us 圖片資料 (往右捲動) ---
     if (!rawDataCache['About Us']) {
         rawDataCache['About Us'] = await fetchSheetData('About Us');
     }
@@ -303,37 +317,49 @@ async function renderHome(contentData, langIdx) {
     let aboutImages = '';
     aboutData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
-        // A欄包含 upper image，D欄(Index 3)有圖片
         if (key.includes('upper image') && row[3]) {
             aboutImages += `
-                <div class="shrink-0 w-80 h-52 overflow-hidden rounded-xl shadow-lg border">
+                <div class="shrink-0 w-80 h-52 overflow-hidden rounded-xl shadow-lg border bg-white">
                     <img src="${row[3]}" class="w-full h-full object-cover">
                 </div>`;
         }
     });
 
-    // 3. 組合 HTML
+    // 複製內容達成無限循環
     const leftMarquee = `<div class="marquee-content animate-scroll-left">${categoryItems}${categoryItems}</div>`;
     const rightMarquee = `<div class="marquee-content animate-scroll-right">${aboutImages}${aboutImages}</div>`;
 
-    const titleCat = currentLang === 'zh' ? '熱門分類' : 'Popular Categories';
-    const titleGallery = currentLang === 'zh' ? '廠房與產品展示' : 'Gallery';
+    // 語系文字
+    const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
+    const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
+    // --- D. 渲染完整 HTML ---
     app.innerHTML = `
-        <div class="w-full flex flex-col gap-16 py-10">
-            <div class="w-full">
-                <h2 class="max-w-7xl mx-auto px-4 text-2xl font-black mb-8 text-left border-l-4 border-blue-600 ml-4">${titleCat}</h2>
+        <div class="w-full flex flex-col items-center">
+            
+            <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left py-20 border-b mb-10">
+                <div class="w-full md:w-1/3">${companyNames}</div>
+                <div class="w-full md:w-2/3">${introContent}</div>
+            </div>
+
+            <div class="w-full mb-20">
+                <div class="max-w-7xl mx-auto px-4">
+                    <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-blue-600 pl-4">${titleCat}</h2>
+                </div>
                 <div class="marquee-container">
                     ${leftMarquee}
                 </div>
             </div>
 
-            <div class="w-full">
-                <h2 class="max-w-7xl mx-auto px-4 text-2xl font-black mb-8 text-left border-l-4 border-gray-400 ml-4">${titleGallery}</h2>
-                <div class="marquee-container bg-gray-50 py-10">
+            <div class="w-full bg-gray-50 py-20">
+                <div class="max-w-7xl mx-auto px-4">
+                    <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-gray-400 pl-4">${titleGallery}</h2>
+                </div>
+                <div class="marquee-container">
                     ${rightMarquee}
                 </div>
             </div>
+
         </div>`;
 }
 
@@ -724,6 +750,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
