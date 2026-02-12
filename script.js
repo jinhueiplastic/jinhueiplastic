@@ -270,11 +270,19 @@ async function loadPage(pageName, updateUrl = true) {
 async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
     
-    // --- A. 處理原本 Content 頁面的文字簡介 ---
+    // --- A. 處理原本 Content 頁面的文字與影片 ---
     let companyNames = ''; 
     let introContent = ''; 
+    let youtubeEmbed = '';
+
     contentData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
+        
+        // 偵測 Youtube (從 E 欄/Index 4 抓取 iframe)
+        if (key.includes('youtube') && row[4]) {
+            youtubeEmbed = `<div class="youtube-container w-full shadow-2xl rounded-2xl overflow-hidden">${row[4]}</div>`;
+        }
+        
         if (key.includes('company name')) {
             companyNames += `<div class="mb-6"><h2 class="text-4xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
         }
@@ -291,7 +299,6 @@ async function renderHome(contentData, langIdx) {
         rawDataCache['Product Catalog'] = await fetchSheetData('Product Catalog');
     }
     const catalogData = rawDataCache['Product Catalog'];
-    
     let categoryItems = '';
     catalogData.forEach(row => {
         if (row[0].toLowerCase().trim().includes('categories') && row[4]) {
@@ -313,7 +320,6 @@ async function renderHome(contentData, langIdx) {
         rawDataCache['About Us'] = await fetchSheetData('About Us');
     }
     const aboutData = rawDataCache['About Us'];
-    
     let aboutImages = '';
     aboutData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
@@ -325,11 +331,8 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // 複製內容達成無限循環
     const leftMarquee = `<div class="marquee-content animate-scroll-left">${categoryItems}${categoryItems}</div>`;
     const rightMarquee = `<div class="marquee-content animate-scroll-right">${aboutImages}${aboutImages}</div>`;
-
-    // 語系文字
     const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
     const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
@@ -337,9 +340,15 @@ async function renderHome(contentData, langIdx) {
     app.innerHTML = `
         <div class="w-full flex flex-col items-center">
             
-            <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start text-left py-20 border-b mb-10">
-                <div class="w-full md:w-1/3">${companyNames}</div>
-                <div class="w-full md:w-2/3">${introContent}</div>
+            <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-12 items-center text-left py-20">
+                <div class="w-full md:w-1/2">${companyNames}</div>
+                <div class="w-full md:w-1/2">${youtubeEmbed}</div>
+            </div>
+
+            <div class="w-full bg-white pb-20">
+                <div class="max-w-4xl mx-auto px-4 text-center">
+                    ${introContent}
+                </div>
             </div>
 
             <div class="w-full mb-20">
@@ -750,6 +759,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
