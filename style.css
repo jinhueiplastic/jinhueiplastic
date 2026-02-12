@@ -51,6 +51,14 @@ body {
     border-bottom-color: #ffffff; 
 }
 
+/* 讓 YouTube 影片寬度自適應容器 */
+.youtube-container iframe {
+    max-width: 100%;
+    width: 100% !important;
+    border-radius: 12px;
+    shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
 /* --- 產品資料卡 (Category Card) 樣式 --- */
 .category-card {
     background: white;
@@ -192,4 +200,5 @@ p {
     border: 1px solid #e5e7eb;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
+
 
