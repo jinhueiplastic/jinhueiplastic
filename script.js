@@ -336,22 +336,26 @@ async function renderHome(contentData, langIdx) {
     const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
     const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
-    // --- D. 渲染完整 HTML ---
+// --- D. 渲染完整 HTML ---
     app.innerHTML = `
         <div class="w-full flex flex-col items-center">
             
-            <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-12 items-center text-left py-20">
+            <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-12 items-center text-left py-16">
                 <div class="w-full md:w-1/2">${companyNames}</div>
                 <div class="w-full md:w-1/2">${youtubeEmbed}</div>
             </div>
 
-            <div class="w-full bg-white pb-20">
+            ${(introContent.trim()) ? `
+            <div class="w-full bg-white pb-16">
                 <div class="max-w-4xl mx-auto px-4 text-center">
-                    ${introContent}
+                    <div class="prose prose-lg max-w-none text-gray-600">
+                        ${introContent}
+                    </div>
                 </div>
             </div>
+            ` : ''}
 
-            <div class="w-full mb-20">
+            <div class="w-full mb-16">
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-blue-600 pl-4">${titleCat}</h2>
                 </div>
@@ -360,7 +364,7 @@ async function renderHome(contentData, langIdx) {
                 </div>
             </div>
 
-            <div class="w-full bg-gray-50 py-20">
+            <div class="w-full bg-gray-50 py-16">
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-gray-400 pl-4">${titleGallery}</h2>
                 </div>
@@ -759,6 +763,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
