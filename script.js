@@ -385,10 +385,10 @@ function parseMarkdownTable(text) {
         if ((!isTableLine || i === lines.length) && isProcessingTable) {
             if (tableBuffer.length > 0) {
                 html += '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
-                // 表頭處理
+                
+                // --- 表頭渲染 ---
                 html += '<thead><tr>';
                 tableBuffer[0].forEach(cell => {
-                    // --- 修正 1：表頭支援連結 ---
                     html += `<th>${processLinks(cell)}</th>`;
                 });
                 html += '</tr></thead><tbody>';
@@ -398,33 +398,65 @@ function parseMarkdownTable(text) {
                 const colCount = tableBuffer[0].length;
                 let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
 
+                // --- 表身合併邏輯運算 ---
                 for (let r = 0; r < rowCount; r++) {
                     html += '<tr>';
                     for (let c = 0; c < colCount; c++) {
+                        // 如果該格已被合併標記為跳過，則不處理
                         if (skipMap[r][c]) continue;
+
                         let cellContent = dataRows[r][c];
-                        // ... (中間省略您原本強大的 rowspan/colspan 邏輯) ...
-                        
+                        let rowspan = 1;
+                        let colspan = 1;
+
+                        // 1. 計算 Colspan (橫向合併: 當格內容為 '>')
+                        // 雖然邏輯通常是左格合併右格，但我們檢查右邊是否有 '>'
+                        for (let nextC = c + 1; nextC < colCount; nextC++) {
+                            if (dataRows[r][nextC] === '>') {
+                                colspan++;
+                                skipMap[r][nextC] = true;
+                            } else break;
+                        }
+
+                        // 2. 計算 Rowspan (縱向合併: 下方格內容為 '^')
+                        if (cellContent !== '^' && cellContent !== '>') {
+                            for (let nextR = r + 1; nextR < rowCount; nextR++) {
+                                if (dataRows[nextR][c] === '^') {
+                                    rowspan++;
+                                    skipMap[nextR][c] = true;
+                                    // 同時要把該行被 colspan 合併的格子也標記為跳過
+                                    for (let spanC = 1; spanC < colspan; spanC++) {
+                                        skipMap[nextR][c + spanC] = true;
+                                    }
+                                } else break;
+                            }
+                        } else {
+                            // 如果當前格本身就是 '^' 或 '>' 且沒被 skipMap 攔截，代表資料有誤或它是孤立的標記
+                            continue;
+                        }
+
+                        // --- 樣式與連結處理 ---
                         let cellClass = "";
                         if (cellContent.startsWith('#')) {
                             cellClass = "no-border-cell"; 
                             cellContent = cellContent.substring(1);
                         }
-                        
-                        // --- 修正 2：表格單元格支援連結 ---
+
                         const processedContent = processLinks(cellContent);
+                        const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+                        const colspanAttr = colspan > 1 ? ` colspan="${colspan}"` : '';
                         
-                        const rowspanAttr = (typeof rowspan !== 'undefined' && rowspan > 1) ? ` rowspan="${rowspan}"` : '';
-                        const colspanAttr = (typeof colspan !== 'undefined' && colspan > 1) ? ` colspan="${colspan}"` : '';
                         html += `<td${rowspanAttr}${colspanAttr} class="${cellClass}">${processedContent}</td>`;
                     }
                     html += '</tr>';
                 }
                 html += '</tbody></table></div>';
             }
-            tableBuffer = []; isProcessingTable = false;
+            tableBuffer = []; 
+            isProcessingTable = false;
         }
 
+        // --- 處理非表格內容 (圖片、換行、段落) ---
         if (line !== null && !isTableLine && !isSeparator) {
             const isImageUrl = line.match(/^https?:\/\/.*\.(jpg|jpeg|png|webp|gif|svg)$/i);
             if (isImageUrl) {
@@ -432,7 +464,6 @@ function parseMarkdownTable(text) {
             } else if (line === "" && i < lines.length) {
                 html += `<br>`;
             } else if (line !== "") {
-                // --- 修正 3：一般文字段落支援連結 ---
                 html += `<p class="mb-2">${processLinks(line)}</p>`;
             }
         }
@@ -746,4 +777,5 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
