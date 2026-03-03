@@ -65,23 +65,26 @@ function switchPage(page, params = {}) {
 const getSheetUrl = (sheetName) => `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
 
 async function fetchSheetData(sheetName) {
+    console.log(`📡 開始請求: ${sheetName}`);
     try {
         const url = getSheetUrl(sheetName);
         const response = await fetch(url);
-        if (!response.ok) throw new Error("網路請求失敗");
         
+        if (!response.ok) throw new Error("網路請求沒回應");
+
         const text = await response.text();
-        // 檢查 Google 回傳格式是否正確
         const json = JSON.parse(text.substring(47).slice(0, -2));
         
-        if (!json.table || !json.table.rows) return [];
-        
-        return json.table.rows.map(row => 
-            row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
-        );
-    } catch (e) { 
-        console.error(`無法獲取試算表 [${sheetName}] 的資料:`, e);
-        return []; // 關鍵：出錯一定要回傳空陣列，才不會讓 await 卡死
+        if (json.table && json.table.rows) {
+            console.log(`✅ ${sheetName} 資料請求成功`);
+            return json.table.rows.map(row => 
+                row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
+            );
+        }
+        return [];
+    } catch (e) {
+        console.error(`❌ ${sheetName} 請求出錯:`, e);
+        return []; // 失敗一定要傳回空陣列，程式才走得下去
     }
 }
 
@@ -205,46 +208,37 @@ function getSearchBoxHtml() {
 async function initWebsite() {
     console.log("🚀 啟動初始化...");
     handleRouting();
-    
-    // 定義最基礎、沒它不行的分頁
-    const baseTabs = ['Content', 'Product Catalog'];
 
+    // 先顯示導覽列框架和基本按鈕（不等資料）
+    updateLangButton();
+    renderNav(); 
+
+    // 重要：先抓 Content 的資料，因為這影響 Logo 和首頁
     try {
-        // 使用並行抓取，並設定「逾時保護」
-        await Promise.allSettled(baseTabs.map(async (tab) => {
-            try {
-                const data = await fetchSheetData(tab);
-                if (data && data.length > 0) {
-                    rawDataCache[tab] = data;
-                    console.log(`✅ ${tab} 資料載入成功`);
-                }
-            } catch (err) {
-                console.error(`❌ ${tab} 載入失敗:`, err);
-            }
-        }));
-
-        // 渲染選單與 Logo（即便資料沒抓齊，也要讓框架出來）
-        renderLogoAndStores();
-        updateLangButton();
-        renderNav(); 
-
-        // 執行載入頁面 (不傳 updateUrl 避免迴圈)
-        console.log(`頁面渲染中: ${currentPage}`);
-        loadPage(currentPage, false);
-
-        // 剩餘分頁在背景慢慢抓
-        const otherTabs = tabs.filter(t => !baseTabs.includes(t));
-        otherTabs.forEach(async (tab) => {
-            const data = await fetchSheetData(tab);
-            rawDataCache[tab] = data;
-            renderNav(); // 抓完後默默更新導覽列的名稱
-        });
-
+        console.log("正在嘗試抓取首頁資料...");
+        const contentData = await fetchSheetData('Content');
+        if (contentData && contentData.length > 0) {
+            rawDataCache['Content'] = contentData;
+            renderLogoAndStores(); // 有了資料後馬上補畫 Logo
+        }
     } catch (e) {
-        console.error("初始化過程發生非預期錯誤:", e);
-        // 強制執行一次載入，避免畫面空白
-        loadPage(currentPage, false);
+        console.error("首頁資料抓取異常", e);
     }
+
+    // 🚀 不管前面的 fetch 有沒有成功，都強制執行 loadPage
+    console.log(`執行頁面載入: ${currentPage}`);
+    loadPage(currentPage, false);
+
+    // 其餘的分頁資料放在「非同步」背景執行，不加 await，才不會卡死
+    tabs.forEach(async (tab) => {
+        if (tab !== 'Content') {
+            const data = await fetchSheetData(tab);
+            if (data) {
+                rawDataCache[tab] = data;
+                renderNav(); // 抓到資料後，靜悄悄地更新選單名稱
+            }
+        }
+    });
 }
 
 function toggleLang() {
@@ -860,6 +854,7 @@ window.onpopstate = function(event) {
     }
     renderNav();
 };
+
 
 
 
