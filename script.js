@@ -66,13 +66,23 @@ const getSheetUrl = (sheetName) => `https://docs.google.com/spreadsheets/d/${SPR
 
 async function fetchSheetData(sheetName) {
     try {
-        const response = await fetch(getSheetUrl(sheetName));
+        const url = getSheetUrl(sheetName);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("網路請求失敗");
+        
         const text = await response.text();
+        // 檢查 Google 回傳格式是否正確
         const json = JSON.parse(text.substring(47).slice(0, -2));
+        
+        if (!json.table || !json.table.rows) return [];
+        
         return json.table.rows.map(row => 
             row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
         );
-    } catch (e) { return []; }
+    } catch (e) { 
+        console.error(`無法獲取試算表 [${sheetName}] 的資料:`, e);
+        return []; // 關鍵：出錯一定要回傳空陣列，才不會讓 await 卡死
+    }
 }
 
 async function fetchGASProducts() {
@@ -193,31 +203,50 @@ function getSearchBoxHtml() {
 }
 
 async function initWebsite() {
-    console.log("網站初始化開始...");
+    console.log("🚀 啟動初始化...");
     handleRouting();
     
-    const essentialTabs = ['Content', 'Product Catalog'];
-    
+    // 定義最基礎、沒它不行的分頁
+    const baseTabs = ['Content', 'Product Catalog'];
+
     try {
-        // 使用 Promise.allSettled 確保就算有一頁抓失敗，網頁也能繼續開
-        await Promise.allSettled(essentialTabs.map(async (tab) => {
-            console.log(`正在抓取核心資料: ${tab}`);
-            rawDataCache[tab] = await fetchSheetData(tab);
+        // 使用並行抓取，並設定「逾時保護」
+        await Promise.allSettled(baseTabs.map(async (tab) => {
+            try {
+                const data = await fetchSheetData(tab);
+                if (data && data.length > 0) {
+                    rawDataCache[tab] = data;
+                    console.log(`✅ ${tab} 資料載入成功`);
+                }
+            } catch (err) {
+                console.error(`❌ ${tab} 載入失敗:`, err);
+            }
         }));
 
+        // 渲染選單與 Logo（即便資料沒抓齊，也要讓框架出來）
         renderLogoAndStores();
         updateLangButton();
-        
-        // 這裡不要用 await，讓導覽列自己去跑
-        renderNav();
+        renderNav(); 
 
-        console.log(`準備載入首頁: ${currentPage}`);
+        // 執行載入頁面 (不傳 updateUrl 避免迴圈)
+        console.log(`頁面渲染中: ${currentPage}`);
         loadPage(currentPage, false);
 
+        // 剩餘分頁在背景慢慢抓
+        const otherTabs = tabs.filter(t => !baseTabs.includes(t));
+        otherTabs.forEach(async (tab) => {
+            const data = await fetchSheetData(tab);
+            rawDataCache[tab] = data;
+            renderNav(); // 抓完後默默更新導覽列的名稱
+        });
+
     } catch (e) {
-        console.error("初始化嚴重錯誤:", e);
+        console.error("初始化過程發生非預期錯誤:", e);
+        // 強制執行一次載入，避免畫面空白
+        loadPage(currentPage, false);
     }
 }
+
 function toggleLang() {
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
     updateLangButton();
@@ -831,5 +860,6 @@ window.onpopstate = function(event) {
     }
     renderNav();
 };
+
 
 
