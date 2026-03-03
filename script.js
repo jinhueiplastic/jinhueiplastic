@@ -44,9 +44,30 @@ function renderLogoAndStores() {
 function switchPage(page, params = {}) {
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', page);
-    for (const key in params) { u.searchParams.set(key, params[key]); }
+    for (const key in params) { 
+        u.searchParams.set(key, params[key]); 
+    }
     window.history.pushState({}, '', u);
     
+    // --- 新增：動態修改分頁標題 ---
+    let displayTitle = page; // 預設使用頁面標籤名
+
+    if (page === 'category') {
+        // 分類頁：顯示分類名稱 (例如：PE袋 - 錦輝塑膠)
+        displayTitle = params.cat || "產品分類";
+    } else if (page === 'product' && params.product) {
+        // 商品頁：params.product 是那一列的資料陣列
+        // 假設：Index 1 是中文名, Index 2 是英文名
+        const langIdx = currentLang === 'zh' ? 1 : 2;
+        displayTitle = params.product[langIdx] || params.product[1] || "商品資訊";
+    } else if (page === 'Content') {
+        displayTitle = currentLang === 'zh' ? "首頁" : "Home";
+    }
+
+    // 格式： 頁面名 - 錦輝塑膠
+    document.title = `${displayTitle} - 錦輝塑膠`;
+    // ----------------------------
+
     currentPage = page;
     renderNav();
     loadPage(page, false); 
@@ -777,5 +798,6 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
