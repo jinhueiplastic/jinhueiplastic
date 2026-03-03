@@ -44,29 +44,36 @@ function renderLogoAndStores() {
 function switchPage(page, params = {}) {
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', page);
-    for (const key in params) { 
-        u.searchParams.set(key, params[key]); 
-    }
+    for (const key in params) { u.searchParams.set(key, params[key]); }
     window.history.pushState({}, '', u);
+
+    // --- 動態標題邏輯開始 ---
+    const isEn = (currentLang === 'en'); // 假設你的切換邏輯是用 'en' 和 'zh'
+    const langIdx = isEn ? 2 : 1; // 2 是英文 (C欄), 1 是中文 (B欄)
     
-    // --- 新增：動態修改分頁標題 ---
-    let displayTitle = page; // 預設使用頁面標籤名
+    // 公司名稱後綴
+    const companyName = isEn ? "Jin Huei Plastic Co.,Ltd." : "錦輝塑膠";
+    
+    let pageTitle = "";
 
     if (page === 'category') {
-        // 分類頁：顯示分類名稱 (例如：PE袋 - 錦輝塑膠)
-        displayTitle = params.cat || "產品分類";
+        // 優先使用傳進來的翻譯標題
+        pageTitle = params.title || params.cat;
     } else if (page === 'product' && params.product) {
-        // 商品頁：params.product 是那一列的資料陣列
-        // 假設：Index 1 是中文名, Index 2 是英文名
-        const langIdx = currentLang === 'zh' ? 1 : 2;
-        displayTitle = params.product[langIdx] || params.product[1] || "商品資訊";
-    } else if (page === 'Content') {
-        displayTitle = currentLang === 'zh' ? "首頁" : "Home";
+        // 從商品資料列取出對應語言的名稱
+        pageTitle = params.product[langIdx] || params.product[1];
+    } else if (page === 'Content' || page === 'home') {
+        pageTitle = isEn ? "Home" : "首頁";
+    } else if (page === 'About Us') {
+        pageTitle = isEn ? "About Us" : "關於我們";
+    } else {
+        // 其他分頁如 Business Scope 等
+        pageTitle = page; 
     }
 
-    // 格式： 頁面名 - 錦輝塑膠
-    document.title = `${displayTitle} - 錦輝塑膠`;
-    // ----------------------------
+    // 設定最終分頁標題格式： 頁面名稱 - 公司名稱
+    document.title = `${pageTitle} - ${companyName}`;
+    // --- 動態標題邏輯結束 ---
 
     currentPage = page;
     renderNav();
@@ -314,19 +321,21 @@ async function renderHome(contentData, langIdx) {
     const catalogData = rawDataCache['Product Catalog'];
     let categoryItems = '';
     catalogData.forEach(row => {
-        if (row[0].toLowerCase().trim().includes('categories') && row[4]) {
-            const catName = row[4];
-            const displayName = row[langIdx] || catName;
-            const imgUrl = row[3];
-            categoryItems += `
-                <div class="flex flex-col items-center gap-2 shrink-0 w-64 group" onclick="switchPage('category', {cat: '${catName}'})">
-                    <div class="w-full aspect-square overflow-hidden rounded-2xl shadow-md border group-hover:border-blue-500 group-hover:shadow-xl transition-all duration-300 cursor-pointer bg-white">
-                        <img src="${imgUrl}" class="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500">
-                    </div>
-                    <span class="font-bold text-gray-700 mt-2 group-hover:text-blue-600 transition-colors">${displayName}</span>
-                </div>`;
-        }
-    });
+    if (row[0].toLowerCase().trim().includes('categories') && row[4]) {
+        const catName = row[4];
+        const displayName = row[langIdx] || catName; // 這裡已經根據語言選好中/英文了
+        const imgUrl = row[3];
+        
+        categoryItems += `
+            <div class="flex flex-col items-center gap-2 shrink-0 w-64 group" 
+                 onclick="switchPage('category', {cat: '${catName}', title: '${displayName}'})">
+                <div class="w-full aspect-square overflow-hidden rounded-2xl shadow-md border group-hover:border-blue-500 group-hover:shadow-xl transition-all duration-300 cursor-pointer bg-white">
+                    <img src="${imgUrl}" class="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500">
+                </div>
+                <span class="font-bold text-gray-700 mt-2 group-hover:text-blue-600 transition-colors">${displayName}</span>
+            </div>`;
+    }
+});
 
     if (!rawDataCache['About Us']) rawDataCache['About Us'] = await fetchSheetData('About Us');
     const aboutData = rawDataCache['About Us'];
@@ -798,6 +807,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
