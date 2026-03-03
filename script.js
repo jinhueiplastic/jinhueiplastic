@@ -862,7 +862,23 @@ window.onpopstate = function(event) {
     renderNav();
 };
 
+document.addEventListener('DOMContentLoaded', initWebsite);
 
+// 1. 補齊缺少的更新語言按鈕函數
+function updateLangButton() {
+    const btn = document.getElementById('lang-toggle-btn');
+    if (btn) {
+        // 根據目前語言決定按鈕要顯示什麼
+        btn.innerText = (currentLang === 'zh') ? 'EN' : '繁中';
+    }
+}
 
+// 2. 補齊首頁渲染邏輯中可能缺少的動畫樣式處理 (如果有的話)
+// 確保 DOM 載入後真正執行啟動
+console.log("腳本載入完畢，準備綁定事件...");
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM 已就緒，啟動 initWebsite");
+    initWebsite();
+});
 
 
