@@ -243,9 +243,12 @@ async function renderNav() {
     const nav = document.getElementById('main-nav');
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     let navHtml = '';
+    
     for (const tab of tabs) {
         if (!rawDataCache[tab]) { rawDataCache[tab] = await fetchSheetData(tab); }
         const data = rawDataCache[tab];
+        
+        // 抓取該分頁在試算表定義的 Title (B欄或C欄)
         const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
         const displayName = (titleRow && titleRow[langIdx]) ? titleRow[langIdx] : tab;
         
@@ -253,7 +256,12 @@ async function renderNav() {
         if ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog') {
             isActive = 'active';
         }
-        navHtml += `<li class="nav-item ${isActive} px-6 py-3 cursor-pointer" onclick="switchPage('${tab}')">${displayName}</li>`;
+
+        // --- 核心修正：在 switchPage 加入 title 參數，確保分頁標題連動 ---
+        navHtml += `<li class="nav-item ${isActive} px-6 py-3 cursor-pointer" 
+                        onclick="switchPage('${tab}', {title: '${displayName}'})">
+                        ${displayName}
+                    </li>`;
     }
     nav.innerHTML = navHtml;
 }
@@ -807,6 +815,7 @@ window.onpopstate = function(event) {
 };
 
 initWebsite();
+
 
 
 
