@@ -47,35 +47,17 @@ function switchPage(page, params = {}) {
     for (const key in params) { u.searchParams.set(key, params[key]); }
     window.history.pushState({}, '', u);
 
-    // --- 動態標題邏輯開始 ---
-    const isEn = (currentLang === 'en'); // 假設你的切換邏輯是用 'en' 和 'zh'
-    const langIdx = isEn ? 2 : 1; // 2 是英文 (C欄), 1 是中文 (B欄)
-    
-    // 公司名稱後綴
-    const companyName = isEn ? "Jin Huei Plastic Co.,Ltd." : "錦輝塑膠";
-    
-    let pageTitle = "";
-
-    if (page === 'category') {
-        // 優先使用傳進來的翻譯標題
-        pageTitle = params.title || params.cat;
-    } else if (page === 'product' && params.product) {
-        // 從商品資料列取出對應語言的名稱
-        pageTitle = params.product[langIdx] || params.product[1];
-    } else if (page === 'Content' || page === 'home') {
-        pageTitle = isEn ? "Home" : "首頁";
-    } else if (page === 'About Us') {
-        pageTitle = isEn ? "About Us" : "關於我們";
-    } else {
-        // 其他分頁如 Business Scope 等
-        pageTitle = page; 
-    }
-
-    // 設定最終分頁標題格式： 頁面名稱 - 公司名稱
-    document.title = `${pageTitle} - ${companyName}`;
-    // --- 動態標題邏輯結束 ---
-
     currentPage = page;
+
+    // --- 使用統一函數更新標題 ---
+    let titleToSet = params.title || "";
+    if (page === 'product' && params.product) {
+        const langIdx = currentLang === 'zh' ? 1 : 2;
+        titleToSet = params.product[langIdx] || params.product[1];
+    }
+    updateTabTitle(titleToSet);
+    // -------------------------
+
     renderNav();
     loadPage(page, false); 
 }
@@ -800,23 +782,41 @@ function renderContactUs(data, langIdx, pageName) {
     app.innerHTML = `<div class="flex flex-col items-center py-10 px-4 text-center"><h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="w-full max-w-2xl border-y py-8 mb-16">${info}</div><iframe src="${map}" width="100%" height="500" class="max-w-6xl rounded-2xl shadow-sm border" loading="lazy"></iframe></div>`;
 }
 
+function updateTabTitle(pageTitle = "") {
+    const isEn = (currentLang === 'en');
+    const companyName = isEn ? "Jin Huei Plastic Co.,Ltd." : "錦輝塑膠";
+    
+    let displayTitle = pageTitle;
+
+    // 如果沒有傳入標題，則根據 currentPage 做基本判斷
+    if (!displayTitle) {
+        if (currentPage === 'Content' || currentPage === 'home') {
+            displayTitle = isEn ? "Home" : "首頁";
+        } else if (currentPage === 'About Us') {
+            displayTitle = isEn ? "About Us" : "關於我們";
+        } else {
+            displayTitle = currentPage;
+        }
+    }
+
+    document.title = `${displayTitle} - ${companyName}`;
+}
+
 window.onpopstate = function(event) {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page') || 'Content';
     const query = params.get('q');
 
+    currentPage = page; // 確保全域變數更新
+
     if (page === 'search' && query) {
         executeSearch(query);
+        updateTabTitle(isEn ? "Search Results" : "搜尋結果");
     } else {
-        currentPage = page;
         loadPage(page, false);
+        // 這邊 loadPage 跑完後，呼叫 updateTabTitle
+        // 稍後在 loadPage 裡也可以補強，或者在這裡根據 page 簡單處理
+        updateTabTitle(); 
     }
     renderNav();
 };
-
-initWebsite();
-
-
-
-
-
