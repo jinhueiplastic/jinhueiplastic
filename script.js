@@ -193,45 +193,31 @@ function getSearchBoxHtml() {
 }
 
 async function initWebsite() {
-    // 1. 處理網址路由，決定 currentPage
+    console.log("網站初始化開始...");
     handleRouting();
     
-    // 2. 定義初始化最關鍵的分頁 (Content 影響 Logo, Product Catalog 影響導覽列名稱)
     const essentialTabs = ['Content', 'Product Catalog'];
     
     try {
-        // 並行抓取：這會同時發出請求，載入速度提升 3-5 倍
-        await Promise.all(essentialTabs.map(async (tab) => {
-            if (!rawDataCache[tab]) {
-                rawDataCache[tab] = await fetchSheetData(tab);
-            }
+        // 使用 Promise.allSettled 確保就算有一頁抓失敗，網頁也能繼續開
+        await Promise.allSettled(essentialTabs.map(async (tab) => {
+            console.log(`正在抓取核心資料: ${tab}`);
+            rawDataCache[tab] = await fetchSheetData(tab);
         }));
 
-        // 3. 基礎資料到位後，立即渲染導覽與 Logo (這時 rawDataCache 已有資料)
         renderLogoAndStores();
         updateLangButton();
         
-        // 4. 渲染導覽列 (此時不需要再 await fetch，因為資料已在快取)
-        await renderNav();
+        // 這裡不要用 await，讓導覽列自己去跑
+        renderNav();
 
-        // 5. 執行頁面載入
+        console.log(`準備載入首頁: ${currentPage}`);
         loadPage(currentPage, false);
-        
-        // 6. 背景預載剩餘的分頁 (不影響使用者操作，悄悄完成)
-        const remainingTabs = tabs.filter(t => !essentialTabs.includes(t));
-        remainingTabs.forEach(async (tab) => {
-            if (!rawDataCache[tab]) {
-                rawDataCache[tab] = await fetchSheetData(tab);
-                // 選單可能需要更新翻譯後的名稱，所以再刷一次 renderNav (這次極快)
-                renderNav(); 
-            }
-        });
 
     } catch (e) {
-        console.error("Initialization failed:", e);
+        console.error("初始化嚴重錯誤:", e);
     }
 }
-
 function toggleLang() {
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
     updateLangButton();
@@ -239,15 +225,13 @@ function toggleLang() {
     loadPage(currentPage, false);
 }
 
-async function renderNav() {
+function renderNav() {
     const nav = document.getElementById('main-nav');
     if (!nav) return;
-
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     let navHtml = '';
     
     for (const tab of tabs) {
-        // 直接從快取拿資料，如果不巧還沒抓完，就先用 tab 原名
         const data = rawDataCache[tab];
         let displayName = tab;
 
@@ -261,29 +245,21 @@ async function renderNav() {
             isActive = 'active';
         }
 
-        // 這裡傳入 displayName 作為 title 參數
-        navHtml += `<li class="nav-item ${isActive} px-6 py-3 cursor-pointer" 
-                        onclick="switchPage('${tab}', {title: '${displayName}'})">
-                        ${displayName}
-                    </li>`;
+        navHtml += `<li class="nav-item ${isActive} px-6 py-3 cursor-pointer" onclick="switchPage('${tab}', {title: '${displayName}'})">${displayName}</li>`;
     }
     nav.innerHTML = navHtml;
 }
 
 async function loadPage(pageName, updateUrl = true) {
-    // 1. 修正遞迴邏輯：只有在需要更新 URL 時才呼叫 switchPage
-    // 但 switchPage 內部應該負責處理 URL 推送，而不是讓 loadPage 決定
-    if (updateUrl) {
-        switchPage(pageName); 
-        return; // 讓 switchPage 接手，這裡直接結束，避免重複渲染
-    }
+    console.log(`執行 loadPage: ${pageName}`);
+    
+    // 強制刪除這行，避免無窮迴圈: if (updateUrl) switchPage(pageName); 
 
     const app = document.getElementById('app');
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
 
-    // 顯示 Loading 畫面（改善使用者體驗）
-    app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
+    app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
         if (pageName === 'category') { 
@@ -291,47 +267,35 @@ async function loadPage(pageName, updateUrl = true) {
         } else if (pageName === 'product') { 
             await renderProductDetail(); 
         } else if (pageName === 'search') {
-            // 如果是在搜尋頁面，不需要抓 Sheet Data
+            // 搜尋邏輯已在 executeSearch 處理
         } else {
-            // 2. 檢查快取，如果沒有才抓取（這保護了 initWebsite 沒抓到的邊際分頁）
-            if (!rawDataCache[pageName]) { 
-                rawDataCache[pageName] = await fetchSheetData(pageName); 
+            // 如果沒資料才抓取
+            if (!rawDataCache[pageName]) {
+                console.log(`補抓分頁資料: ${pageName}`);
+                rawDataCache[pageName] = await fetchSheetData(pageName);
             }
+            
             const data = rawDataCache[pageName];
+            if (!data || data.length === 0) throw new Error("無資料");
 
-            // 3. 根據分頁執行對應渲染函數
-            if (pageName === "Content") {
-                renderHome(data, langIdx); 
-            } else if (pageName === "Product Catalog") {
-                renderProductCatalog(data, langIdx);
-            } else if (pageName === "About Us") {
-                renderAboutOrContent(data, langIdx, pageName);
-            } else if (pageName === "Business Scope") {
-                renderBusinessScope(data, langIdx, pageName);
-            } else if (pageName === "Join Us") {
-                renderJoinUs(data, langIdx, pageName);
-            } else if (pageName === "Contact Us") {
-                renderContactUs(data, langIdx, pageName);
-            }
+            // 渲染各頁面
+            if (pageName === "Content") renderHome(data, langIdx);
+            else if (pageName === "Product Catalog") renderProductCatalog(data, langIdx);
+            else if (pageName === "About Us") renderAboutOrContent(data, langIdx, pageName);
+            else if (pageName === "Business Scope") renderBusinessScope(data, langIdx, pageName);
+            else if (pageName === "Join Us") renderJoinUs(data, langIdx, pageName);
+            else if (pageName === "Contact Us") renderContactUs(data, langIdx, pageName);
         }
 
-        // 4. 統一搜尋框邏輯
-        if (isProductPage && pageName !== 'product') { 
-            // 只有在列表頁（Catalog, Category, Search）頂部加搜尋框
-            // 商品細節頁通常不需要頂部搜尋框，避免畫面太亂
-            if (!document.getElementById('product-search-input')) {
-                app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
-            }
+        if (isProductPage && pageName !== 'product') {
+            app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
         }
-
-    } catch (error) {
-        console.error("Render error:", error);
-        app.innerHTML = `<div class="text-center py-20 text-red-500">Page Load Error.</div>`;
+    } catch (e) {
+        console.error(`${pageName} 載入失敗:`, e);
+        app.innerHTML = `<div class="text-center py-20 text-red-500">此頁面目前無法載入，請稍後再試。</div>`;
     }
-
     window.scrollTo(0, 0);
 }
-
 async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
     let companyNames = ''; 
@@ -867,4 +831,5 @@ window.onpopstate = function(event) {
     }
     renderNav();
 };
+
 
