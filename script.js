@@ -1,3 +1,5 @@
+alert("JS 已啟動");
+
 const SPREADSHEET_ID = '1Z3xaacD4N1Piagjg7mWAH2bzGadCUX8zS24RbInF4QM';
 const GAS_PRODUCT_URL = 'https://script.google.com/macros/s/AKfycby0WRTp_F33uuVYp1tq8wAYWIw80XM3v3vdPErq8joVZoZu5DpLW_qNtVruHJ5o1AFw/exec';
 const tabs = ["Content", "About Us", "Business Scope", "Product Catalog", "Join Us", "Contact Us"];
@@ -717,8 +719,13 @@ function renderJoinUs(data, langIdx, pageName) {
             <h3 class="text-2xl font-black mb-4 border-b pb-4 text-blue-700">${j.title}</h3>
             <p class="text-gray-600 leading-relaxed" style="white-space: pre-line;">${j.desc}</p>
         </div>`).join('');
-    app.innerHTML = `<div class="flex flex-col items-center py-10 px-4"><h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1><div class="grid md:grid-cols-2 gap-8 w-full max-w-6xl">${jobsHtml || '<p class="text-gray-400">目前暫無職缺。</p>'}</div></div>`;
-}
+    
+    app.innerHTML = `
+        <div class="flex flex-col items-center py-10 px-4">
+            <h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1>
+            <div class="grid md:grid-cols-2 gap-8 w-full max-w-6xl">${jobsHtml || '<p class="text-gray-400">目前暫無職缺。</p>'}</div>
+        </div>`;
+} // <--- 確保這裏有這兩個括號！
 
 function renderProductCatalog(data, langIdx) {
     const app = document.getElementById('app');
@@ -854,6 +861,7 @@ window.onpopstate = function(event) {
     }
     renderNav();
 };
+
 
 
 
