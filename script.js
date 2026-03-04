@@ -69,10 +69,15 @@ async function fetchData() {
 function renderLogoAndStores() {
     const logoContainer = document.getElementById('logo-container');
     const storeContainer = document.getElementById('store-container');
+    if (!logoContainer || !storeContainer) return;
+
     const data = rawDataCache['Content'] || [];
     
-    // 安全檢查：確保 HTML 元素存在
-    if (!logoContainer || !storeContainer) return;
+    // 如果資料還沒回來，先顯示文字 Logo 避免 Loading 字樣一直顯示
+    if (data.length === 0) {
+        logoContainer.innerHTML = `<h1 class="text-xl font-bold text-blue-900 cursor-pointer" onclick="switchPage('Content')">錦輝塑膠</h1>`;
+        return;
+    }
 
     logoContainer.innerHTML = ''; 
     storeContainer.innerHTML = '';
@@ -266,45 +271,32 @@ function getSearchBoxHtml() {
 }
 
 async function initWebsite() {
-    const app = document.getElementById('app');
-    
     try {
-        // 1. 先從網址抓取參數
+        // 1. 優先從網址同步語言與頁面狀態
         const params = new URLSearchParams(window.location.search);
-        const lang = params.get('lang') || 'zh'; // 如果沒設定，預設為中文
-        const page = params.get('page') || 'Content';
+        currentLang = params.get('lang') || 'zh'; // 確保一開始就設定好中文
+        currentPage = params.get('page') || 'Content';
         const query = params.get('q');
 
-        // 2. 立即同步全域變數
-        currentLang = lang; 
-        currentPage = page;
-
-        // 3. 渲染 Logo 與 導覽列框架 (這時資料還沒回來，先渲染靜態部分)
-        renderLogo(); 
-        updateLangButton(); 
-
-        // 4. 等待關鍵資料載入 (這是解決「載入失敗」的關鍵)
+        // 2. 等待資料抓取完成 (這是解決 Loading 的關鍵)
         await fetchGASProducts(); 
 
-        // 5. 資料到位後，執行分頁渲染
-        if (page === 'search' && query) {
+        // 3. 資料到位後，開始渲染 UI 組件
+        renderLogoAndStores(); // 這樣 data 就不會是空的了
+        renderNav();
+        updateLangButton();
+        updateTabTitle();
+
+        // 4. 根據網址載入主內容
+        if (currentPage === 'search' && query) {
             await executeSearch(query);
         } else {
-            await loadPage(page, false);
+            await loadPage(currentPage, false);
         }
-
-        // 6. 最後更新導覽列項目 (因為這需要 rawDataCache 裡的標題資料)
-        renderNav();
-        updateTabTitle();
 
     } catch (error) {
         console.error("初始化失敗:", error);
-        if (app) {
-            app.innerHTML = `<div class="text-center py-20 text-red-500">
-                系統載入中，請稍候... <br>
-                <button onclick="location.reload()" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded">點此重新整理</button>
-            </div>`;
-        }
+        document.getElementById('app').innerHTML = `<div class="text-center py-20 text-red-500">連線不穩定，請重新整理頁面。</div>`;
     }
 }
 
@@ -1041,6 +1033,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
