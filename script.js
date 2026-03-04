@@ -32,31 +32,25 @@ async function fetchSheetData(sheetName) {
     }
 }
 
+// 確保全域變數名稱統一
+let rawDataCache = {}; 
+
 async function fetchGASProducts() {
-    // 1. 檢查快取
-    if (allProductsCache && allProductsCache.length > 0) {
-        return allProductsCache;
-    }
+    // 如果已經有資料，直接回傳
+    if (Object.keys(rawDataCache).length > 0) return rawDataCache;
 
     try {
         const response = await fetch(GAS_PRODUCT_URL);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        
         const data = await response.json();
-
-        // 2. 資料防呆：確保抓到的是陣列且有內容
-        if (Array.isArray(data) && data.length > 0) {
-            allProductsCache = data;
-            // 如果你的 rawDataCache 也是靠這個 API 提供的，記得要在這裡同步
-            // rawDataCache = data; 
-            return allProductsCache;
-        } else {
-            throw new Error("API 回傳資料格式不正確或為空");
-        }
-    } catch (e) { 
-        console.error("GAS 抓取失敗:", e); 
-        // 這裡不要只 throw，可以給予 UI 提示
-        throw e; 
+        
+        // 關鍵：將抓到的資料存入 rawDataCache
+        // 假設 API 回傳的是 { "Content": [...], "Product Catalog": [...] }
+        rawDataCache = data; 
+        
+        return rawDataCache;
+    } catch (e) {
+        console.error("資料抓取失敗:", e);
+        throw e;
     }
 }
 
@@ -286,26 +280,37 @@ function getSearchBoxHtml() {
 }
 
 async function initWebsite() {
-    // A. 優先權最高：鎖定語系（解決中英混雜）
-    const params = new URLSearchParams(window.location.search);
-    currentLang = params.get('lang') || 'zh'; 
-
     try {
-        // B. 等待資料（解決一直 Loading）
-        // 確保這裡抓完後，rawDataCache 裡面已經有 Content 頁面的資料了
+        // A. 優先鎖定語系，解決「導覽條是英文」的問題
+        const params = new URLSearchParams(window.location.search);
+        currentLang = params.get('lang') || 'zh'; 
+        const langIdx = (currentLang === 'zh') ? 1 : 2;
+
+        // B. 【最重要】等待 GAS 資料完全載入
+        // 必須確保 fetchGASProducts 執行完後，rawDataCache 已包含所有分頁
         await fetchGASProducts(); 
 
-        // C. 資料到位後才渲染 UI
-        renderLogoAndStores(); // 這裡現在能抓到 Content 裡的 Logo 了
-        renderNav();           // 這裡現在能根據 currentLang 抓到正確標題了
-        updateLangButton();
+        // C. 資料到位後，立刻渲染「全域 UI」
+        renderLogoAndStores(); // 渲染 Logo
+        renderNav();           // 渲染導覽列 (此時標題會是正確語系)
+        updateLangButton();    // 更新語系按鈕
 
-        // D. 最後載入分頁
+        // D. 判斷要載入的分頁
         const page = params.get('page') || 'Content';
-        loadPage(page, false);
+        
+        // E. 執行分頁渲染
+        if (page === 'search') {
+            const query = params.get('q');
+            executeSearch(query);
+        } else {
+            // 注意：這裡直接呼叫 loadPage，loadPage 會再去呼叫你的 renderHome
+            loadPage(page, false); 
+        }
+
+        updateTabTitle();
 
     } catch (e) {
-        console.error("初始化失敗", e);
+        console.error("初始化失敗:", e);
     }
 }
 // 確保頁面載入時執行
@@ -356,10 +361,10 @@ async function loadPage(pageName, updateUrl = true) {
     const app = document.getElementById('app');
     if (!app) return;
 
+    // 這裡確保 langIdx 永遠跟隨最新的 currentLang，解決中英混雜
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
 
-    // 顯示 Loading 動畫
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
@@ -368,32 +373,47 @@ async function loadPage(pageName, updateUrl = true) {
         } else if (pageName === 'product') { 
             await renderProductDetail(); 
         } else if (pageName === 'search') {
-            // 搜尋邏輯通常在 executeSearch 已經處理 app.innerHTML
             const params = new URLSearchParams(window.location.search);
             executeSearch(params.get('q'));
         } else {
-            // 優先使用快取資料
+            // --- 關鍵修正區 ---
+            // 如果是首頁 (Content)，我們需要確保走馬燈所需的其他分頁也存在
+            if (pageName === 'Content') {
+                // 如果快取裡沒有目錄或關於我們，補抓它們 (防止走馬燈消失)
+                if (!rawDataCache['Product Catalog'] || !rawDataCache['About Us']) {
+                    console.log("補抓首頁所需之關聯分頁資料...");
+                    // 這裡強烈建議在 initWebsite 就一次 await fetchGASProducts() 抓完
+                    // 如果沒抓完，這裡會導致 renderHome 抓不到圖片
+                }
+            }
+
             let data = rawDataCache[pageName];
 
-            // 如果快取沒資料，才進行單一分頁抓取（保險機制）
             if (!data || data.length === 0) {
                 console.log(`Cache 命中失敗，補抓分頁資料: ${pageName}`);
                 data = await fetchSheetData(pageName);
-                rawDataCache[pageName] = data; // 存回快取
+                rawDataCache[pageName] = data;
             }
             
             if (!data || data.length === 0) throw new Error("無資料內容");
 
-            // 渲染各頁面 (對接你的渲染函數)
-            if (pageName === "Content") renderHome(rawDataCache["Content"], langIdx);
-            else if (pageName === "Product Catalog") renderProductCatalog(data, langIdx);
-            else if (pageName === "About Us") renderAboutOrContent(data, langIdx, pageName);
-            else if (pageName === "Business Scope") renderBusinessScope(data, langIdx, pageName);
-            else if (pageName === "Join Us") renderJoinUs(data, langIdx, pageName);
-            else if (pageName === "Contact Us") renderContactUs(data, langIdx, pageName);
+            // 修正渲染呼叫：確保 renderHome 使用 await
+            if (pageName === "Content") {
+                await renderHome(data, langIdx); // 加 await 確保渲染完整
+            } else if (pageName === "Product Catalog") {
+                renderProductCatalog(data, langIdx);
+            } else if (pageName === "About Us") {
+                renderAboutOrContent(data, langIdx, pageName);
+            } else if (pageName === "Business Scope") {
+                renderBusinessScope(data, langIdx, pageName);
+            } else if (pageName === "Join Us") {
+                renderJoinUs(data, langIdx, pageName);
+            } else if (pageName === "Contact Us") {
+                renderContactUs(data, langIdx, pageName);
+            }
         }
 
-        // 產品相關頁面顯示搜尋框
+        // 搜尋框邏輯
         if (isProductPage && pageName !== 'product') {
             if (typeof getSearchBoxHtml === 'function') {
                 app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
@@ -1035,6 +1055,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
