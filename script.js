@@ -32,9 +32,6 @@ async function fetchSheetData(sheetName) {
     }
 }
 
-// 確保全域變數名稱統一
-let rawDataCache = {}; 
-
 async function fetchGASProducts() {
     // 如果已經有資料，直接回傳
     if (Object.keys(rawDataCache).length > 0) return rawDataCache;
@@ -1055,6 +1052,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
