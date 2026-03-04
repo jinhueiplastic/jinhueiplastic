@@ -211,11 +211,10 @@ async function initWebsite() {
         currentLang = params.get('lang') || 'zh';
         currentPage = params.get('page') || 'Content';
 
-        await fetchData();
+        await fetchData(); // <--- 檢查這裡是否成功抓到資料
         renderNav();
         updateLangButton();
         
-        // 根據網址參數決定載入哪個頁面
         if (currentPage === 'search') {
             const query = params.get('q');
             executeSearch(query);
@@ -227,8 +226,9 @@ async function initWebsite() {
             loadPage(currentPage);
         }
     } catch (error) {
-        // 僅保留必要的錯誤回報，避免干擾使用者
-        document.getElementById('app').innerHTML = `<p class="text-center py-20 text-gray-400">系統載入中，請稍候...</p>`;
+        console.error("❌ 初始化失敗原因:", error);
+        // 顯示具體錯誤，這樣我們才知道哪裡寫錯
+        document.getElementById('app').innerHTML = `<p class="text-center py-20 text-red-500">載入失敗: ${error.message}</p>`;
     }
 }
 
@@ -886,4 +886,5 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
