@@ -37,15 +37,14 @@ body {
     transition: 0.2s;
 }
 
-/* --- 導覽列容器優化 --- */
+/* --- 導覽列容器 --- */
 .nav-bar-bg { 
     background-color: #154f9c; 
-    position: relative; /* 為了讓偽元素漸層能定位 */
+    position: relative;
     width: 100%;
-    overflow: hidden;
 }
 
-/* 導覽列表：核心切換邏輯 */
+/* 導覽列表基礎 */
 #main-nav {
     display: flex;
     overflow-x: auto;
@@ -53,10 +52,8 @@ body {
     -webkit-overflow-scrolling: touch;
     list-style: none;
     margin: 0;
-    padding: 0 10px;
-    
-    /* 【關鍵修改】手機版預設：靠左 */
-    justify-content: flex-start; 
+    padding: 0 15px;
+    justify-content: flex-start; /* 手機版靠左 */
 }
 
 /* 【關鍵修改】電腦版切換：置中 */
@@ -68,17 +65,19 @@ body {
     }
 }
 
-/* 隱藏捲動條 (你原本就有這一行，保留即可) */
+/* 隱藏捲動條 */
 #main-nav::-webkit-scrollbar { display: none; }
 
-/* 導覽項目：控制厚度與間距 */
+/* --- 導覽項目核心樣式 --- */
 .nav-item {
-    color: rgba(255, 255, 255, 0.8);
+    position: relative; /* 為了讓動畫線條定位 */
+    color: rgba(255, 255, 255, 0.75);
     font-weight: 700;
-    transition: 0.3s;
-    border-bottom: 3px solid transparent;
-    padding: 6px 16px; /* 6px 上下厚度, 16px 左右間距 */
+    transition: all 0.3s ease;
+    cursor: pointer;
     flex-shrink: 0;
+    /* 手機版厚度：保持輕薄 */
+    padding: 8px 16px; 
 }
 
 .nav-item.active { 
@@ -86,8 +85,55 @@ body {
     border-bottom-color: #ffffff; 
 }
 
-/* 手機版右側漸層 (僅在螢幕小於 768px 顯示) */
-@media (max-width: 768px) {
+/* --- 電腦版專業化設計 (min-width: 768px) --- */
+@media (min-width: 768px) {
+    #main-nav {
+        justify-content: center; /* 電腦版置中 */
+        overflow: visible;
+        padding: 0;
+    }
+
+    .nav-item {
+        /* 電腦版厚度：增加高度，視覺更穩重 */
+        padding: 16px 24px; 
+        font-size: 1.05rem;
+        letter-spacing: 0.05em;
+        border-bottom: none; /* 移除原本死板的 border-bottom */
+    }
+
+    /* 科技感動畫：底部分線 */
+    .nav-item::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 0; /* 預設寬度為 0 */
+        height: 3px;
+        background: #60a5fa; /* 亮藍色，增加科技感 */
+        box-shadow: 0 0 10px rgba(96, 165, 250, 0.8); /* 霓虹發光感 */
+        transition: all 0.3s ease;
+        transform: translateX(-50%);
+    }
+
+    /* 滑鼠懸停與選中狀態 */
+    .nav-item:hover {
+        color: #ffffff;
+        background-color: rgba(255, 255, 255, 0.05); /* 淡淡的背光 */
+    }
+
+    .nav-item:hover::after,
+    .nav-item.active::after {
+        width: 70%; /* 線條伸展 */
+    }
+
+    .nav-item.active {
+        color: #ffffff;
+        text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+    }
+}
+
+/* --- 手機版右側漸層 --- */
+@media (max-width: 767px) {
     .nav-bar-bg::after {
         content: '';
         position: absolute;
@@ -312,5 +358,6 @@ p {
         aspect-ratio: 16 / 10; /* 手機版稍微扁一點點 */
     }
 }
+
 
 
