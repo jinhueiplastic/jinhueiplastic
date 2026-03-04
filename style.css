@@ -70,57 +70,73 @@ body {
 /* 隱藏捲動條 */
 #main-nav::-webkit-scrollbar { display: none; }
 
-/* --- 導覽項目核心樣式 (預設即為手機版) --- */
+/* --- 導覽項目核心樣式 (手機與電腦通用基礎) --- */
 .nav-item {
     position: relative; 
-    color: rgba(255, 255, 255, 0.7); /* 非選取時稍微透明 */
+    color: rgba(255, 255, 255, 0.6); /* 沒選中時稍微暗一點，對比才強 */
     font-weight: 700;
-    transition: all 0.3s ease;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     flex-shrink: 0;
-    padding: 12px 16px; /* 稍微增加高度，讓底線空間更明顯 */
-    border-bottom: 3px solid transparent; /* 預設透明底線，防止跳動 */
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.nav-item.active { 
-    color: #ffffff; 
-    border-bottom: 3px solid #60a5fa; /* 手機版直接使用亮藍色底線 */
-    /* 這裡加入發光效果 (Glow) */
-    text-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
-    box-shadow: inset 0 -4px 8px -4px rgba(96, 165, 250, 0.8); 
+/* 移除原本醜醜的 border-bottom，改用虛擬元素製作「呼吸燈」 */
+.nav-item::after {
+    content: '';
+    position: absolute;
+    bottom: 4px; /* 距離底部一點距離，比較精緻 */
+    left: 50%;
+    width: 0;
+    height: 3px;
+    background: #00d2ff; /* 採用更亮的青藍色，霓虹感最強 */
+    border-radius: 10px;
+    transform: translateX(-50%);
+    transition: all 0.3s ease;
+    /* 核心：三層發光，做出光暈擴散感 */
+    box-shadow: 
+        0 0 5px #00d2ff,
+        0 0 10px #00d2ff,
+        0 0 20px rgba(0, 210, 255, 0.6); 
+    opacity: 0;
 }
 
+/* 選中狀態 (Active) */
+.nav-item.active {
+    color: #ffffff;
+    /* 文字也帶一點微光 */
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.nav-item.active::after {
+    width: 60%; /* 線條長度 */
+    opacity: 1;
+}
+
+/* 滑鼠懸停效果 (Hover) */
+.nav-item:hover {
+    color: #ffffff;
+}
+
+.nav-item:hover::after {
+    width: 40%; /* 懸停時先伸出一小段 */
+    opacity: 0.5;
+}
+
+/* --- 電腦版微調 (min-width: 768px) --- */
 @media (min-width: 768px) {
     .nav-item {
-        padding: 16px 24px; 
-        font-size: 1.05rem;
-        border-bottom: none; /* 電腦版不需要 border-bottom，改用 ::after 動畫 */
+        padding: 16px 28px;
+        font-size: 1.1rem;
     }
-
-    /* 科技感動畫：底部分線 */
-    .nav-item::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        width: 0; 
-        height: 4px; /* 線條稍微加厚一點點點 */
-        background: #60a5fa; 
-        border-radius: 2px;
-        /* 強力發光效果 */
-        box-shadow: 0 0 15px rgba(96, 165, 250, 1), 0 0 5px rgba(255, 255, 255, 0.8); 
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        transform: translateX(-50%);
-    }
-
-    .nav-item:hover::after,
+    
     .nav-item.active::after {
-        width: 80%; /* 選中時線條伸長到 80% */
-    }
-
-    .nav-item.active {
-        color: #ffffff;
-        background-color: rgba(255, 255, 255, 0.1); /* 選中時有個淡淡的背光塊 */
+        width: 70%; /* 電腦版寬度可以大一點 */
+        height: 4px;
+        bottom: 0; /* 電腦版切齊底部 */
     }
 }
 
@@ -350,6 +366,7 @@ p {
         aspect-ratio: 16 / 10; /* 手機版稍微扁一點點 */
     }
 }
+
 
 
 
