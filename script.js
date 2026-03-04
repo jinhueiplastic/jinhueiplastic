@@ -33,20 +33,17 @@ async function fetchSheetData(sheetName) {
 }
 
 async function fetchGASProducts() {
-    // 如果已經有資料，直接回傳
-    if (Object.keys(rawDataCache).length > 0) return rawDataCache;
+    if (allProductsCache) return allProductsCache; // 如果已有快取則回傳
 
     try {
         const response = await fetch(GAS_PRODUCT_URL);
         const data = await response.json();
         
-        // 關鍵：將抓到的資料存入 rawDataCache
-        // 假設 API 回傳的是 { "Content": [...], "Product Catalog": [...] }
-        rawDataCache = data; 
-        
-        return rawDataCache;
+        // 關鍵：存入獨立的變數，不要覆蓋 rawDataCache
+        allProductsCache = data; 
+        return data;
     } catch (e) {
-        console.error("資料抓取失敗:", e);
+        console.error("產品 JSON 抓取失敗:", e);
         throw e;
     }
 }
@@ -56,15 +53,26 @@ async function fetchGASProducts() {
  */
 async function fetchData() {
     try {
-        // 同步抓取所有分頁並存入 Cache
-        const results = await Promise.all(tabs.map(tab => fetchSheetData(tab)));
+        console.log("開始同步抓取所有資料...");
+        // 同時啟動所有請求，速度最快
+        const [sheetResults, gasData] = await Promise.all([
+            Promise.all(tabs.map(tab => fetchSheetData(tab))),
+            fetch(GAS_PRODUCT_URL).then(res => res.json())
+        ]);
+
+        // 存入分頁資料 (Logo, 簡介, 走馬燈圖片都在這)
         tabs.forEach((tab, index) => {
-            rawDataCache[tab] = results[index];
+            rawDataCache[tab] = sheetResults[index];
         });
-        // 抓取產品 JSON
-        await fetchGASProducts();
+
+        // 存入產品 JSON
+        rawDataCache["allProducts"] = gasData; // 確保名稱統一
+        allProductsCache = gasData; 
+        
+        console.log("資料全部載入完成", rawDataCache);
         return true;
     } catch (e) {
+        console.error("fetchData 發生錯誤:", e);
         throw e;
     }
 }
@@ -278,27 +286,22 @@ function getSearchBoxHtml() {
 
 async function initWebsite() {
     try {
-        // 1. 優先鎖定語系
         const params = new URLSearchParams(window.location.search);
         currentLang = params.get('lang') || 'zh';
 
-        // 2. 務必等待資料抓完 (解決 Loading 與 走馬燈消失)
-        // 確保 fetchGASProducts 內部是將資料存入 rawDataCache
-        await fetchGASProducts(); 
+        // 必須呼叫 fetchData，它包含了 Promise.all 同步抓取所有分頁
+        await fetchData(); 
 
-        // 3. 資料到位後，依序渲染 UI
-        renderLogoAndStores(); 
-        renderNav();           
-        updateLangButton();    
+        // 資料到位後再渲染
+        renderLogoAndStores();
+        renderNav();
+        updateLangButton();
 
-        // 4. 載入當前頁面
         const page = params.get('page') || 'Content';
         await loadPage(page, false); 
-
         updateTabTitle();
     } catch (e) {
-        console.error("初始化失敗:", e);
-        document.getElementById('app').innerHTML = "系統維護中，請稍後再試。";
+        console.error("Init Error:", e);
     }
 }
 
@@ -649,7 +652,8 @@ async function renderCategoryList() {
         const allProducts = await fetchGASProducts();
         const filtered = allProducts.filter(p => String(p["Category"] || "").trim() === String(rawCatName).trim());
         const localizedCatName = getLocalizedCategoryName(rawCatName);
-        const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
+        // 修正這行，確保「商品目錄」能隨語系切換
+const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
             const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
@@ -688,16 +692,15 @@ async function renderProductDetail() {
         }
 
         // --- 1. 建立 Logo 圖庫 (A欄名稱, D欄圖片) ---
-        if (!rawDataCache["Product Catalog"]) {
-            rawDataCache["Product Catalog"] = await fetchSheetData("Product Catalog");
-        }
-        
+        const catalogSheetData = rawDataCache["Product Catalog"] || [];
         const logoLibrary = {};
-        rawDataCache["Product Catalog"].forEach(row => {
+
+        catalogSheetData.forEach(row => {
             const rawName = String(row[0] || "").trim(); // A 欄: Store 1, Store 2...
-            const logoUrl = String(row[3] || "").trim(); // D 欄: Logo URL (Index 3)
+            const logoUrl = String(row[3] || "").trim(); // D 欄: 圖片 URL
             
             if (rawName.toLowerCase().startsWith("store") && logoUrl) {
+                // 轉為小寫並移除空格，例如 "Store 1" 變 "store1"
                 const cleanKey = rawName.toLowerCase().replace(/\s+/g, '');
                 logoLibrary[cleanKey] = logoUrl;
             }
@@ -1044,6 +1047,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
