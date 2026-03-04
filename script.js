@@ -1,3 +1,4 @@
+/* --- 全域變數與配置 --- */
 const SPREADSHEET_ID = '1Z3xaacD4N1Piagjg7mWAH2bzGadCUX8zS24RbInF4QM';
 const GAS_PRODUCT_URL = 'https://script.google.com/macros/s/AKfycby0WRTp_F33uuVYp1tq8wAYWIw80XM3v3vdPErq8joVZoZu5DpLW_qNtVruHJ5o1AFw/exec';
 const tabs = ["Content", "About Us", "Business Scope", "Product Catalog", "Join Us", "Contact Us"];
@@ -6,77 +7,20 @@ let currentLang = 'zh';
 let currentPage = 'Content'; 
 let rawDataCache = {};
 let allProductsCache = null;
-// 在 script.js 頂部新增一個全域變數
 let storeLogoMap = {}; 
 
-function renderLogoAndStores() {
-    const logoContainer = document.getElementById('logo-container');
-    const storeContainer = document.getElementById('store-container');
-    const data = rawDataCache['Content'] || [];
-    logoContainer.innerHTML = ''; storeContainer.innerHTML = '';
-    
-    // 清空舊的 Map 重新填充
-    storeLogoMap = {}; 
-
-    data.forEach(row => {
-        const aColRaw = (row[0] || "").trim(); // 原始字串如 "Store 1"
-        const aColLower = aColRaw.toLowerCase();
-        const imgUrl = (row[3] || "").trim();
-        const linkUrl = (row[4] || "").trim() || "#";
-        
-        if (aColLower === 'logo' && imgUrl) {
-            logoContainer.innerHTML = `<a href="javascript:void(0)" onclick="switchPage('Content')"><img src="${imgUrl}" class="logo-img" alt="Logo"></a>`;
-        }
-        
-        // 關鍵：將 key 統一轉小寫存入 Map，避免比對出錯
-        if (aColLower.startsWith('store') && imgUrl) {
-            storeLogoMap[aColRaw] = imgUrl; // 這裡存 "Store 1"
-            
-            const a = document.createElement('a');
-            a.href = linkUrl; a.target = "_blank";
-            a.innerHTML = `<img src="${imgUrl}" class="store-img hover:opacity-75 transition">`;
-            storeContainer.appendChild(a);
-        }
-    });
-}
-
-// --- 路由與導覽邏輯 ---
-function switchPage(page, params = {}) {
-    const u = new URL(window.location.origin + window.location.pathname);
-    u.searchParams.set('page', page);
-    for (const key in params) { u.searchParams.set(key, params[key]); }
-    window.history.pushState({}, '', u);
-
-    currentPage = page;
-
-    // --- 使用統一函數更新標題 ---
-    let titleToSet = params.title || "";
-    if (page === 'product' && params.product) {
-        const langIdx = currentLang === 'zh' ? 1 : 2;
-        titleToSet = params.product[langIdx] || params.product[1];
-    }
-    updateTabTitle(titleToSet);
-    // -------------------------
-
-    renderNav();
-    loadPage(page, false); 
-}
+/* --- 核心資料抓取邏輯 --- */
 
 const getSheetUrl = (sheetName) => `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
 
 async function fetchSheetData(sheetName) {
-    console.log(`📡 開始請求: ${sheetName}`);
     try {
         const url = getSheetUrl(sheetName);
         const response = await fetch(url);
-        
         if (!response.ok) throw new Error("網路請求沒回應");
-
         const text = await response.text();
         const json = JSON.parse(text.substring(47).slice(0, -2));
-        
         if (json.table && json.table.rows) {
-            console.log(`✅ ${sheetName} 資料請求成功`);
             return json.table.rows.map(row => 
                 row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
             );
@@ -84,7 +28,7 @@ async function fetchSheetData(sheetName) {
         return [];
     } catch (e) {
         console.error(`❌ ${sheetName} 請求出錯:`, e);
-        return []; // 失敗一定要傳回空陣列，程式才走得下去
+        return [];
     }
 }
 
@@ -95,7 +39,28 @@ async function fetchGASProducts() {
         const data = await response.json();
         allProductsCache = data;
         return allProductsCache;
-    } catch (e) { console.error("GAS Error:", e); throw e; }
+    } catch (e) { 
+        console.error("GAS Error:", e); 
+        throw e; 
+    }
+}
+
+/**
+ * 總調度函數：供 initWebsite 呼叫
+ */
+async function fetchData() {
+    try {
+        // 同步抓取所有分頁並存入 Cache
+        const results = await Promise.all(tabs.map(tab => fetchSheetData(tab)));
+        tabs.forEach((tab, index) => {
+            rawDataCache[tab] = results[index];
+        });
+        // 抓取產品 JSON
+        await fetchGASProducts();
+        return true;
+    } catch (e) {
+        throw e;
+    }
 }
 
 function handleRouting() {
@@ -211,10 +176,15 @@ async function initWebsite() {
         currentLang = params.get('lang') || 'zh';
         currentPage = params.get('page') || 'Content';
 
-        await fetchData(); // <--- 檢查這裡是否成功抓到資料
+        // 啟動資料抓取
+        await fetchData();
+        
+        // 渲染基礎 UI 元件
+        renderLogoAndStores(); 
         renderNav();
         updateLangButton();
         
+        // 路由分流處理
         if (currentPage === 'search') {
             const query = params.get('q');
             executeSearch(query);
@@ -226,9 +196,11 @@ async function initWebsite() {
             loadPage(currentPage);
         }
     } catch (error) {
-        console.error("❌ 初始化失敗原因:", error);
-        // 顯示具體錯誤，這樣我們才知道哪裡寫錯
-        document.getElementById('app').innerHTML = `<p class="text-center py-20 text-red-500">載入失敗: ${error.message}</p>`;
+        console.error("❌ 初始化失敗:", error);
+        const app = document.getElementById('app');
+        if (app) {
+            app.innerHTML = `<p class="text-center py-20 text-red-500 font-bold">載入失敗，請重新整理頁面或檢查網路連線。</p>`;
+        }
     }
 }
 
@@ -886,5 +858,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
