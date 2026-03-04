@@ -70,76 +70,58 @@ body {
 /* 隱藏捲動條 */
 #main-nav::-webkit-scrollbar { display: none; }
 
-/* --- 導覽項目核心樣式 (手機與電腦通用基礎) --- */
+/* --- 導覽項目核心樣式 (手機與電腦通用) --- */
 .nav-item {
     position: relative; 
-    color: rgba(255, 255, 255, 0.6); /* 沒選中時稍微暗一點，對比才強 */
+    color: rgba(255, 255, 255, 0.75);
     font-weight: 700;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.3s ease;
     cursor: pointer;
     flex-shrink: 0;
-    padding: 12px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 8px 16px; /* 手機版間距 */
 }
 
-/* 移除原本醜醜的 border-bottom，改用虛擬元素製作「呼吸燈」 */
+/* 【關鍵：將發光底線移至此處，手機版即可看見】 */
 .nav-item::after {
     content: '';
     position: absolute;
-    bottom: 4px; /* 距離底部一點距離，比較精緻 */
+    bottom: 0;
     left: 50%;
-    width: 0;
+    width: 0; 
     height: 3px;
-    background: #00d2ff; /* 採用更亮的青藍色，霓虹感最強 */
-    border-radius: 10px;
-    transform: translateX(-50%);
+    background: #60a5fa; 
+    box-shadow: 0 0 10px rgba(96, 165, 250, 0.8); 
     transition: all 0.3s ease;
-    /* 核心：三層發光，做出光暈擴散感 */
-    box-shadow: 
-        0 0 5px #00d2ff,
-        0 0 10px #00d2ff,
-        0 0 20px rgba(0, 210, 255, 0.6); 
-    opacity: 0;
+    transform: translateX(-50%);
 }
 
-/* 選中狀態 (Active) */
-.nav-item.active {
+/* 滑鼠懸停與選中狀態 (通用) */
+.nav-item:hover, .nav-item.active {
     color: #ffffff;
-    /* 文字也帶一點微光 */
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
+/* 選中或懸停時，底線伸展 (通用) */
+.nav-item:hover::after,
 .nav-item.active::after {
-    width: 60%; /* 線條長度 */
-    opacity: 1;
+    width: 70%; 
 }
 
-/* 滑鼠懸停效果 (Hover) */
-.nav-item:hover {
-    color: #ffffff;
+.nav-item.active {
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
 }
 
-.nav-item:hover::after {
-    width: 40%; /* 懸停時先伸出一小段 */
-    opacity: 0.5;
-}
-
-/* --- 電腦版微調 (min-width: 768px) --- */
+/* --- 電腦版專用微調 --- */
 @media (min-width: 768px) {
     .nav-item {
-        padding: 16px 28px;
-        font-size: 1.1rem;
+        padding: 16px 24px;  /* 電腦版高度較高 */
+        font-size: 1.05rem;
+        letter-spacing: 0.05em;
     }
-    
-    .nav-item.active::after {
-        width: 70%; /* 電腦版寬度可以大一點 */
-        height: 4px;
-        bottom: 0; /* 電腦版切齊底部 */
+
+    .nav-item:hover {
+        background-color: rgba(255, 255, 255, 0.05); 
     }
 }
-
 /* --- 手機版右側漸層 --- */
 @media (max-width: 767px) {
     .nav-bar-bg::after {
@@ -366,6 +348,7 @@ p {
         aspect-ratio: 16 / 10; /* 手機版稍微扁一點點 */
     }
 }
+
 
 
 
