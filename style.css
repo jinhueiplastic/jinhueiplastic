@@ -349,22 +349,23 @@ p {
     }
 }
 
-/* --- 強制手機版標題容器寬度與縮放 --- */
 @media (max-width: 767px) {
-    /* 找到公司名稱的外層容器 */
-    .company-name-container, 
-    #app .mb-6 div {
-        max-width: 60% !important; /* 強制只佔畫面的 60% */
-        word-break: break-all;     /* 容許長單字換行 */
+    /* 修正首頁內容區塊的頂部間距 */
+    #app {
+        padding-top: 0.5rem !important;
     }
 
-    /* 配合容器縮小，同步調降字體基準 */
+    /* 修正公司名稱標題的大小與行高 */
     #app h2 {
-        line-height: 1.1 !important; /* 直接強制行高為 1.1 倍 */
+        font-size: 1.1rem !important; /* 再次微調字體 */
+        line-height: 1.1 !important;
+        margin-top: 0 !important;
         margin-bottom: 2px !important;
     }
-    #app h3 {
-        line-height: 1.1 !important;
-        margin-top: 2px !important;
-}
 
+    #app h3 {
+        font-size: 0.8rem !important;
+        line-height: 1.1 !important;
+        margin-top: 0 !important;
+    }
+}
