@@ -312,8 +312,8 @@ function renderNav() {
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     let navHtml = '';
     
-    // 確保清單樣式是靠左的 flex
-    nav.className = "flex items-center list-none m-0";
+    // 保持乾淨的 class，讓 CSS 控制所有對齊
+    nav.className = "flex items-center";
 
     for (const tab of tabs) {
         const data = rawDataCache[tab];
@@ -325,26 +325,23 @@ function renderNav() {
         }
         
         let isActive = (currentPage === tab) ? 'active' : '';
+        // 麵包屑高亮邏輯
         if ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog') {
             isActive = 'active';
         }
 
-        // 使用 px-4 (左右間距) 讓手機版項目之間更有呼吸空間
-        navHtml += `<li class="nav-item ${isActive} px-4 cursor-pointer" onclick="switchPage('${tab}', {title: '${displayName}'})">${displayName}</li>`;
+        // 移除多餘的內建 px-6，完全由 CSS 的 .nav-item 控制
+        navHtml += `<li class="nav-item ${isActive}" onclick="switchPage('${tab}', {title: '${displayName}'})">${displayName}</li>`;
     }
     nav.innerHTML = navHtml;
 
-    // --- 自動捲動到當前 active 項目 ---
-    setTimeout(() => {
-        const activeElem = nav.querySelector('.nav-item.active');
-        if (activeElem) {
-            activeElem.scrollIntoView({
-                behavior: 'smooth',
-                inline: 'center', // 讓選中的項目盡量滾動到中間
-                block: 'nearest'
-            });
-        }
-    }, 150);
+    // 手機版自動捲動選中項目
+    if (window.innerWidth < 768) {
+        setTimeout(() => {
+            const activeElem = nav.querySelector('.nav-item.active');
+            if (activeElem) activeElem.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+        }, 150);
+    }
 }
 
 async function loadPage(pageName, updateUrl = true) {
@@ -1032,6 +1029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
