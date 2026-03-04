@@ -104,6 +104,36 @@ function renderLogoAndStores() {
     });
 }
 
+/**
+ * 路由與頁面切換邏輯
+ */
+function switchPage(page, params = {}) {
+    // 1. 更新網址列而不重刷頁面
+    const u = new URL(window.location.origin + window.location.pathname);
+    u.searchParams.set('page', page);
+    u.searchParams.set('lang', currentLang); // 保持當前語系
+    for (const key in params) { 
+        u.searchParams.set(key, params[key]); 
+    }
+    window.history.pushState({}, '', u);
+
+    // 2. 更新全域變數
+    currentPage = page;
+
+    // 3. 更新分頁標題 (如果 params 有傳 title 就用，沒有就用 page 名稱)
+    updateTabTitle(params.title || page);
+
+    // 4. 重新渲染導覽列 (標示當前 active 狀態)
+    if (typeof renderNav === 'function') renderNav();
+
+    // 5. 執行頁面內容載入
+    if (typeof loadPage === 'function') {
+        loadPage(page, false); 
+    } else {
+        console.error("loadPage 函數尚未定義");
+    }
+}
+
 function handleRouting() {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
@@ -280,12 +310,13 @@ function renderNav() {
 async function loadPage(pageName, updateUrl = true) {
     console.log(`執行 loadPage: ${pageName}`);
     
-    // 強制刪除這行，避免無窮迴圈: if (updateUrl) switchPage(pageName); 
-
     const app = document.getElementById('app');
+    if (!app) return;
+
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
 
+    // 顯示 Loading 動畫
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
@@ -294,19 +325,24 @@ async function loadPage(pageName, updateUrl = true) {
         } else if (pageName === 'product') { 
             await renderProductDetail(); 
         } else if (pageName === 'search') {
-            // 搜尋邏輯已在 executeSearch 處理
+            // 搜尋邏輯通常在 executeSearch 已經處理 app.innerHTML
+            const params = new URLSearchParams(window.location.search);
+            executeSearch(params.get('q'));
         } else {
-            // 如果沒資料才抓取
-            if (!rawDataCache[pageName]) {
-                console.log(`補抓分頁資料: ${pageName}`);
-                rawDataCache[pageName] = await fetchSheetData(pageName);
+            // 優先使用快取資料
+            let data = rawDataCache[pageName];
+
+            // 如果快取沒資料，才進行單一分頁抓取（保險機制）
+            if (!data || data.length === 0) {
+                console.log(`Cache 命中失敗，補抓分頁資料: ${pageName}`);
+                data = await fetchSheetData(pageName);
+                rawDataCache[pageName] = data; // 存回快取
             }
             
-            const data = rawDataCache[pageName];
-            if (!data || data.length === 0) throw new Error("無資料");
+            if (!data || data.length === 0) throw new Error("無資料內容");
 
-            // 渲染各頁面
-            if (pageName === "Content") renderHome(data, langIdx);
+            // 渲染各頁面 (對接你的渲染函數)
+            if (pageName === "Content") renderAboutOrContent(data, langIdx, "Content"); // 首頁通常與 About 共用邏輯或用 renderHome
             else if (pageName === "Product Catalog") renderProductCatalog(data, langIdx);
             else if (pageName === "About Us") renderAboutOrContent(data, langIdx, pageName);
             else if (pageName === "Business Scope") renderBusinessScope(data, langIdx, pageName);
@@ -314,15 +350,19 @@ async function loadPage(pageName, updateUrl = true) {
             else if (pageName === "Contact Us") renderContactUs(data, langIdx, pageName);
         }
 
+        // 產品相關頁面顯示搜尋框
         if (isProductPage && pageName !== 'product') {
-            app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
+            if (typeof getSearchBoxHtml === 'function') {
+                app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
+            }
         }
     } catch (e) {
         console.error(`${pageName} 載入失敗:`, e);
-        app.innerHTML = `<div class="text-center py-20 text-red-500">此頁面目前無法載入，請稍後再試。</div>`;
+        app.innerHTML = `<div class="text-center py-20 text-gray-400">目前暫無內容 (${pageName})。</div>`;
     }
     window.scrollTo(0, 0);
 }
+
 async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
     let companyNames = ''; 
@@ -899,6 +939,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
