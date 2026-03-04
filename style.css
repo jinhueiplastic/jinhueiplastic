@@ -349,9 +349,14 @@ p {
     }
 }
 
-
-
-
-
-
-
+/* 在 style.css 底部加入 */
+@media (max-width: 480px) {
+    #app h2.text-2xl {
+        font-size: 1.25rem !important; /* 強制縮小手機版標題字體 */
+        line-height: 1.2;
+    }
+    #app h3.text-lg {
+        font-size: 1rem !important;
+        margin-top: 4px;
+    }
+}
