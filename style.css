@@ -21,6 +21,8 @@ body {
     z-index: 50;
     background: white;
     border-bottom: 1px solid #e5e7eb;
+    /* 確保固定標頭的陰影不會被下方的深藍色蓋住 */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .logo-img { height: 50px; width: auto; object-fit: contain; display: block; }
@@ -358,6 +360,7 @@ p {
         aspect-ratio: 16 / 10; /* 手機版稍微扁一點點 */
     }
 }
+
 
 
 
