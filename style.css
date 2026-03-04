@@ -360,11 +360,11 @@ p {
 
     /* 配合容器縮小，同步調降字體基準 */
     #app h2 {
-        font-size: 1.2rem !important;
-        line-height: 1.2 !important;
+        line-height: 1.1 !important; /* 直接強制行高為 1.1 倍 */
+        margin-bottom: 2px !important;
     }
-
     #app h3 {
-        font-size: 0.85rem !important;
-    }
+        line-height: 1.1 !important;
+        margin-top: 2px !important;
 }
+
