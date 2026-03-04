@@ -267,37 +267,42 @@ function getSearchBoxHtml() {
 
 async function initWebsite() {
     try {
-        const params = new URLSearchParams(window.location.search);
-        currentLang = params.get('lang') || 'zh';
-        currentPage = params.get('page') || 'Content';
-
-        // 啟動資料抓取
-        await fetchData();
+        // 1. 強制等待資料載入完成，再進行後續動作
+        await fetchGASProducts(); 
         
-        // 渲染基礎 UI 元件
-        renderLogoAndStores(); 
+        const params = new URLSearchParams(window.location.search);
+        const page = params.get('page') || 'Content';
+        const query = params.get('q');
+        const lang = params.get('lang') || 'zh';
+
+        // 2. 同步狀態
+        currentLang = lang;
+        currentPage = page;
+
+        // 3. 根據網址載入正確內容
+        if (page === 'search' && query) {
+            await executeSearch(query);
+        } else {
+            await loadPage(page, false);
+        }
+
+        // 4. 更新 UI
         renderNav();
         updateLangButton();
-        
-        // 路由分流處理
-        if (currentPage === 'search') {
-            const query = params.get('q');
-            executeSearch(query);
-        } else if (currentPage === 'category') {
-            const cat = params.get('cat');
-            const catTitle = params.get('title');
-            renderCategoryProducts(cat, catTitle);
-        } else {
-            loadPage(currentPage);
-        }
+        updateTabTitle();
+
     } catch (error) {
-        console.error("❌ 初始化失敗:", error);
-        const app = document.getElementById('app');
-        if (app) {
-            app.innerHTML = `<p class="text-center py-20 text-red-500 font-bold">載入失敗，請重新整理頁面或檢查網路連線。</p>`;
-        }
+        console.error("初始化失敗:", error);
+        document.getElementById('app').innerHTML = `
+            <div class="text-center py-20">
+                <p class="text-red-500">載入失敗，請重新整理頁面或檢查網路連線。</p>
+                <button onclick="location.reload()" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded">重新整理</button>
+            </div>`;
     }
 }
+
+// 確保頁面載入時執行
+window.addEventListener('DOMContentLoaded', initWebsite);
 
 function toggleLang() {
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
@@ -1029,6 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
