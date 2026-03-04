@@ -37,18 +37,68 @@ body {
     transition: 0.2s;
 }
 
-.nav-bar-bg { background-color: #154f9c; }
+/* --- 導覽列容器優化 --- */
+.nav-bar-bg { 
+    background-color: #154f9c; 
+    position: relative; /* 為了讓偽元素漸層能定位 */
+    width: 100%;
+    overflow: hidden;
+}
+
+/* 導覽列表：核心切換邏輯 */
+#main-nav {
+    display: flex;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    list-style: none;
+    margin: 0;
+    padding: 0 10px;
+    
+    /* 【關鍵修改】手機版預設：靠左 */
+    justify-content: flex-start; 
+}
+
+/* 【關鍵修改】電腦版切換：置中 */
+@media (min-width: 768px) {
+    #main-nav {
+        justify-content: center;
+        overflow-x: hidden; /* 電腦版通常不需要滾動 */
+        padding: 0;
+    }
+}
+
+/* 隱藏捲動條 (你原本就有這一行，保留即可) */
+#main-nav::-webkit-scrollbar { display: none; }
+
+/* 導覽項目：控制厚度與間距 */
 .nav-item {
     color: rgba(255, 255, 255, 0.8);
     font-weight: 700;
     transition: 0.3s;
     border-bottom: 3px solid transparent;
-    padding-top: 8px;    /* 數值愈小愈薄 */
-    padding-bottom: 8px; /* 數值愈小愈薄 */
+    padding: 6px 16px; /* 6px 上下厚度, 16px 左右間距 */
+    flex-shrink: 0;
 }
+
 .nav-item.active { 
     color: #ffffff; 
     border-bottom-color: #ffffff; 
+}
+
+/* 手機版右側漸層 (僅在螢幕小於 768px 顯示) */
+@media (max-width: 768px) {
+    .nav-bar-bg::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 40px;
+        background: linear-gradient(to right, transparent, #154f9c); 
+        pointer-events: none;
+        z-index: 5;
+    }
 }
 
 /* 讓 YouTube 影片寬度自適應容器 */
@@ -147,8 +197,6 @@ p {
     line-height: 1.4; 
     margin-bottom: 0.5rem; 
 }
-
-#main-nav::-webkit-scrollbar { display: none; }
 
 /* 內容區圖片容器 */
 .content-image-wrapper {
@@ -264,4 +312,5 @@ p {
         aspect-ratio: 16 / 10; /* 手機版稍微扁一點點 */
     }
 }
+
 
