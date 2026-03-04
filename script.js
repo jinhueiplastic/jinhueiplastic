@@ -63,6 +63,47 @@ async function fetchData() {
     }
 }
 
+/**
+ * 渲染 Logo 與 賣場圖標
+ */
+function renderLogoAndStores() {
+    const logoContainer = document.getElementById('logo-container');
+    const storeContainer = document.getElementById('store-container');
+    const data = rawDataCache['Content'] || [];
+    
+    // 安全檢查：確保 HTML 元素存在
+    if (!logoContainer || !storeContainer) return;
+
+    logoContainer.innerHTML = ''; 
+    storeContainer.innerHTML = '';
+    storeLogoMap = {}; 
+
+    data.forEach(row => {
+        const aColRaw = (row[0] || "").trim();
+        const aColLower = aColRaw.toLowerCase();
+        const imgUrl = (row[3] || "").trim();
+        const linkUrl = (row[4] || "").trim() || "#";
+        
+        // 處理 Logo
+        if (aColLower === 'logo' && imgUrl) {
+            logoContainer.innerHTML = `
+                <a href="javascript:void(0)" onclick="switchPage('Content')">
+                    <img src="${imgUrl}" class="logo-img" alt="Logo" style="height: 40px; width: auto;">
+                </a>`;
+        }
+        
+        // 處理 賣場按鈕 (Store 1, Store 2...)
+        if (aColLower.startsWith('store') && imgUrl) {
+            storeLogoMap[aColRaw] = imgUrl;
+            const a = document.createElement('a');
+            a.href = linkUrl; 
+            a.target = "_blank";
+            a.innerHTML = `<img src="${imgUrl}" class="store-img hover:opacity-75 transition" style="height: 30px; width: auto;">`;
+            storeContainer.appendChild(a);
+        }
+    });
+}
+
 function handleRouting() {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
@@ -858,6 +899,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
