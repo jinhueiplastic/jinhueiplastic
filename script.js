@@ -266,38 +266,45 @@ function getSearchBoxHtml() {
 }
 
 async function initWebsite() {
+    const app = document.getElementById('app');
+    
     try {
-        // 1. 強制等待資料載入完成，再進行後續動作
-        await fetchGASProducts(); 
-        
+        // 1. 先從網址抓取參數
         const params = new URLSearchParams(window.location.search);
+        const lang = params.get('lang') || 'zh'; // 如果沒設定，預設為中文
         const page = params.get('page') || 'Content';
         const query = params.get('q');
-        const lang = params.get('lang') || 'zh';
 
-        // 2. 同步狀態
-        currentLang = lang;
+        // 2. 立即同步全域變數
+        currentLang = lang; 
         currentPage = page;
 
-        // 3. 根據網址載入正確內容
+        // 3. 渲染 Logo 與 導覽列框架 (這時資料還沒回來，先渲染靜態部分)
+        renderLogo(); 
+        updateLangButton(); 
+
+        // 4. 等待關鍵資料載入 (這是解決「載入失敗」的關鍵)
+        await fetchGASProducts(); 
+
+        // 5. 資料到位後，執行分頁渲染
         if (page === 'search' && query) {
             await executeSearch(query);
         } else {
             await loadPage(page, false);
         }
 
-        // 4. 更新 UI
+        // 6. 最後更新導覽列項目 (因為這需要 rawDataCache 裡的標題資料)
         renderNav();
-        updateLangButton();
         updateTabTitle();
 
     } catch (error) {
         console.error("初始化失敗:", error);
-        document.getElementById('app').innerHTML = `
-            <div class="text-center py-20">
-                <p class="text-red-500">載入失敗，請重新整理頁面或檢查網路連線。</p>
-                <button onclick="location.reload()" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded">重新整理</button>
+        if (app) {
+            app.innerHTML = `<div class="text-center py-20 text-red-500">
+                系統載入中，請稍候... <br>
+                <button onclick="location.reload()" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded">點此重新整理</button>
             </div>`;
+        }
     }
 }
 
@@ -1034,6 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
