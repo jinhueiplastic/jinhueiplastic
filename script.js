@@ -876,9 +876,11 @@ function renderAboutOrContent(data, langIdx, pageName) {
         }
         if (key.includes('company name')) {
     companyNames += `
-        <div class="mb-6 company-name-container">
-            <h2 class="company-title font-black text-gray-900">${row[1]}</h2>
-            <h3 class="company-subtitle font-bold text-gray-400 mt-1">${row[2]}</h3>
+        <div class="mb-6 flex flex-col items-start"> 
+            <div class="w-2/3 md:w-full"> 
+                <h2 class="text-2xl md:text-3xl font-black text-gray-900 leading-tight">${row[1]}</h2>
+                <h3 class="text-lg md:text-xl font-bold text-gray-400 mt-1">${row[2]}</h3>
+            </div>
         </div>`;
 }
         if (key.includes('introduction title')) {
@@ -1056,6 +1058,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
