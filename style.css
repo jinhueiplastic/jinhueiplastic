@@ -349,14 +349,25 @@ p {
     }
 }
 
-/* 在 style.css 底部加入 */
-@media (max-width: 480px) {
-    #app h2.text-2xl {
-        font-size: 1.25rem !important; /* 強制縮小手機版標題字體 */
-        line-height: 1.2;
+/* --- 強制修正手機版公司名稱字體太大的問題 --- */
+@media (max-width: 640px) {
+    /* 中文名稱強制縮小 */
+    .company-title {
+        font-size: 1.2rem !important; /* 如果還是太大，可以改成 1.1rem */
+        line-height: 1.4 !important;
+        display: block !important;
+        letter-spacing: 0.02em !important;
     }
-    #app h3.text-lg {
-        font-size: 1rem !important;
-        margin-top: 4px;
+
+    /* 英文名稱強制縮小 */
+    .company-subtitle {
+        font-size: 0.85rem !important; /* 縮小一點，增加精緻感 */
+        line-height: 1.2 !important;
+        margin-top: 4px !important;
+    }
+
+    /* 縮減區塊間距，手機版才不會拉得太長 */
+    .company-name-container {
+        margin-bottom: 1rem !important;
     }
 }
