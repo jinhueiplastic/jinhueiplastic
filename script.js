@@ -875,8 +875,12 @@ function renderAboutOrContent(data, langIdx, pageName) {
             upperImages += `<img src="${row[3]}" class="home-bottom-image">`;
         }
         if (key.includes('company name')) {
-            companyNames += `<div class="mb-6"><h2 class="text-3xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
-        }
+    companyNames += `
+        <div class="mb-6">
+            <h2 class="text-2xl md:text-3xl font-black text-gray-900">${row[1]}</h2>
+            <h3 class="text-lg md:text-xl font-bold text-gray-400 mt-1">${row[2]}</h3>
+        </div>`;
+}
         if (key.includes('introduction title')) {
             introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
         }
@@ -1052,6 +1056,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
