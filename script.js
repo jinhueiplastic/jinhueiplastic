@@ -149,26 +149,41 @@ function handleRouting() {
 
 // --- 搜尋功能邏輯 ---
 async function handleSearch() {
-    const query = document.getElementById('product-search-input').value.toLowerCase().trim();
+    const inputEl = document.getElementById('product-search-input');
+    if (!inputEl) return;
+
+    const query = inputEl.value.toLowerCase().trim();
     if (!query) return;
 
-    // --- 新增：更新網址列，但不觸發頁面刷新 ---
+    // 1. 更新標籤頁標題 (新增這行)
+    const title = (currentLang === 'zh' ? `搜尋：${query}` : `Search: ${query}`);
+    updateTabTitle(title);
+
+    // 2. 更新網址列
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', 'search');
     u.searchParams.set('q', query);
+    u.searchParams.set('lang', currentLang); // 建議順便帶上語言參數
     window.history.pushState({ type: 'search', query: query }, '', u);
-    // ---------------------------------------
 
-    executeSearch(query); // 將搜尋邏輯拆分出來
+    // 3. 執行搜尋邏輯
+    // 注意：如果 executeSearch 是 async，這裡最好加上 await
+    await executeSearch(query); 
 }
 
-// 抽離出來的搜尋執行邏輯
+// 必須加上 async，因為內部有 await
 async function executeSearch(query) {
+    if (!query) return;
+    
+    const isEn = (currentLang === 'en');
+    const searchLabel = isEn ? `Search: ${query}` : `搜尋：${query}`;
+    updateTabTitle(searchLabel);
+    
     const app = document.getElementById('app');
     app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
-        const allProducts = await fetchGASProducts();
+        const allProducts = await fetchGASProducts(); // 這裡需要 async
         const filtered = allProducts.filter(p => {
             const keys = Object.keys(p);
             const colA = String(p[keys[0]] || "").trim();
@@ -179,17 +194,19 @@ async function executeSearch(query) {
             const englishName = String(p[keys[6]] || "").toLowerCase();
             const searchKeywords = String(p["搜尋關鍵字"] || p[keys[33]] || "").toLowerCase();
             
-            return itemCode.includes(query) || chineseName.includes(query) || 
-                   englishName.includes(query) || searchKeywords.includes(query);
+            const q = query.toLowerCase(); // 搜尋詞也轉小寫比對更精準
+            return itemCode.includes(q) || chineseName.includes(q) || 
+                   englishName.includes(q) || searchKeywords.includes(q);
         });
 
         renderSearchResults(filtered, query);
         
-        // 搜尋完畢後，確保搜尋框出現在頂部
-        if (!document.getElementById('product-search-input')) {
-            app.insertAdjacentHTML('afterbegin', `<div class="max-w-7xl mx-auto px-4">${getSearchBoxHtml()}</div>`);
+        // 渲染搜尋框
+        if (typeof getSearchBoxHtml === 'function') {
+            app.insertAdjacentHTML('afterbegin', `<div class="max-w-7xl mx-auto px-4 mb-8">${getSearchBoxHtml()}</div>`);
         }
     } catch (e) {
+        console.error("搜尋失敗:", e);
         app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯。</div>`;
     }
 }
@@ -225,14 +242,21 @@ function renderSearchResults(products, query) {
 // 產生搜尋欄的 HTML 結構
 function getSearchBoxHtml() {
     const placeholder = currentLang === 'zh' ? '搜尋產品編號或名稱...' : 'Search item code or name...';
+    // 取得當前網址中的搜尋詞，讓搜尋框在渲染後能保留使用者輸入的文字
+    const params = new URLSearchParams(window.location.search);
+    const currentQuery = params.get('q') || '';
+
     return `
-        <div class="flex justify-end mb-6">
-            <div class="relative w-full max-w-xs flex gap-2">
+        <div class="flex justify-end mb-8">
+            <div class="relative w-full max-w-sm flex gap-2">
                 <input type="text" id="product-search-input" 
-                    class="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" 
+                    class="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all" 
                     placeholder="${placeholder}"
+                    value="${currentQuery}"
                     onkeypress="if(event.key === 'Enter') handleSearch()">
-                <button onclick="handleSearch()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                <button onclick="handleSearch()" 
+                    class="bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-colors shadow-md flex items-center justify-center"
+                    title="Search">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
@@ -908,21 +932,41 @@ function updateTabTitle(pageTitle = "") {
 
 window.onpopstate = function(event) {
     const params = new URLSearchParams(window.location.search);
+    
+    // 1. 同步語言設定 (非常重要，避免按回上一頁時語系跳掉)
+    const lang = params.get('lang') || 'zh';
+    currentLang = lang; 
+
+    // 2. 同步當前頁面
     const page = params.get('page') || 'Content';
     const query = params.get('q');
+    const isEn = (currentLang === 'en');
 
     currentPage = page; // 確保全域變數更新
 
+    // 3. 根據頁面類型執行載入與標題更新
     if (page === 'search' && query) {
+        // 執行搜尋渲染
         executeSearch(query);
-        updateTabTitle(isEn ? "Search Results" : "搜尋結果");
+        // 標題更新為：搜尋：[關鍵字]
+        const searchTitle = isEn ? `Search: ${query}` : `搜尋：${query}`;
+        updateTabTitle(searchTitle);
     } else {
+        // 執行一般頁面載入
         loadPage(page, false);
-        // 這邊 loadPage 跑完後，呼叫 updateTabTitle
-        // 稍後在 loadPage 裡也可以補強，或者在這裡根據 page 簡單處理
-        updateTabTitle(); 
+        
+        // 根據不同分頁更新標題
+        // 如果是 Product Catalog，顯示「商品目錄」，其餘交給 updateTabTitle 預設判斷
+        if (page === 'Product Catalog') {
+            updateTabTitle(isEn ? "Product Catalog" : "商品目錄");
+        } else {
+            updateTabTitle(); 
+        }
     }
-    renderNav();
+
+    // 4. 更新導覽列 UI 與 語言按鈕文字
+    if (typeof renderNav === 'function') renderNav();
+    if (typeof updateLangButton === 'function') updateLangButton();
 };
 /* --- 系統啟動與基礎功能 --- */
 
@@ -946,14 +990,22 @@ function updateTabTitle(pageTitle = "") {
     
     let displayTitle = pageTitle;
     
-    // 如果沒給標題，就根據當前頁面給預設值
+    // 如果沒有手動傳入標題，則自動判斷
     if (!displayTitle) {
-        if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
-        else if (currentPage === 'Product Catalog') displayTitle = isEn ? "Catalog" : "商品目錄";
-        else displayTitle = currentPage;
+        const params = new URLSearchParams(window.location.search);
+        
+        if (currentPage === 'search') {
+            const query = params.get('q');
+            displayTitle = isEn ? `Search: ${query || ''}` : `搜尋：${query || ''}`;
+        } else if (currentPage === 'Content') {
+            displayTitle = isEn ? "Home" : "首頁";
+        } else if (currentPage === 'Product Catalog') {
+            displayTitle = isEn ? "Catalog" : "商品目錄";
+        } else {
+            displayTitle = currentPage;
+        }
     }
 
-    // 格式: 彎頭 A1 | 錦輝塑膠業有限公司
     document.title = `${displayTitle} | ${companyName}`;
 }
 
@@ -964,6 +1016,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
