@@ -312,6 +312,9 @@ function renderNav() {
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     let navHtml = '';
     
+    // 確保清單樣式是靠左的 flex
+    nav.className = "flex items-center list-none m-0";
+
     for (const tab of tabs) {
         const data = rawDataCache[tab];
         let displayName = tab;
@@ -326,9 +329,22 @@ function renderNav() {
             isActive = 'active';
         }
 
-        navHtml += `<li class="nav-item ${isActive} px-6 py-3 cursor-pointer" onclick="switchPage('${tab}', {title: '${displayName}'})">${displayName}</li>`;
+        // 使用 px-4 (左右間距) 讓手機版項目之間更有呼吸空間
+        navHtml += `<li class="nav-item ${isActive} px-4 cursor-pointer" onclick="switchPage('${tab}', {title: '${displayName}'})">${displayName}</li>`;
     }
     nav.innerHTML = navHtml;
+
+    // --- 自動捲動到當前 active 項目 ---
+    setTimeout(() => {
+        const activeElem = nav.querySelector('.nav-item.active');
+        if (activeElem) {
+            activeElem.scrollIntoView({
+                behavior: 'smooth',
+                inline: 'center', // 讓選中的項目盡量滾動到中間
+                block: 'nearest'
+            });
+        }
+    }, 150);
 }
 
 async function loadPage(pageName, updateUrl = true) {
@@ -1016,6 +1032,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
