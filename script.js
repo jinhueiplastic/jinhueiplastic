@@ -1,5 +1,3 @@
-alert("JS 已啟動");
-
 const SPREADSHEET_ID = '1Z3xaacD4N1Piagjg7mWAH2bzGadCUX8zS24RbInF4QM';
 const GAS_PRODUCT_URL = 'https://script.google.com/macros/s/AKfycby0WRTp_F33uuVYp1tq8wAYWIw80XM3v3vdPErq8joVZoZu5DpLW_qNtVruHJ5o1AFw/exec';
 const tabs = ["Content", "About Us", "Business Scope", "Product Catalog", "Join Us", "Contact Us"];
@@ -208,39 +206,30 @@ function getSearchBoxHtml() {
 }
 
 async function initWebsite() {
-    console.log("🚀 啟動初始化...");
-    handleRouting();
-
-    // 先顯示導覽列框架和基本按鈕（不等資料）
-    updateLangButton();
-    renderNav(); 
-
-    // 重要：先抓 Content 的資料，因為這影響 Logo 和首頁
     try {
-        console.log("正在嘗試抓取首頁資料...");
-        const contentData = await fetchSheetData('Content');
-        if (contentData && contentData.length > 0) {
-            rawDataCache['Content'] = contentData;
-            renderLogoAndStores(); // 有了資料後馬上補畫 Logo
+        const params = new URLSearchParams(window.location.search);
+        currentLang = params.get('lang') || 'zh';
+        currentPage = params.get('page') || 'Content';
+
+        await fetchData();
+        renderNav();
+        updateLangButton();
+        
+        // 根據網址參數決定載入哪個頁面
+        if (currentPage === 'search') {
+            const query = params.get('q');
+            executeSearch(query);
+        } else if (currentPage === 'category') {
+            const cat = params.get('cat');
+            const catTitle = params.get('title');
+            renderCategoryProducts(cat, catTitle);
+        } else {
+            loadPage(currentPage);
         }
-    } catch (e) {
-        console.error("首頁資料抓取異常", e);
+    } catch (error) {
+        // 僅保留必要的錯誤回報，避免干擾使用者
+        document.getElementById('app').innerHTML = `<p class="text-center py-20 text-gray-400">系統載入中，請稍候...</p>`;
     }
-
-    // 🚀 不管前面的 fetch 有沒有成功，都強制執行 loadPage
-    console.log(`執行頁面載入: ${currentPage}`);
-    loadPage(currentPage, false);
-
-    // 其餘的分頁資料放在「非同步」背景執行，不加 await，才不會卡死
-    tabs.forEach(async (tab) => {
-        if (tab !== 'Content') {
-            const data = await fetchSheetData(tab);
-            if (data) {
-                rawDataCache[tab] = data;
-                renderNav(); // 抓到資料後，靜悄悄地更新選單名稱
-            }
-        }
-    });
 }
 
 function toggleLang() {
@@ -861,24 +850,40 @@ window.onpopstate = function(event) {
     }
     renderNav();
 };
+/* --- 系統啟動與基礎功能 --- */
 
-document.addEventListener('DOMContentLoaded', initWebsite);
-
-// 1. 補齊缺少的更新語言按鈕函數
+/**
+ * 更新語言切換按鈕的文字
+ */
 function updateLangButton() {
     const btn = document.getElementById('lang-toggle-btn');
     if (btn) {
-        // 根據目前語言決定按鈕要顯示什麼
         btn.innerText = (currentLang === 'zh') ? 'EN' : '繁中';
     }
 }
 
-// 2. 補齊首頁渲染邏輯中可能缺少的動畫樣式處理 (如果有的話)
-// 確保 DOM 載入後真正執行啟動
-console.log("腳本載入完畢，準備綁定事件...");
+/**
+ * 處理瀏覽器分頁標題更新
+ * @param {string} pageTitle - 當前頁面的名稱
+ */
+function updateTabTitle(pageTitle = "") {
+    const isEn = (currentLang === 'en');
+    const companyName = isEn ? "Jin Huei Plastic Co.,Ltd." : "錦輝塑膠業有限公司";
+    
+    // 如果沒有傳入標題，則嘗試從當前狀態判斷
+    let displayTitle = pageTitle;
+    if (!displayTitle) {
+        displayTitle = (currentLang === 'zh') ? '首頁' : 'Home';
+    }
+
+    document.title = `${displayTitle} | ${companyName}`;
+}
+
+/**
+ * 核心啟動：當 DOM 載入完成後發動引擎
+ */
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("DOM 已就緒，啟動 initWebsite");
+    // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
-
 
