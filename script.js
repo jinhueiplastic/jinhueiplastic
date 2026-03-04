@@ -33,14 +33,29 @@ async function fetchSheetData(sheetName) {
 }
 
 async function fetchGASProducts() {
-    if (allProductsCache) return allProductsCache;
+    // 1. 檢查快取
+    if (allProductsCache && allProductsCache.length > 0) {
+        return allProductsCache;
+    }
+
     try {
         const response = await fetch(GAS_PRODUCT_URL);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
         const data = await response.json();
-        allProductsCache = data;
-        return allProductsCache;
+
+        // 2. 資料防呆：確保抓到的是陣列且有內容
+        if (Array.isArray(data) && data.length > 0) {
+            allProductsCache = data;
+            // 如果你的 rawDataCache 也是靠這個 API 提供的，記得要在這裡同步
+            // rawDataCache = data; 
+            return allProductsCache;
+        } else {
+            throw new Error("API 回傳資料格式不正確或為空");
+        }
     } catch (e) { 
-        console.error("GAS Error:", e); 
+        console.error("GAS 抓取失敗:", e); 
+        // 這裡不要只 throw，可以給予 UI 提示
         throw e; 
     }
 }
@@ -271,35 +286,28 @@ function getSearchBoxHtml() {
 }
 
 async function initWebsite() {
-    try {
-        // 1. 優先從網址同步語言與頁面狀態
-        const params = new URLSearchParams(window.location.search);
-        currentLang = params.get('lang') || 'zh'; // 確保一開始就設定好中文
-        currentPage = params.get('page') || 'Content';
-        const query = params.get('q');
+    // A. 優先權最高：鎖定語系（解決中英混雜）
+    const params = new URLSearchParams(window.location.search);
+    currentLang = params.get('lang') || 'zh'; 
 
-        // 2. 等待資料抓取完成 (這是解決 Loading 的關鍵)
+    try {
+        // B. 等待資料（解決一直 Loading）
+        // 確保這裡抓完後，rawDataCache 裡面已經有 Content 頁面的資料了
         await fetchGASProducts(); 
 
-        // 3. 資料到位後，開始渲染 UI 組件
-        renderLogoAndStores(); // 這樣 data 就不會是空的了
-        renderNav();
+        // C. 資料到位後才渲染 UI
+        renderLogoAndStores(); // 這裡現在能抓到 Content 裡的 Logo 了
+        renderNav();           // 這裡現在能根據 currentLang 抓到正確標題了
         updateLangButton();
-        updateTabTitle();
 
-        // 4. 根據網址載入主內容
-        if (currentPage === 'search' && query) {
-            await executeSearch(query);
-        } else {
-            await loadPage(currentPage, false);
-        }
+        // D. 最後載入分頁
+        const page = params.get('page') || 'Content';
+        loadPage(page, false);
 
-    } catch (error) {
-        console.error("初始化失敗:", error);
-        document.getElementById('app').innerHTML = `<div class="text-center py-20 text-red-500">連線不穩定，請重新整理頁面。</div>`;
+    } catch (e) {
+        console.error("初始化失敗", e);
     }
 }
-
 // 確保頁面載入時執行
 window.addEventListener('DOMContentLoaded', initWebsite);
 
@@ -313,39 +321,33 @@ function toggleLang() {
 function renderNav() {
     const nav = document.getElementById('main-nav');
     if (!nav) return;
-    const langIdx = (currentLang === 'zh') ? 1 : 2;
-    let navHtml = '';
+
+    // 強制檢查當前語系，確保索引正確
+    // 假設 B 欄是中文 (index 1)，C 欄是英文 (index 2)
+    const langIdx = (currentLang === 'zh') ? 1 : 2; 
     
-    // 保持乾淨的 class，讓 CSS 控制所有對齊
-    nav.className = "flex items-center";
+    let navHtml = '';
 
     for (const tab of tabs) {
         const data = rawDataCache[tab];
-        let displayName = tab;
+        let displayName = tab; // 預設值
 
         if (data) {
+            // 尋找該分頁資料中 A 欄為 "title" 的那一行
             const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
-            displayName = (titleRow && titleRow[langIdx]) ? titleRow[langIdx] : tab;
+            if (titleRow) {
+                // 根據 langIdx 抓取對應語系的名稱
+                displayName = titleRow[langIdx] || tab;
+            }
         }
         
-        let isActive = (currentPage === tab) ? 'active' : '';
-        // 麵包屑高亮邏輯
-        if ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog') {
-            isActive = 'active';
-        }
+        const isActive = (currentPage === tab || 
+                        ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog')) 
+                        ? 'active' : '';
 
-        // 移除多餘的內建 px-6，完全由 CSS 的 .nav-item 控制
         navHtml += `<li class="nav-item ${isActive}" onclick="switchPage('${tab}', {title: '${displayName}'})">${displayName}</li>`;
     }
     nav.innerHTML = navHtml;
-
-    // 手機版自動捲動選中項目
-    if (window.innerWidth < 768) {
-        setTimeout(() => {
-            const activeElem = nav.querySelector('.nav-item.active');
-            if (activeElem) activeElem.scrollIntoView({ behavior: 'smooth', inline: 'center' });
-        }, 150);
-    }
 }
 
 async function loadPage(pageName, updateUrl = true) {
@@ -1033,6 +1035,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
