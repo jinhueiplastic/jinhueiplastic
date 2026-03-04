@@ -342,7 +342,7 @@ async function loadPage(pageName, updateUrl = true) {
             if (!data || data.length === 0) throw new Error("無資料內容");
 
             // 渲染各頁面 (對接你的渲染函數)
-            if (pageName === "Content") renderAboutOrContent(data, langIdx, "Content"); // 首頁通常與 About 共用邏輯或用 renderHome
+            if (pageName === "Content") renderHome(rawDataCache["Content"], langIdx);
             else if (pageName === "Product Catalog") renderProductCatalog(data, langIdx);
             else if (pageName === "About Us") renderAboutOrContent(data, langIdx, pageName);
             else if (pageName === "Business Scope") renderBusinessScope(data, langIdx, pageName);
@@ -369,14 +369,18 @@ async function renderHome(contentData, langIdx) {
     let introContent = ''; 
     let youtubeEmbed = '';
 
+    // A. 處理首頁主體 (YouTube + 公司名 + 簡介)
     contentData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
+        // 抓取 YouTube 嵌入碼
         if (key.includes('youtube') && row[4]) {
-            youtubeEmbed = `<div class="youtube-container shadow-2xl rounded-2xl overflow-hidden">${row[4]}</div>`;
+            youtubeEmbed = `<div class="youtube-container shadow-2xl rounded-2xl overflow-hidden aspect-video">${row[4]}</div>`;
         }
+        // 抓取公司標題
         if (key.includes('company name')) {
             companyNames += `<div class="mb-6"><h2 class="text-4xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
         }
+        // 抓取簡介標題與內文
         if (key.includes('introduction title')) {
             introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
         }
@@ -385,28 +389,27 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    if (!rawDataCache['Product Catalog']) rawDataCache['Product Catalog'] = await fetchSheetData('Product Catalog');
-    const catalogData = rawDataCache['Product Catalog'];
+    // B. 準備向左走馬燈 (產品分類) - 直接從快取拿
+    const catalogData = rawDataCache['Product Catalog'] || [];
     let categoryItems = '';
     catalogData.forEach(row => {
-    if (row[0].toLowerCase().trim().includes('categories') && row[4]) {
-        const catName = row[4];
-        const displayName = row[langIdx] || catName; // 這裡已經根據語言選好中/英文了
-        const imgUrl = row[3];
-        
-        categoryItems += `
-            <div class="flex flex-col items-center gap-2 shrink-0 w-64 group" 
-                 onclick="switchPage('category', {cat: '${catName}', title: '${displayName}'})">
-                <div class="w-full aspect-square overflow-hidden rounded-2xl shadow-md border group-hover:border-blue-500 group-hover:shadow-xl transition-all duration-300 cursor-pointer bg-white">
-                    <img src="${imgUrl}" class="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500">
-                </div>
-                <span class="font-bold text-gray-700 mt-2 group-hover:text-blue-600 transition-colors">${displayName}</span>
-            </div>`;
-    }
-});
+        if (row[0] && row[0].toLowerCase().trim().includes('categories') && row[4]) {
+            const catName = row[4];
+            const displayName = row[langIdx] || catName;
+            const imgUrl = row[3];
+            categoryItems += `
+                <div class="flex flex-col items-center gap-2 shrink-0 w-64 group cursor-pointer" 
+                     onclick="switchPage('category', {cat: '${catName}', title: '${displayName}'})">
+                    <div class="w-full aspect-square overflow-hidden rounded-2xl shadow-md border group-hover:border-blue-500 group-hover:shadow-xl transition-all duration-300 bg-white">
+                        <img src="${imgUrl}" class="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500">
+                    </div>
+                    <span class="font-bold text-gray-700 mt-2 group-hover:text-blue-600 transition-colors">${displayName}</span>
+                </div>`;
+        }
+    });
 
-    if (!rawDataCache['About Us']) rawDataCache['About Us'] = await fetchSheetData('About Us');
-    const aboutData = rawDataCache['About Us'];
+    // C. 準備向右走馬燈 (廠房展示) - 直接從快取拿
+    const aboutData = rawDataCache['About Us'] || [];
     let aboutImages = '';
     aboutData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
@@ -415,12 +418,14 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
+    // D. 組合走馬燈 HTML
     const leftMarquee = `<div class="marquee-content animate-scroll-left">${categoryItems}${categoryItems}</div>`;
     const rightMarquee = `<div class="marquee-content animate-scroll-right">${aboutImages}${aboutImages}</div>`;
+    
     const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
     const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
-    // --- D. 渲染完整 HTML ---
+    // E. 渲染完整 HTML
     app.innerHTML = `
         <div class="w-full flex flex-col items-center">
             <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-12 items-center text-left py-16">
@@ -939,6 +944,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
