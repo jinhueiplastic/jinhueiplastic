@@ -311,10 +311,22 @@ async function initWebsite() {
 window.onload = initWebsite;
 
 function toggleLang() {
+    // 1. 切換語系變數
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
-    updateLangButton();
+
+    // 2. 【核心修改】更新網址列參數而不刷新頁面
+    const url = new URL(window.location.href);
+    url.searchParams.set('lang', currentLang);
+    window.history.pushState({}, '', url); // 這樣 F5 才會抓到正確語系
+
+    // 3. 重新渲染畫面
     renderNav();
-    loadPage(currentPage, false);
+    updateLangButton();
+    
+    // 根據當前頁面重新加載內容
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page') || 'Content';
+    loadPage(page, false); 
 }
 
 function renderNav() {
@@ -876,11 +888,15 @@ function renderAboutOrContent(data, langIdx, pageName) {
         }
         if (key.includes('company name')) {
     companyNames += `
-        <div class="mb-4 flex flex-col items-start"> 
-            <div class="w-2/3 md:w-full"> 
-                <h2 class="text-xl md:text-3xl font-black text-gray-900 leading-tight">${row[1]}</h2>
+        /* mb-2 縮小底部間距 */
+        <div class="mb-2 flex flex-col items-start"> 
+            <div class="w-3/4 md:w-full"> 
+                /* text-lg (手機) / md:text-3xl (電腦) */
+                /* leading-tight 縮小行距 */
+                <h2 class="text-lg md:text-3xl font-black text-gray-900 leading-tight">${row[1]}</h2>
                 
-                <h3 class="text-base md:text-xl font-bold text-gray-400 mt-0.5 leading-tight">${row[2]}</h3>
+                /* text-xs (手機) / md:text-xl (電腦) */
+                <h3 class="text-xs md:text-xl font-bold text-gray-400 mt-0 leading-tight">${row[2]}</h3>
             </div>
         </div>`;
 }
@@ -1018,9 +1034,9 @@ window.onpopstate = function(event) {
  */
 function updateLangButton() {
     const btn = document.getElementById('lang-toggle-btn');
-    if (btn) {
-        btn.innerText = (currentLang === 'zh') ? 'EN' : '繁中';
-    }
+    if (!btn) return;
+    // 如果現在是中文，按鈕顯示 "EN"；如果是英文，顯示 "繁中"
+    btn.textContent = (currentLang === 'zh') ? 'EN' : '繁中';
 }
 
 /**
@@ -1059,6 +1075,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
