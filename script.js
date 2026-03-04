@@ -335,20 +335,16 @@ function renderNav() {
             }
         }
         
-        // 判斷是否為當前頁面（包含產品細節與分類頁面歸類在「商品目錄」下）
+        // 判斷是否選中
         const isActive = (currentPage === tab || 
                         ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog'));
 
-        // --- 核心修改：動態決定 CSS Class ---
-        // activeEffect: 藍色文字 + 藍色底線 + 外部發光陰影 (shadow)
-        // normalEffect: 灰色文字 + 透明底線 (維持高度一致防止跳動)
-        const activeClass = isActive 
-            ? "text-blue-600 border-b-2 border-blue-600 shadow-[0_2px_8px_-2px_rgba(37,99,235,0.6)]" 
-            : "text-gray-500 border-b-2 border-transparent hover:text-blue-400";
+        // 【關鍵修改】：移除所有 Tailwind 的 border 和 shadow Class
+        // 只保留基礎的 nav-item，並根據 isActive 決定是否加上 active 這個 Class
+        const activeClass = isActive ? 'active' : '';
 
-        // 注意：這裡移除了原本的 .active class，改用 Tailwind 直覺控制
         navHtml += `
-            <li class="inline-block transition-all duration-300 cursor-pointer px-5 py-3 text-sm font-bold whitespace-nowrap ${activeClass}" 
+            <li class="nav-item ${activeClass}" 
                 onclick="switchPage('${tab}', {title: '${displayName}'})">
                 ${displayName}
             </li>`;
@@ -1056,6 +1052,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
