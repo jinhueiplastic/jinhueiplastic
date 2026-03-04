@@ -151,6 +151,8 @@ function switchPage(page, params = {}) {
     } else {
         console.error("loadPage 函數尚未定義");
     }
+    // 每次跳轉後重新執行一遍 renderNav，確保手機版底線移動到正確位置
+    renderNav();
 }
 
 function handleRouting() {
@@ -319,30 +321,37 @@ function renderNav() {
     const nav = document.getElementById('main-nav');
     if (!nav) return;
 
-    // 強制檢查當前語系，確保索引正確
-    // 假設 B 欄是中文 (index 1)，C 欄是英文 (index 2)
     const langIdx = (currentLang === 'zh') ? 1 : 2; 
-    
     let navHtml = '';
 
     for (const tab of tabs) {
         const data = rawDataCache[tab];
-        let displayName = tab; // 預設值
+        let displayName = tab;
 
         if (data) {
-            // 尋找該分頁資料中 A 欄為 "title" 的那一行
             const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
             if (titleRow) {
-                // 根據 langIdx 抓取對應語系的名稱
                 displayName = titleRow[langIdx] || tab;
             }
         }
         
+        // 判斷是否為當前頁面（包含產品細節與分類頁面歸類在「商品目錄」下）
         const isActive = (currentPage === tab || 
-                        ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog')) 
-                        ? 'active' : '';
+                        ((currentPage === 'product' || currentPage === 'category') && tab === 'Product Catalog'));
 
-        navHtml += `<li class="nav-item ${isActive}" onclick="switchPage('${tab}', {title: '${displayName}'})">${displayName}</li>`;
+        // --- 核心修改：動態決定 CSS Class ---
+        // activeEffect: 藍色文字 + 藍色底線 + 外部發光陰影 (shadow)
+        // normalEffect: 灰色文字 + 透明底線 (維持高度一致防止跳動)
+        const activeClass = isActive 
+            ? "text-blue-600 border-b-2 border-blue-600 shadow-[0_2px_8px_-2px_rgba(37,99,235,0.6)]" 
+            : "text-gray-500 border-b-2 border-transparent hover:text-blue-400";
+
+        // 注意：這裡移除了原本的 .active class，改用 Tailwind 直覺控制
+        navHtml += `
+            <li class="inline-block transition-all duration-300 cursor-pointer px-5 py-3 text-sm font-bold whitespace-nowrap ${activeClass}" 
+                onclick="switchPage('${tab}', {title: '${displayName}'})">
+                ${displayName}
+            </li>`;
     }
     nav.innerHTML = navHtml;
 }
@@ -1047,6 +1056,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
