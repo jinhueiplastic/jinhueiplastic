@@ -921,19 +921,30 @@ function updateLangButton() {
 }
 
 /**
- * 處理瀏覽器分頁標題更新
- * @param {string} pageTitle - 當前頁面的名稱
+ * 更新瀏覽器標籤頁標題
+ * @param {string} pageTitle - 想要顯示的分頁名稱 (例如：'關於我們' 或 '彎頭系列')
  */
 function updateTabTitle(pageTitle = "") {
     const isEn = (currentLang === 'en');
     const companyName = isEn ? "Jin Huei Plastic Co.,Ltd." : "錦輝塑膠業有限公司";
     
-    // 如果沒有傳入標題，則嘗試從當前狀態判斷
+    // 如果沒有傳入 pageTitle，則根據 currentPage 決定預設名稱
     let displayTitle = pageTitle;
+    
     if (!displayTitle) {
-        displayTitle = (currentLang === 'zh') ? '首頁' : 'Home';
+        if (currentPage === 'Content') {
+            displayTitle = isEn ? "Home" : "首頁";
+        } else if (currentPage === 'category') {
+            displayTitle = isEn ? "Category" : "產品分類";
+        } else if (currentPage === 'product') {
+            displayTitle = isEn ? "Product Detail" : "產品詳情";
+        } else {
+            // 預設使用 tabs 陣列中的原始名稱
+            displayTitle = currentPage;
+        }
     }
 
+    // 最終組合呈現： 分頁名稱 | 公司名稱
     document.title = `${displayTitle} | ${companyName}`;
 }
 
@@ -944,6 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
