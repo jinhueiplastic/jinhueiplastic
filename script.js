@@ -278,40 +278,32 @@ function getSearchBoxHtml() {
 
 async function initWebsite() {
     try {
-        // A. 優先鎖定語系，解決「導覽條是英文」的問題
+        // 1. 優先鎖定語系
         const params = new URLSearchParams(window.location.search);
-        currentLang = params.get('lang') || 'zh'; 
-        const langIdx = (currentLang === 'zh') ? 1 : 2;
+        currentLang = params.get('lang') || 'zh';
 
-        // B. 【最重要】等待 GAS 資料完全載入
-        // 必須確保 fetchGASProducts 執行完後，rawDataCache 已包含所有分頁
+        // 2. 務必等待資料抓完 (解決 Loading 與 走馬燈消失)
+        // 確保 fetchGASProducts 內部是將資料存入 rawDataCache
         await fetchGASProducts(); 
 
-        // C. 資料到位後，立刻渲染「全域 UI」
-        renderLogoAndStores(); // 渲染 Logo
-        renderNav();           // 渲染導覽列 (此時標題會是正確語系)
-        updateLangButton();    // 更新語系按鈕
+        // 3. 資料到位後，依序渲染 UI
+        renderLogoAndStores(); 
+        renderNav();           
+        updateLangButton();    
 
-        // D. 判斷要載入的分頁
+        // 4. 載入當前頁面
         const page = params.get('page') || 'Content';
-        
-        // E. 執行分頁渲染
-        if (page === 'search') {
-            const query = params.get('q');
-            executeSearch(query);
-        } else {
-            // 注意：這裡直接呼叫 loadPage，loadPage 會再去呼叫你的 renderHome
-            loadPage(page, false); 
-        }
+        await loadPage(page, false); 
 
         updateTabTitle();
-
     } catch (e) {
         console.error("初始化失敗:", e);
+        document.getElementById('app').innerHTML = "系統維護中，請稍後再試。";
     }
 }
-// 確保頁面載入時執行
-window.addEventListener('DOMContentLoaded', initWebsite);
+
+// 確保只綁定一次
+window.onload = initWebsite;
 
 function toggleLang() {
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
@@ -1052,6 +1044,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
