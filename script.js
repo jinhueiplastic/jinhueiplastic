@@ -686,6 +686,7 @@ async function renderProductDetail() {
         };
         
         const name = isZH ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
+        updateTabTitle(name);
         const desc = isZH ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文名稱"] || "");
         const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
         const unit = item["Unit單位"] || item["計量單位"] || "";
@@ -778,8 +779,23 @@ function renderProductCatalog(data, langIdx) {
     const app = document.getElementById('app');
     let catHtml = '';
     data.forEach(row => {
+        // row[langIdx] 是分類的中/英文名稱
+        // row[4] 是分類的 ID (例如: category_1)
         if (row[0].toLowerCase().trim().includes('categories') && row[langIdx]) {
-            catHtml += `<div class="category-card group cursor-pointer" onclick="switchPage('category', {cat: '${row[4]}'})"><div class="category-img-container"><img src="${row[3]}"></div><div class="p-5 text-center bg-white border-t"><h4 class="font-bold text-gray-800">${row[langIdx]}</h4></div></div>`;
+            const displayName = row[langIdx];
+            const catId = row[4];
+            
+            // 修改點: switchPage 增加 title 參數
+            catHtml += `
+            <div class="category-card group cursor-pointer" 
+                 onclick="switchPage('category', {cat: '${catId}', title: '${displayName}'})">
+                <div class="category-img-container">
+                    <img src="${row[3]}">
+                </div>
+                <div class="p-5 text-center bg-white border-t">
+                    <h4 class="font-bold text-gray-800">${displayName}</h4>
+                </div>
+            </div>`;
         }
     });
     app.innerHTML = `<div class="flex flex-col items-center py-6 w-full"><div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 w-full max-w-7xl px-4">${catHtml}</div></div>`;
@@ -926,25 +942,18 @@ function updateLangButton() {
  */
 function updateTabTitle(pageTitle = "") {
     const isEn = (currentLang === 'en');
-    const companyName = isEn ? "Jin Huei Plastic Co.,Ltd." : "錦輝塑膠業有限公司";
+    const companyName = isEn ? "JIN HUEI PLASTIC" : "錦輝塑膠業有限公司";
     
-    // 如果沒有傳入 pageTitle，則根據 currentPage 決定預設名稱
     let displayTitle = pageTitle;
     
+    // 如果沒給標題，就根據當前頁面給預設值
     if (!displayTitle) {
-        if (currentPage === 'Content') {
-            displayTitle = isEn ? "Home" : "首頁";
-        } else if (currentPage === 'category') {
-            displayTitle = isEn ? "Category" : "產品分類";
-        } else if (currentPage === 'product') {
-            displayTitle = isEn ? "Product Detail" : "產品詳情";
-        } else {
-            // 預設使用 tabs 陣列中的原始名稱
-            displayTitle = currentPage;
-        }
+        if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
+        else if (currentPage === 'Product Catalog') displayTitle = isEn ? "Catalog" : "商品目錄";
+        else displayTitle = currentPage;
     }
 
-    // 最終組合呈現： 分頁名稱 | 公司名稱
+    // 格式: 彎頭 A1 | 錦輝塑膠業有限公司
     document.title = `${displayTitle} | ${companyName}`;
 }
 
@@ -955,6 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
