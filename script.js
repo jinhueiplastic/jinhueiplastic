@@ -437,6 +437,11 @@ async function loadPage(pageName, updateUrl = true) {
 
 async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
+    if (!app) return;
+
+    // --- 修正 1：立即清空內容，防止 loadPage 產生的轉圈圈動畫殘留 ---
+    app.innerHTML = ''; 
+
     let companyNames = ''; 
     let introContent = ''; 
     let youtubeEmbed = '';
@@ -448,9 +453,15 @@ async function renderHome(contentData, langIdx) {
         if (key.includes('youtube') && row[4]) {
             youtubeEmbed = `<div class="youtube-container shadow-2xl rounded-2xl overflow-hidden aspect-video">${row[4]}</div>`;
         }
-        // 抓取公司標題
+        // 抓取公司標題：【修正手機版大小 text-xl、行距 leading-tight、寬度限制 w-2/3】
         if (key.includes('company name')) {
-            companyNames += `<div class="mb-6"><h2 class="text-4xl font-black text-gray-900">${row[1]}</h2><h3 class="text-xl font-bold text-gray-400 mt-2">${row[2]}</h3></div>`;
+            companyNames += `
+                <div class="mb-4 flex flex-col items-start">
+                    <div class="w-2/3 md:w-full">
+                        <h2 class="text-xl md:text-4xl font-black text-gray-900 leading-tight">${row[1]}</h2>
+                        <h3 class="text-sm md:text-xl font-bold text-gray-400 mt-0.5 leading-tight">${row[2]}</h3>
+                    </div>
+                </div>`;
         }
         // 抓取簡介標題與內文
         if (key.includes('introduction title')) {
@@ -497,10 +508,10 @@ async function renderHome(contentData, langIdx) {
     const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
     const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
-    // E. 渲染完整 HTML
+    // E. 渲染完整 HTML：【修正手機版上下間距，從原本 py-16 縮小為 py-8】
     app.innerHTML = `
         <div class="w-full flex flex-col items-center">
-            <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-12 items-center text-left py-16">
+            <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-8 items-center text-left py-8 md:py-16">
                 <div class="w-full md:w-1/2">${companyNames}</div>
                 <div class="w-full md:w-1/2">${youtubeEmbed}</div>
             </div>
@@ -1075,6 +1086,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
