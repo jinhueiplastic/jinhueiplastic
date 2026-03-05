@@ -127,32 +127,30 @@ function renderLogoAndStores() {
  * 路由與頁面切換邏輯
  */
 function switchPage(page, params = {}) {
-    // 1. 更新網址列而不重刷頁面
+    // 1. 更新網址列而不重刷頁面 (URLSearchParams 會處理編碼問題)
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', page);
-    u.searchParams.set('lang', currentLang); // 保持當前語系
+    u.searchParams.set('lang', currentLang); 
+    
     for (const key in params) { 
-        u.searchParams.set(key, params[key]); 
+        if (params[key]) u.searchParams.set(key, params[key]); 
     }
     window.history.pushState({}, '', u);
 
-    // 2. 更新全域變數
+    // 2. 更新全域變數 (這會影響 renderNav 的 active 狀態)
     currentPage = page;
 
-    // 3. 更新分頁標題 (如果 params 有傳 title 就用，沒有就用 page 名稱)
+    // 3. 更新分頁標題 (優先使用傳入的 title)
     updateTabTitle(params.title || page);
 
     // 4. 重新渲染導覽列 (標示當前 active 狀態)
-    if (typeof renderNav === 'function') renderNav();
-
-    // 5. 執行頁面內容載入
-    if (typeof loadPage === 'function') {
-        loadPage(page, false); 
-    } else {
-        console.error("loadPage 函數尚未定義");
-    }
-    // 每次跳轉後重新執行一遍 renderNav，確保手機版底線移動到正確位置
     renderNav();
+
+    // 5. 執行頁面內容載入 (傳入 true 代表檢查快取以避免閃爍)
+    const hasCache = !!(rawDataCache[page] && rawDataCache[page].length > 0);
+    loadPage(page, false, hasCache);
+
+    window.scrollTo(0, 0);
 }
 
 function handleRouting() {
@@ -288,23 +286,23 @@ function getSearchBoxHtml() {
 
 async function initWebsite() {
     try {
+        // 1. 優先從網址解析參數 (支援 F5 重新整理)
         const params = new URLSearchParams(window.location.search);
         currentLang = params.get('lang') || 'zh';
+        currentPage = params.get('page') || 'Content'; // 確保 F5 後全域變數正確
 
-        // 1. 先抓取所有資料，但不執行任何渲染 (確保 fetchData 裡沒有呼叫 renderNav 等函數)
+        // 2. 先抓取所有資料 (確保快取內有資料)
         await fetchData(); 
 
-        // 2. 資料全數到位後，一次性渲染導覽與 Logo
+        // 3. 資料到位後渲染 UI 組件
         renderLogoAndStores();
         renderNav();
         updateLangButton();
 
-        // 3. 載入當前頁面
-        const page = params.get('page') || 'Content';
-        
-        // 【核心修正】：檢查緩存，如果已經有資料了，告訴 loadPage 不要顯示 Loading 動畫
-        const hasCache = !!rawDataCache[page];
-        await loadPage(page, false, hasCache); 
+        // 4. 執行頁面內容載入
+        // 因為剛剛跑完 fetchData，rawDataCache[currentPage] 理論上已有資料
+        const hasCache = !!(rawDataCache[currentPage] && rawDataCache[currentPage].length > 0);
+        await loadPage(currentPage, false, hasCache); 
         
         updateTabTitle();
     } catch (e) {
@@ -366,7 +364,7 @@ function renderNav() {
     nav.innerHTML = navHtml;
 }
 
-async function loadPage(pageName, updateUrl = true) {
+async function loadPage(pageName, updateUrl = true, skipLoading = false) {
     console.log(`執行 loadPage: ${pageName}`);
     
     const app = document.getElementById('app');
@@ -375,18 +373,17 @@ async function loadPage(pageName, updateUrl = true) {
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
 
-    // --- 修正點 1: 檢查是否有快取，若有快取則不顯示轉圈圈，避免 F5 閃爍 ---
+    // A. 處理 Loading 動畫顯示邏輯 (如果有快取就不顯示，防止 F5 閃爍)
     let data = rawDataCache[pageName];
     const hasData = data && data.length > 0;
-    
-    // 如果是特殊頁面 (如 product/category) 或 沒快取，才顯示轉圈
-    const needsLoading = ['category', 'product', 'search'].includes(pageName) || !hasData;
+    const needsLoading = !skipLoading && (['category', 'product', 'search'].includes(pageName) || !hasData);
     
     if (needsLoading) {
         app.innerHTML = `<div id="loading-spinner" class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
     }
 
     try {
+        // B. 根據頁面類型路由到不同的渲染函數
         if (pageName === 'category') { 
             await renderCategoryList(); 
         } else if (pageName === 'product') { 
@@ -395,7 +392,7 @@ async function loadPage(pageName, updateUrl = true) {
             const params = new URLSearchParams(window.location.search);
             executeSearch(params.get('q'));
         } else {
-            // --- 修正點 2: 確保資料抓取邏輯 ---
+            // C. 若快取無資料則補抓
             if (!hasData) {
                 console.log(`Cache 命中失敗，補抓分頁資料: ${pageName}`);
                 data = await fetchSheetData(pageName);
@@ -404,7 +401,7 @@ async function loadPage(pageName, updateUrl = true) {
             
             if (!data || data.length === 0) throw new Error("無資料內容");
 
-            // 執行渲染
+            // D. 執行具體頁面渲染
             if (pageName === "Content") {
                 await renderHome(data, langIdx); 
             } else if (pageName === "Product Catalog") {
@@ -418,16 +415,16 @@ async function loadPage(pageName, updateUrl = true) {
             } else if (pageName === "Contact Us") {
                 renderContactUs(data, langIdx, pageName);
             } else {
-                // 通用渲染 (包含廠房展示與實績)
+                // 通用渲染 (處理其他可能的新增分頁)
                 renderAboutOrContent(data, langIdx, pageName);
             }
         }
 
-        // --- 修正點 3: 渲染完成後，確保手動移除可能殘留的轉圈圈 ---
+        // E. 渲染完成後移除 Loading 動畫
         const spinner = document.getElementById('loading-spinner');
         if (spinner) spinner.remove();
 
-        // 搜尋框邏輯
+        // F. 搜尋框邏輯 (只在特定產品相關頁面顯示)
         if (isProductPage && pageName !== 'product') {
             if (typeof getSearchBoxHtml === 'function') {
                 app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
@@ -437,7 +434,6 @@ async function loadPage(pageName, updateUrl = true) {
         console.error(`${pageName} 載入失敗:`, e);
         app.innerHTML = `<div class="text-center py-20 text-gray-400">目前暫無內容 (${pageName})。</div>`;
     }
-    window.scrollTo(0, 0);
 }
 
 async function renderHome(contentData, langIdx) {
@@ -1087,6 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
