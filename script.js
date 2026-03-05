@@ -904,17 +904,13 @@ function renderAboutOrContent(data, langIdx, pageName) {
         }
         if (key.includes('company name')) {
     companyNames += `
-        /* mb-2 縮小底部間距 */
         <div class="mb-2 flex flex-col items-start"> 
             <div class="w-3/4 md:w-full"> 
-                /* text-lg (手機) / md:text-3xl (電腦) */
-                /* leading-tight 縮小行距 */
                 <h2 class="text-lg md:text-3xl font-black text-gray-900 leading-tight">${row[1]}</h2>
-                
-                /* text-xs (手機) / md:text-xl (電腦) */
                 <h3 class="text-xs md:text-xl font-bold text-gray-400 mt-0 leading-tight">${row[2]}</h3>
             </div>
         </div>`;
+}
 }
         if (key.includes('introduction title')) {
             introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
@@ -1091,6 +1087,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
