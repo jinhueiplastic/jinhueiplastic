@@ -127,9 +127,12 @@ function renderLogoAndStores() {
  * 路由與頁面切換邏輯
  */
 function switchPage(page, params = {}) {
-    // 1. 更新網址列而不重刷頁面 (URLSearchParams 會處理編碼問題)
+    // 確保頁面名稱存在
+    const targetPage = page || 'Content';
+    
+    // 1. 建立乾淨的網址物件
     const u = new URL(window.location.origin + window.location.pathname);
-    u.searchParams.set('page', page);
+    u.searchParams.set('page', targetPage);
     u.searchParams.set('lang', currentLang); 
     
     for (const key in params) { 
@@ -137,18 +140,15 @@ function switchPage(page, params = {}) {
     }
     window.history.pushState({}, '', u);
 
-    // 2. 更新全域變數 (這會影響 renderNav 的 active 狀態)
-    currentPage = page;
+    // 2. 更新全域變數
+    currentPage = targetPage;
 
-    // 3. 更新分頁標題 (優先使用傳入的 title)
-    updateTabTitle(params.title || page);
-
-    // 4. 重新渲染導覽列 (標示當前 active 狀態)
+    // 3. 更新標題與導覽狀態
+    updateTabTitle(params.title || targetPage);
     renderNav();
 
-    // 5. 執行頁面內容載入 (傳入 true 代表檢查快取以避免閃爍)
-    const hasCache = !!(rawDataCache[page] && rawDataCache[page].length > 0);
-    loadPage(page, false, hasCache);
+    // 4. 執行內容載入 (這裏強制 skipLoading 為 true，因為資料已在快取)
+    loadPage(targetPage, false, true);
 
     window.scrollTo(0, 0);
 }
@@ -286,27 +286,29 @@ function getSearchBoxHtml() {
 
 async function initWebsite() {
     try {
-        // 1. 優先從網址解析參數 (支援 F5 重新整理)
         const params = new URLSearchParams(window.location.search);
+        
+        // 確保語系與頁面永遠有預設值，不會變成 null
         currentLang = params.get('lang') || 'zh';
-        currentPage = params.get('page') || 'Content'; // 確保 F5 後全域變數正確
+        currentPage = params.get('page') || 'Content'; 
 
-        // 2. 先抓取所有資料 (確保快取內有資料)
+        // 1. 先抓取所有資料
         await fetchData(); 
 
-        // 3. 資料到位後渲染 UI 組件
+        // 2. 渲染 UI 組件
         renderLogoAndStores();
         renderNav();
         updateLangButton();
 
-        // 4. 執行頁面內容載入
-        // 因為剛剛跑完 fetchData，rawDataCache[currentPage] 理論上已有資料
+        // 3. 載入內容 (增加 hasCache 判斷防閃爍)
         const hasCache = !!(rawDataCache[currentPage] && rawDataCache[currentPage].length > 0);
         await loadPage(currentPage, false, hasCache); 
         
         updateTabTitle();
     } catch (e) {
-        console.error("Init Error:", e);
+        console.error("初始化失敗:", e);
+        // 如果連 Content 都載入失敗，強制清空 Loading 顯示錯誤訊息
+        document.getElementById('app').innerHTML = `<div class="text-center py-20">連線逾時，請重新整理網頁。</div>`;
     }
 }
 
@@ -365,74 +367,72 @@ function renderNav() {
 }
 
 async function loadPage(pageName, updateUrl = true, skipLoading = false) {
-    console.log(`執行 loadPage: ${pageName}`);
+    // 防呆：如果沒傳頁面名稱，預設給 Content
+    const target = pageName || 'Content';
+    console.log(`執行 loadPage: ${target}`);
     
     const app = document.getElementById('app');
     if (!app) return;
 
     const langIdx = (currentLang === 'zh') ? 1 : 2;
-    const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
+    const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(target);
 
-    // A. 處理 Loading 動畫顯示邏輯 (如果有快取就不顯示，防止 F5 閃爍)
-    let data = rawDataCache[pageName];
+    // 檢查快取
+    let data = rawDataCache[target];
     const hasData = data && data.length > 0;
-    const needsLoading = !skipLoading && (['category', 'product', 'search'].includes(pageName) || !hasData);
     
-    if (needsLoading) {
+    // 只有在沒資料且沒被告知跳過時，才顯示轉圈圈
+    if (!skipLoading && !hasData) {
         app.innerHTML = `<div id="loading-spinner" class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
     }
 
     try {
-        // B. 根據頁面類型路由到不同的渲染函數
-        if (pageName === 'category') { 
+        if (target === 'category') { 
             await renderCategoryList(); 
-        } else if (pageName === 'product') { 
+        } else if (target === 'product') { 
             await renderProductDetail(); 
-        } else if (pageName === 'search') {
-            const params = new URLSearchParams(window.location.search);
-            executeSearch(params.get('q'));
+        } else if (target === 'search') {
+            const p = new URLSearchParams(window.location.search);
+            executeSearch(p.get('q'));
         } else {
-            // C. 若快取無資料則補抓
+            // 如果快取沒資料，補抓
             if (!hasData) {
-                console.log(`Cache 命中失敗，補抓分頁資料: ${pageName}`);
-                data = await fetchSheetData(pageName);
-                rawDataCache[pageName] = data;
+                data = await fetchSheetData(target);
+                rawDataCache[target] = data;
             }
             
             if (!data || data.length === 0) throw new Error("無資料內容");
 
-            // D. 執行具體頁面渲染
-            if (pageName === "Content") {
+            // 分流渲染
+            if (target === "Content") {
                 await renderHome(data, langIdx); 
-            } else if (pageName === "Product Catalog") {
+            } else if (target === "Product Catalog") {
                 renderProductCatalog(data, langIdx);
-            } else if (pageName === "About Us") {
-                renderAboutOrContent(data, langIdx, pageName);
-            } else if (pageName === "Business Scope") {
-                renderBusinessScope(data, langIdx, pageName);
-            } else if (pageName === "Join Us") {
-                renderJoinUs(data, langIdx, pageName);
-            } else if (pageName === "Contact Us") {
-                renderContactUs(data, langIdx, pageName);
+            } else if (target === "About Us") {
+                renderAboutOrContent(data, langIdx, target);
+            } else if (target === "Business Scope") {
+                renderBusinessScope(data, langIdx, target);
+            } else if (target === "Join Us") {
+                renderJoinUs(data, langIdx, target);
+            } else if (target === "Contact Us") {
+                renderContactUs(data, langIdx, target);
             } else {
-                // 通用渲染 (處理其他可能的新增分頁)
-                renderAboutOrContent(data, langIdx, pageName);
+                renderAboutOrContent(data, langIdx, target);
             }
         }
 
-        // E. 渲染完成後移除 Loading 動畫
+        // 移除轉圈圈
         const spinner = document.getElementById('loading-spinner');
         if (spinner) spinner.remove();
 
-        // F. 搜尋框邏輯 (只在特定產品相關頁面顯示)
-        if (isProductPage && pageName !== 'product') {
+        if (isProductPage && target !== 'product') {
             if (typeof getSearchBoxHtml === 'function') {
                 app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
             }
         }
     } catch (e) {
-        console.error(`${pageName} 載入失敗:`, e);
-        app.innerHTML = `<div class="text-center py-20 text-gray-400">目前暫無內容 (${pageName})。</div>`;
+        console.error(`${target} 載入失敗:`, e);
+        app.innerHTML = `<div class="text-center py-20 text-gray-400">載入失敗，請確認網路連線。</div>`;
     }
 }
 
@@ -1083,6 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
