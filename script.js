@@ -291,24 +291,26 @@ async function initWebsite() {
         const params = new URLSearchParams(window.location.search);
         currentLang = params.get('lang') || 'zh';
 
-        // 必須呼叫 fetchData，它包含了 Promise.all 同步抓取所有分頁
+        // 1. 先抓取所有資料，但不執行任何渲染 (確保 fetchData 裡沒有呼叫 renderNav 等函數)
         await fetchData(); 
 
-        // 資料到位後再渲染
+        // 2. 資料全數到位後，一次性渲染導覽與 Logo
         renderLogoAndStores();
         renderNav();
         updateLangButton();
 
+        // 3. 載入當前頁面
         const page = params.get('page') || 'Content';
-        await loadPage(page, false); 
+        
+        // 【核心修正】：檢查緩存，如果已經有資料了，告訴 loadPage 不要顯示 Loading 動畫
+        const hasCache = !!rawDataCache[page];
+        await loadPage(page, false, hasCache); 
+        
         updateTabTitle();
     } catch (e) {
         console.error("Init Error:", e);
     }
 }
-
-// 確保只綁定一次
-window.onload = initWebsite;
 
 function toggleLang() {
     // 1. 切換語系變數
@@ -370,11 +372,19 @@ async function loadPage(pageName, updateUrl = true) {
     const app = document.getElementById('app');
     if (!app) return;
 
-    // 這裡確保 langIdx 永遠跟隨最新的 currentLang，解決中英混雜
     const langIdx = (currentLang === 'zh') ? 1 : 2;
     const isProductPage = ['Product Catalog', 'category', 'product', 'search'].includes(pageName);
 
-    app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
+    // --- 修正點 1: 檢查是否有快取，若有快取則不顯示轉圈圈，避免 F5 閃爍 ---
+    let data = rawDataCache[pageName];
+    const hasData = data && data.length > 0;
+    
+    // 如果是特殊頁面 (如 product/category) 或 沒快取，才顯示轉圈
+    const needsLoading = ['category', 'product', 'search'].includes(pageName) || !hasData;
+    
+    if (needsLoading) {
+        app.innerHTML = `<div id="loading-spinner" class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
+    }
 
     try {
         if (pageName === 'category') { 
@@ -385,20 +395,8 @@ async function loadPage(pageName, updateUrl = true) {
             const params = new URLSearchParams(window.location.search);
             executeSearch(params.get('q'));
         } else {
-            // --- 關鍵修正區 ---
-            // 如果是首頁 (Content)，我們需要確保走馬燈所需的其他分頁也存在
-            if (pageName === 'Content') {
-                // 如果快取裡沒有目錄或關於我們，補抓它們 (防止走馬燈消失)
-                if (!rawDataCache['Product Catalog'] || !rawDataCache['About Us']) {
-                    console.log("補抓首頁所需之關聯分頁資料...");
-                    // 這裡強烈建議在 initWebsite 就一次 await fetchGASProducts() 抓完
-                    // 如果沒抓完，這裡會導致 renderHome 抓不到圖片
-                }
-            }
-
-            let data = rawDataCache[pageName];
-
-            if (!data || data.length === 0) {
+            // --- 修正點 2: 確保資料抓取邏輯 ---
+            if (!hasData) {
                 console.log(`Cache 命中失敗，補抓分頁資料: ${pageName}`);
                 data = await fetchSheetData(pageName);
                 rawDataCache[pageName] = data;
@@ -406,9 +404,9 @@ async function loadPage(pageName, updateUrl = true) {
             
             if (!data || data.length === 0) throw new Error("無資料內容");
 
-            // 修正渲染呼叫：確保 renderHome 使用 await
+            // 執行渲染
             if (pageName === "Content") {
-                await renderHome(data, langIdx); // 加 await 確保渲染完整
+                await renderHome(data, langIdx); 
             } else if (pageName === "Product Catalog") {
                 renderProductCatalog(data, langIdx);
             } else if (pageName === "About Us") {
@@ -419,8 +417,15 @@ async function loadPage(pageName, updateUrl = true) {
                 renderJoinUs(data, langIdx, pageName);
             } else if (pageName === "Contact Us") {
                 renderContactUs(data, langIdx, pageName);
+            } else {
+                // 通用渲染 (包含廠房展示與實績)
+                renderAboutOrContent(data, langIdx, pageName);
             }
         }
+
+        // --- 修正點 3: 渲染完成後，確保手動移除可能殘留的轉圈圈 ---
+        const spinner = document.getElementById('loading-spinner');
+        if (spinner) spinner.remove();
 
         // 搜尋框邏輯
         if (isProductPage && pageName !== 'product') {
@@ -439,7 +444,7 @@ async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
     if (!app) return;
 
-    // --- 修正 1：立即清空內容，防止 loadPage 產生的轉圈圈動畫殘留 ---
+    // --- 關鍵修正：徹底清空 app 容器，確保 loadPage 產生的轉圈圈完全消失 ---
     app.innerHTML = ''; 
 
     let companyNames = ''; 
@@ -449,11 +454,9 @@ async function renderHome(contentData, langIdx) {
     // A. 處理首頁主體 (YouTube + 公司名 + 簡介)
     contentData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
-        // 抓取 YouTube 嵌入碼
         if (key.includes('youtube') && row[4]) {
             youtubeEmbed = `<div class="youtube-container shadow-2xl rounded-2xl overflow-hidden aspect-video">${row[4]}</div>`;
         }
-        // 抓取公司標題：【修正手機版大小 text-xl、行距 leading-tight、寬度限制 w-2/3】
         if (key.includes('company name')) {
             companyNames += `
                 <div class="mb-4 flex flex-col items-start">
@@ -463,7 +466,6 @@ async function renderHome(contentData, langIdx) {
                     </div>
                 </div>`;
         }
-        // 抓取簡介標題與內文
         if (key.includes('introduction title')) {
             introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
         }
@@ -472,7 +474,7 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // B. 準備向左走馬燈 (產品分類) - 直接從快取拿
+    // B. 準備向左走馬燈 (產品分類)
     const catalogData = rawDataCache['Product Catalog'] || [];
     let categoryItems = '';
     catalogData.forEach(row => {
@@ -491,24 +493,23 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // C. 準備向右走馬燈 (廠房展示) - 直接從快取拿
+    // C. 準備向右走馬燈 (廠房展示)
     const aboutData = rawDataCache['About Us'] || [];
     let aboutImages = '';
     aboutData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
+        // 確保這裡抓取的是正確的廠房圖片 key
         if (key.includes('upper image') && row[3]) {
             aboutImages += `<div class="shrink-0 w-80 h-52 overflow-hidden rounded-xl shadow-lg border bg-white"><img src="${row[3]}" class="w-full h-full object-cover"></div>`;
         }
     });
 
-    // D. 組合走馬燈 HTML
-    const leftMarquee = `<div class="marquee-content animate-scroll-left">${categoryItems}${categoryItems}</div>`;
-    const rightMarquee = `<div class="marquee-content animate-scroll-right">${aboutImages}${aboutImages}</div>`;
-    
+    // D. 語系標題
     const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
     const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
-    // E. 渲染完整 HTML：【修正手機版上下間距，從原本 py-16 縮小為 py-8】
+    // E. 渲染完整 HTML
+    // 注意：最後一個 div 必須完整閉合，否則後方的 HTML 會跑進去
     app.innerHTML = `
         <div class="w-full flex flex-col items-center">
             <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-8 items-center text-left py-8 md:py-16">
@@ -527,14 +528,18 @@ async function renderHome(contentData, langIdx) {
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-blue-600 pl-4">${titleCat}</h2>
                 </div>
-                <div class="marquee-container">${leftMarquee}</div>
+                <div class="marquee-container">
+                    <div class="marquee-content animate-scroll-left">${categoryItems}${categoryItems}</div>
+                </div>
             </div>
 
             <div class="w-full bg-gray-50 py-16">
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-gray-400 pl-4">${titleGallery}</h2>
                 </div>
-                <div class="marquee-container no-pause">${rightMarquee}</div>
+                <div class="marquee-container no-pause">
+                    <div class="marquee-content animate-scroll-right">${aboutImages}${aboutImages}</div>
+                </div>
             </div>
         </div>`;
 }
@@ -1086,6 +1091,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫初始化函數，這是網站的唯一入口
     initWebsite();
 });
+
 
 
 
