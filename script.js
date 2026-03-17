@@ -548,8 +548,17 @@ function getLocalizedCategoryName(rawCatName) {
     return (row && row[langIdx]) ? row[langIdx] : rawCatName;
 }
 
-function parseMarkdownTable(text) {
+/**
+ * 修正後的 Markdown 解析函數
+ * @param {string} zhText - 來自 K 欄的中文內容
+ * @param {string} enText - 來自 L 欄的英文內容
+ */
+function parseMarkdownTable(zhText, enText) {
+    // 根據全域變數 currentLang 決定顯示哪一欄
+    let text = (currentLang === 'zh') ? (zhText || "") : (enText || zhText || "");
+    
     if (!text) return "";
+    
     const lines = text.split('\n');
     let html = '';
     let tableBuffer = [];
@@ -585,19 +594,17 @@ function parseMarkdownTable(text) {
                 const colCount = tableBuffer[0].length;
                 let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
 
-                // --- 表身合併邏輯運算 ---
+                // --- 表身合併邏輯 ---
                 for (let r = 0; r < rowCount; r++) {
                     html += '<tr>';
                     for (let c = 0; c < colCount; c++) {
-                        // 如果該格已被合併標記為跳過，則不處理
                         if (skipMap[r][c]) continue;
 
                         let cellContent = dataRows[r][c];
                         let rowspan = 1;
                         let colspan = 1;
 
-                        // 1. 計算 Colspan (橫向合併: 當格內容為 '>')
-                        // 雖然邏輯通常是左格合併右格，但我們檢查右邊是否有 '>'
+                        // 1. 計算 Colspan
                         for (let nextC = c + 1; nextC < colCount; nextC++) {
                             if (dataRows[r][nextC] === '>') {
                                 colspan++;
@@ -605,24 +612,21 @@ function parseMarkdownTable(text) {
                             } else break;
                         }
 
-                        // 2. 計算 Rowspan (縱向合併: 下方格內容為 '^')
+                        // 2. 計算 Rowspan
                         if (cellContent !== '^' && cellContent !== '>') {
                             for (let nextR = r + 1; nextR < rowCount; nextR++) {
                                 if (dataRows[nextR][c] === '^') {
                                     rowspan++;
                                     skipMap[nextR][c] = true;
-                                    // 同時要把該行被 colspan 合併的格子也標記為跳過
                                     for (let spanC = 1; spanC < colspan; spanC++) {
                                         skipMap[nextR][c + spanC] = true;
                                     }
                                 } else break;
                             }
                         } else {
-                            // 如果當前格本身就是 '^' 或 '>' 且沒被 skipMap 攔截，代表資料有誤或它是孤立的標記
                             continue;
                         }
 
-                        // --- 樣式與連結處理 ---
                         let cellClass = "";
                         if (cellContent.startsWith('#')) {
                             cellClass = "no-border-cell"; 
@@ -720,22 +724,19 @@ async function renderProductDetail() {
             return;
         }
 
-        // --- 1. 建立 Logo 圖庫 (A欄名稱, D欄圖片) ---
+        // --- 1. 建立 Logo 圖庫 (邏輯不變) ---
         const catalogSheetData = rawDataCache["Product Catalog"] || [];
         const logoLibrary = {};
-
         catalogSheetData.forEach(row => {
-            const rawName = String(row[0] || "").trim(); // A 欄: Store 1, Store 2...
-            const logoUrl = String(row[3] || "").trim(); // D 欄: 圖片 URL
-            
+            const rawName = String(row[0] || "").trim();
+            const logoUrl = String(row[3] || "").trim();
             if (rawName.toLowerCase().startsWith("store") && logoUrl) {
-                // 轉為小寫並移除空格，例如 "Store 1" 變 "store1"
                 const cleanKey = rawName.toLowerCase().replace(/\s+/g, '');
                 logoLibrary[cleanKey] = logoUrl;
             }
         });
 
-        // --- 2. 處理 Store 1 ~ 4 賣場連結與 Logo ---
+        // --- 2. 處理 Store 賣場連結 (邏輯不變) ---
         let storeLinksHtml = '';
         const storeMapping = [
             { key: "Store 1網址", id: "store1" },
@@ -743,13 +744,10 @@ async function renderProductDetail() {
             { key: "Store 3網址", id: "store3" },
             { key: "Store 4網址", id: "store4" }
         ];
-
         storeMapping.forEach(store => {
             const storeUrl = (item[store.key] || "").trim();
             const logoUrl = logoLibrary[store.id];
-
             if (storeUrl && storeUrl !== "#" && logoUrl) {
-                // h-14 為放大後的尺寸，hover:scale-110 保持互動感
                 storeLinksHtml += `
                     <a href="${storeUrl}" target="_blank" class="hover:scale-110 transition shrink-0 block">
                         <img src="${logoUrl}" alt="${store.id}" class="h-14 w-auto shadow-md rounded-lg border bg-white p-1">
@@ -757,7 +755,7 @@ async function renderProductDetail() {
             }
         });
 
-        // --- 3. 語言與資料準備 ---
+        // --- 3. 語言與資料準備 (重點修正區) ---
         const isZH = (currentLang === 'zh');
         const rawCatName = (item["Category"] || item["分類"] || "").trim();
         const localizedCatName = typeof getLocalizedCategoryName === 'function' ? getLocalizedCategoryName(rawCatName) : rawCatName;
@@ -769,9 +767,15 @@ async function renderProductDetail() {
             specs: isZH ? '商品描述與規格' : 'Specifications'
         };
         
+        // 商品名稱切換
         const name = isZH ? (item["Chinese product name"] || item["中文名稱"] || itemCode) : (item["English product name"] || item["英文名稱"] || itemCode);
         updateTabTitle(name);
-        const desc = isZH ? (item["Description中文描述"] || item["中文描述"] || "") : (item["English description英文描述"] || item["英文名稱"] || "");
+
+        // --- 修正：同時取出中英文描述 ---
+        // 假設 K 欄 key 為 "Description中文描述"，L 欄 key 為 "English description英文描述"
+        const zhDesc = item["Description中文描述"] || item["中文描述"] || "";
+        const enDesc = item["English description英文描述"] || item["英文描述"] || "";
+
         const packing = item["Packing規格"] || item["Pcs / Packing"] || "--";
         const unit = item["Unit單位"] || item["計量單位"] || "";
         const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
@@ -819,7 +823,7 @@ async function renderProductDetail() {
                         <div class="prose prose-slate max-w-none">
                             <h4 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500 inline-block">${labels.specs}</h4>
                             <div class="text-gray-600 leading-relaxed mt-2">
-                                ${typeof parseMarkdownTable === 'function' ? parseMarkdownTable(desc) : desc}
+                                ${typeof parseMarkdownTable === 'function' ? parseMarkdownTable(zhDesc, enDesc) : (isZH ? zhDesc : enDesc)}
                             </div>
                         </div>
                     </div>
