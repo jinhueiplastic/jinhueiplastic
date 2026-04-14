@@ -64,6 +64,26 @@ async function fetchData() {
     }
 }
 
+// 顯示 Loading
+function showLoader() {
+    const loader = document.getElementById('global-loader');
+    if (loader) loader.style.display = 'flex';
+}
+
+// 隱藏 Loading
+function hideLoader() {
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+        // 加入一點淡出效果
+        loader.style.transition = 'opacity 0.3s ease';
+        loader.style.opacity = '0';
+        setTimeout(() => {
+            loader.style.display = 'none';
+            loader.style.opacity = '1'; // 重設透明度供下次使用
+        }, 300);
+    }
+}
+
 /* --- 渲染 Logo 與 賣場圖標 --- */
 function renderLogoAndStores() {
     const logoContainer = document.getElementById('logo-container');
@@ -449,9 +469,16 @@ function renderNav() {
     nav.innerHTML = navHtml;
 }
 
+/**
+ * 核心分頁加載函式
+ * @param {string} pageName - 分頁名稱
+ * @param {boolean} updateUrl - 是否更新瀏覽器 URL 歷史
+ * @param {boolean} skipLoading - 是否跳過顯示全螢幕 Loading (例如在背景更新時使用)
+ */
 async function loadPage(pageName, updateUrl = true, skipLoading = false) {
-    // 1. 參數初始化與防呆
+    // 1. 參數初始化
     const target = pageName || 'Content';
+    currentPage = target; // 更新全域變數
     console.log(`執行 loadPage: ${target}`);
     
     const app = document.getElementById('app');
@@ -461,15 +488,9 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
     // 定義哪些頁面屬於產品相關（需顯示搜尋框）
     const isProductRelatedPage = ['Product Catalog', 'category', 'search'].includes(target);
 
-    // 2. 顯示 Loading 狀態
-    let data = rawDataCache[target];
-    const hasData = data && data.length > 0;
-    
-    if (!skipLoading && !hasData) {
-        app.innerHTML = `
-            <div id="loading-spinner" class="flex justify-center py-20">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            </div>`;
+    // 2. 顯示全螢幕 Loading 狀態
+    if (!skipLoading) {
+        showLoader(); 
     }
 
     try {
@@ -485,8 +506,9 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
             await executeSearch(p.get('q')); 
         } 
         else {
-            // 一般分頁資料抓取（若無快取）
-            if (!hasData) {
+            // 一般分頁資料抓取（若無快取則發起請求）
+            let data = rawDataCache[target];
+            if (!data || data.length === 0) {
                 data = await fetchSheetData(target);
                 rawDataCache[target] = data;
             }
@@ -496,7 +518,9 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
             // 根據頁面名稱調用對應的渲染函式
             switch (target) {
                 case "Content":
-                    await renderHome(data, langIdx);
+                    // 注意：你的首頁渲染函式若叫 renderHome 或 renderBusinessScope 請確認名稱一致
+                    // 根據之前的對話，首頁可能是 renderBusinessScope
+                    await renderBusinessScope(data, langIdx, target);
                     break;
                 case "Product Catalog":
                     await renderProductCatalog(data, langIdx);
@@ -519,18 +543,24 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
             }
         }
 
-        // 4. 移除 Loading 轉圈圈
-        const spinner = document.getElementById('loading-spinner');
-        if (spinner) spinner.remove();
-
-        // 5. 插入搜尋框（僅限產品相關目錄頁，且不在商品詳情頁顯示）
+        // 4. 插入搜尋框（僅限產品相關目錄頁）
         if (isProductRelatedPage) {
             if (typeof getSearchBoxHtml === 'function') {
-                // 檢查是否已經存在搜尋框，避免重複插入
                 if (!document.getElementById('product-search-input')) {
                     app.insertAdjacentHTML('afterbegin', getSearchBoxHtml());
                 }
             }
+        }
+
+        // 5. 更新分頁標題 (Browser Tab Title)
+        if (typeof updateTabTitle === 'function') {
+            updateTabTitle();
+        }
+
+        // 6. 更新網址 URL (如果不跳過 pushState)
+        if (updateUrl) {
+            const newUrl = `?page=${encodeURIComponent(target)}&lang=${currentLang}${target === 'search' ? '&q=' + (new URLSearchParams(window.location.search).get('q') || '') : ''}`;
+            window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
         }
 
     } catch (e) {
@@ -538,10 +568,17 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
         app.innerHTML = `
             <div class="text-center py-20">
                 <p class="text-gray-400 mb-4">${currentLang === 'zh' ? '載入失敗，請確認網路連線。' : 'Load failed, please check your connection.'}</p>
-                <button onclick="location.reload()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                <button onclick="location.reload()" class="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg transition">
                     ${currentLang === 'zh' ? '重新整理' : 'Reload'}
                 </button>
             </div>`;
+    } finally {
+        // 7. 關閉全螢幕 Loading
+        if (!skipLoading) {
+            hideLoader();
+        }
+        // 捲動回頂部
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 }
 
