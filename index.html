@@ -8,17 +8,31 @@
     
     <link rel="icon" href="logo.png" type="image/png">
     
-    <meta name="description" content="錦輝塑膠業有限公司深耕水電零配件領域超過20年，專注於研發、製造與銷售高品質產品。旗下擁有分公司美銘工業有限公司，憑藉專業技術與豐富經驗，致力於成為業界值得信賴的合作夥伴。">
+    <meta name="description" content="錦輝塑膠業有限公司深耕水電零配件領域超過20年，專注於研發、製造與銷售高品質產品。">
     <meta name="keywords" content="錦輝塑膠, 水電零配件, 塑膠研發製造與銷售">
     
     <meta property="og:title" content="錦輝塑膠業有限公司 | 專業水電零配件製造與銷售">
-    <meta property="og:description" content="深耕水電領域20年，高品質研發製造，旗下包含美銘工業有限公司，提供全面性的專業服務。">
+    <meta property="og:description" content="深耕水電領域20年，高品質研發製造，提供全面性的專業服務。">
     <meta property="og:type" content="website">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
+    
+    <style>
+        /* 預設顯示，直到 JS 載入完成後隱藏 */
+        #global-loader {
+            display: flex; 
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans">
+
+    <div id="global-loader" class="fixed inset-0 z-[9999] flex items-center justify-center bg-white">
+        <div class="flex flex-col items-center">
+            <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p class="mt-4 text-gray-500 font-medium tracking-widest animate-pulse uppercase">Loading</p>
+        </div>
+    </div>
 
     <header class="nav-fixed border-b shadow-sm">
         <div class="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -56,8 +70,3 @@
     <script src="script.js"></script>
 </body>
 </html>
-
-
-
-
-
