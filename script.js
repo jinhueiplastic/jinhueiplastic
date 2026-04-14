@@ -992,21 +992,25 @@ async function renderProductDetail() {
 
 // 確保這個函式是在最外層，不要包在 initWebsite 裡面
 async function toggleLang() {
-    console.log("切換語系中...");
+    // 1. 取得目前的網址參數
+    const urlParams = new URLSearchParams(window.location.search);
     
-    // 1. 切換語系變數
+    // 2. 切換語系變數
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
     
-    // 2. 更新按鈕文字
-    updateLangButton();
-    
-    // 3. 重新渲染導航列與 Logo（因為選單文字也要變）
-    if (typeof renderLogoAndStores === 'function') renderLogoAndStores();
-    if (typeof renderNav === 'function') renderNav();
+    // 3. 同步更新 URL 中的 lang 參數，其餘 (page, cat, id) 會被保留
+    urlParams.set('lang', currentLang);
+    const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
+    window.history.pushState({ path: newUrl }, '', newUrl);
 
-    // 4. 重新載入當前頁面內容
-    // 這裡呼叫 loadPage，它會自動執行 showLoader 和 hideLoader
-    await loadPage(currentPage, true); 
+    // 4. 更新介面 UI
+    updateLangButton();
+    renderLogoAndStores();
+    renderNav();
+
+    // 5. 重新載入當前頁面
+    // 注意：這裡傳入 false 是為了避免 loadPage 再次 pushState 導致網址亂掉
+    await loadPage(currentPage, false);
 }
 
 /* --- 系統 UI 同步 --- */
