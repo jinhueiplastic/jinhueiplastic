@@ -12,6 +12,25 @@ let storeLogoMap = {};
 /* --- 核心資料抓取邏輯 --- */
 const getSheetUrl = (sheetName) => `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
 
+function showLoader() {
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+        loader.style.display = 'flex';
+        loader.style.opacity = '1';
+    }
+}
+
+function hideLoader() {
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+        loader.style.transition = 'opacity 0.3s ease';
+        loader.style.opacity = '0';
+        setTimeout(() => {
+            loader.style.display = 'none';
+        }, 300);
+    }
+}
+
 async function fetchSheetData(sheetName) {
     try {
         const url = getSheetUrl(sheetName);
@@ -61,26 +80,6 @@ async function fetchData() {
     } catch (e) {
         console.error("fetchData 發生錯誤:", e);
         throw e;
-    }
-}
-
-// 顯示 Loading
-function showLoader() {
-    const loader = document.getElementById('global-loader');
-    if (loader) loader.style.display = 'flex';
-}
-
-// 隱藏 Loading
-function hideLoader() {
-    const loader = document.getElementById('global-loader');
-    if (loader) {
-        // 加入一點淡出效果
-        loader.style.transition = 'opacity 0.3s ease';
-        loader.style.opacity = '0';
-        setTimeout(() => {
-            loader.style.display = 'none';
-            loader.style.opacity = '1'; // 重設透明度供下次使用
-        }, 300);
     }
 }
 
