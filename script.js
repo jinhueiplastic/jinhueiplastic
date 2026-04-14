@@ -119,6 +119,223 @@ function switchPage(page, params = {}) {
     window.scrollTo(0, 0);
 }
 
+/**
+ * 渲染業務範圍 (Business Scope)
+ * 從試算表抓取對應語系的圖片進行長條狀排列
+ */
+function renderBusinessScope(data, langIdx, pageName) {
+    const app = document.getElementById('app');
+    const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
+    let contentImages = '';
+
+    data.forEach(row => {
+        const key = (row[0] || "").toLowerCase().trim();
+        // 根據目前語系決定要抓取的關鍵字
+        const target = (currentLang === 'zh') ? 'chinese content' : 'english content';
+
+        if (key.includes(target) && row[3]) {
+            contentImages += `<img src="${row[3]}" class="home-bottom-image mb-8 max-w-4xl mx-auto block" alt="Business Scope">`;
+        }
+    });
+
+    app.innerHTML = `
+        <div class="flex flex-col items-center py-10 w-full">
+            <h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1>
+            <div class="w-full px-4">${contentImages}</div>
+        </div>`;
+}
+
+/**
+ * 渲染產品目錄主頁 (Product Catalog)
+ * 顯示分類卡片，點擊後透過 switchPage 跳轉至特定分類
+ */
+function renderProductCatalog(data, langIdx) {
+    const app = document.getElementById('app');
+    let catHtml = '';
+
+    data.forEach(row => {
+        // row[0] 包含 categories, row[langIdx] 為分類名稱, row[4] 為分類 ID, row[3] 為圖片
+        if (row[0] && row[0].toLowerCase().trim().includes('categories') && row[langIdx]) {
+            const displayName = row[langIdx];
+            const catId = row[4];
+            const imgUrl = row[3] || 'https://via.placeholder.com/300';
+
+            catHtml += `
+                <div class="category-card group cursor-pointer" 
+                     onclick="switchPage('category', {cat: '${catId}', title: '${displayName}'})">
+                    <div class="category-img-container">
+                        <img src="${imgUrl}" class="group-hover:scale-110 transition duration-500" alt="${displayName}">
+                    </div>
+                    <div class="p-5 text-center bg-white border-t">
+                        <h4 class="font-bold text-gray-800">${displayName}</h4>
+                    </div>
+                </div>`;
+        }
+    });
+
+    app.innerHTML = `
+        <div class="flex flex-col items-center py-6 w-full">
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 w-full max-w-7xl px-4">
+                ${catHtml}
+            </div>
+        </div>`;
+}
+
+/**
+ * 渲染關於我們 (About Us) 或 通用頁面
+ * 包含：頂部圖片網格、公司名稱、介紹內容、地址區塊、底部圖片
+ */
+function renderAboutOrContent(data, langIdx, pageName) {
+    const app = document.getElementById('app');
+    let upperImages = ''; 
+    let companyNames = '';
+    let introContent = '';
+    let addressBlock = '';
+    let bottomImages = '';
+
+    data.forEach(row => {
+        const key = (row[0] || "").toLowerCase().trim();
+
+        if (key.includes('upper image') && row[3]) {
+            upperImages += `<img src="${row[3]}" class="home-bottom-image" alt="Gallery">`;
+        }
+        if (key.includes('company name')) {
+            companyNames += `
+                <div class="mb-2 flex flex-col items-start"> 
+                    <div class="w-3/4 md:w-full text-left"> 
+                        <h2 class="text-lg md:text-3xl font-black text-gray-900 leading-tight">${row[1]}</h2>
+                        <h3 class="text-xs md:text-xl font-bold text-gray-400 mt-0 leading-tight">${row[2]}</h3>
+                    </div>
+                </div>`;
+        }
+        if (key.includes('introduction title')) {
+            introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
+        }
+        if (key.includes('introduction') && !key.includes('title')) {
+            introContent += `<p class="text-lg leading-loose text-gray-700 mb-6" style="white-space: pre-line;">${row[langIdx]}</p>`;
+        }
+        if (key.includes('address')) {
+            addressBlock += `<p class="text-lg font-medium text-gray-500">${row[langIdx]}</p>`;
+        }
+        if (key.includes('bottom image') && row[3]) {
+            bottomImages += `<img src="${row[3]}" class="home-bottom-image" alt="Gallery">`;
+        }
+    });
+
+    if (pageName === "About Us") {
+        app.innerHTML = `
+            <div class="w-full flex flex-col items-center py-10">
+                ${upperImages ? `
+                    <div class="w-full bg-gray-50 py-12 mb-16">
+                        <div class="max-w-7xl mx-auto px-4">
+                            <div class="image-grid-container justify-center">${upperImages}</div>
+                        </div>
+                    </div>` : ''}
+                <div class="max-w-6xl w-full px-4 flex flex-col md:flex-row gap-12 items-start mb-16">
+                    <div class="w-full md:w-1/3">${companyNames}</div>
+                    <div class="w-full md:w-2/3 text-left">${introContent}</div>
+                </div>
+                <div class="text-center py-10 w-full border-t px-4">${addressBlock}</div>
+                ${bottomImages ? `<div class="image-grid-container px-4 mt-10 justify-center">${bottomImages}</div>` : ''}
+            </div>`;
+    } else {
+        app.innerHTML = `
+            <div class="flex flex-col items-center text-center py-10 w-full px-4">
+                <div class="w-full mb-8">${companyNames}</div>
+                <div class="w-full mb-8 text-gray-500">${addressBlock}</div>
+                <div class="image-grid-container px-4 justify-center">${bottomImages}</div>
+            </div>`;
+    }
+}
+
+/**
+ * 渲染加入我們 (Join Us)
+ * 自動解析 Position 與 Description 的配對關係
+ */
+function renderJoinUs(data, langIdx, pageName) {
+    const app = document.getElementById('app');
+    const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
+    let jobs = {};
+
+    data.forEach(row => {
+        const key = (row[0] || "").toLowerCase().trim();
+        const match = key.match(/\d+/);
+        if (match) {
+            const id = match[0];
+            if (!jobs[id]) jobs[id] = { title: "", desc: "" };
+            if (key.includes('position')) jobs[id].title = row[langIdx] || "";
+            if (key.includes('description')) jobs[id].desc = row[langIdx] || "";
+        }
+    });
+
+    let jobsHtml = Object.values(jobs).filter(j => j.title.trim() !== "").map(j => `
+        <div class="bg-white border rounded-2xl p-8 text-left shadow-sm hover:shadow-md transition">
+            <h3 class="text-2xl font-black mb-4 border-b pb-4 text-blue-700">${j.title}</h3>
+            <p class="text-gray-600 leading-relaxed" style="white-space: pre-line;">${j.desc}</p>
+        </div>`).join('');
+
+    app.innerHTML = `
+        <div class="flex flex-col items-center py-10 px-4">
+            <h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1>
+            <div class="grid md:grid-cols-2 gap-8 w-full max-w-6xl">
+                ${jobsHtml || `<p class="text-gray-400">${currentLang === 'zh' ? '目前暫無職缺。' : 'No positions available.'}</p>`}
+            </div>
+        </div>`;
+}
+
+/**
+ * 渲染聯繫我們 (Contact Us)
+ * 包含文字資訊與內嵌 Google Maps
+ */
+function renderContactUs(data, langIdx, pageName) {
+    const app = document.getElementById('app');
+    const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
+    let info = ''; 
+    let mapUrl = '';
+
+    data.forEach(row => {
+        if (row[0] && row[0].toLowerCase().includes('info') && row[langIdx]) {
+            info += `<p class="text-xl text-gray-700 mb-4 font-medium">${row[langIdx]}</p>`;
+        }
+        if (row[0] && row[0].toLowerCase().includes('map') && row[4]) {
+            mapUrl = row[4];
+        }
+    });
+
+    app.innerHTML = `
+        <div class="flex flex-col items-center py-10 px-4 text-center">
+            <h1 class="text-4xl font-black mb-12 text-gray-800">${(titleRow && titleRow[langIdx]) || pageName}</h1>
+            <div class="w-full max-w-2xl border-y py-8 mb-16">${info}</div>
+            <iframe src="${mapUrl}" width="100%" height="500" class="max-w-6xl rounded-2xl shadow-sm border" loading="lazy"></iframe>
+        </div>`;
+}
+
+/**
+ * 產生搜尋欄的 HTML
+ * 用於 Product Catalog 頁面頂部
+ */
+function getSearchBoxHtml() {
+    const placeholder = currentLang === 'zh' ? '搜尋產品編號或名稱...' : 'Search item code or name...';
+    const params = new URLSearchParams(window.location.search);
+    const currentQuery = params.get('q') || '';
+
+    return `
+        <div class="flex justify-end mb-8">
+            <div class="relative w-full max-w-sm flex gap-2">
+                <input type="text" id="product-search-input" 
+                       class="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all" 
+                       placeholder="${placeholder}" value="${currentQuery}"
+                       onkeypress="if(event.key === 'Enter') handleSearch()">
+                <button onclick="handleSearch()" 
+                        class="bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-colors shadow-md flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </button>
+            </div>
+        </div>`;
+}
+
 function updateTabTitle(customTitle) {
     const baseTitle = "錦輝塑膠業有限公司 JIN HUEI PLASTIC";
     document.title = customTitle ? `${customTitle} | ${baseTitle}` : baseTitle;
