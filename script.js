@@ -990,6 +990,25 @@ async function renderProductDetail() {
     }
 }
 
+// 確保這個函式是在最外層，不要包在 initWebsite 裡面
+async function toggleLang() {
+    console.log("切換語系中...");
+    
+    // 1. 切換語系變數
+    currentLang = (currentLang === 'zh') ? 'en' : 'zh';
+    
+    // 2. 更新按鈕文字
+    updateLangButton();
+    
+    // 3. 重新渲染導航列與 Logo（因為選單文字也要變）
+    if (typeof renderLogoAndStores === 'function') renderLogoAndStores();
+    if (typeof renderNav === 'function') renderNav();
+
+    // 4. 重新載入當前頁面內容
+    // 這裡呼叫 loadPage，它會自動執行 showLoader 和 hideLoader
+    await loadPage(currentPage, true); 
+}
+
 /* --- 系統 UI 同步 --- */
 
 function updateLangButton() {
