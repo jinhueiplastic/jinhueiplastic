@@ -530,9 +530,7 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
             // 根據頁面名稱調用對應的渲染函式
             switch (target) {
                 case "Content":
-                    // 注意：你的首頁渲染函式若叫 renderHome 或 renderBusinessScope 請確認名稱一致
-                    // 根據之前的對話，首頁可能是 renderBusinessScope
-                    await renderBusinessScope(data, langIdx, target);
+                    await renderHome(data, langIdx, target);
                     break;
                 case "Product Catalog":
                     await renderProductCatalog(data, langIdx);
