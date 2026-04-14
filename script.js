@@ -421,12 +421,21 @@ async function initWebsite() {
         currentLang = params.get('lang') || 'zh';
         currentPage = params.get('page') || 'Content'; 
 
+        // 1. 顯示 Loading
+        showLoader(); 
+
+        // 2. 抓取初始資料 (Logo, 導覽列等)
         await fetchData(); 
         renderLogoAndStores();
         renderNav();
-        loadPage(currentPage, false, true);
+        updateLangButton(); // 建議同步更新語系按鈕文字
 
-        // 新增：監聽點擊攔截，確保動態生成的 A 標籤正常運作
+        // 3. 關鍵修正：必須使用 await，且參數要對應 loadPage(pageName, updateUrl, skipLoading)
+        // 這裡 skipLoading 設為 true，因為我們在第一步已經手動 showLoader 了，
+        // 或者直接 loadPage(currentPage, false, false) 讓 loadPage 自己管也可以。
+        await loadPage(currentPage, false, false);
+
+        // 4. 點擊攔截監聽
         document.addEventListener('click', (e) => {
             const anchor = e.target.closest('a');
             if (anchor && anchor.getAttribute('href')?.startsWith('?page=')) {
@@ -440,7 +449,11 @@ async function initWebsite() {
         });
 
     } catch (e) {
-        document.getElementById('app').innerHTML = `<div class="text-center py-20">載入失敗。</div>`;
+        console.error("初始化失敗:", e);
+        document.getElementById('app').innerHTML = `<div class="text-center py-20">載入失敗，請檢查網路連線。</div>`;
+    } finally {
+        // 5. 確保最後關閉 Loading
+        hideLoader();
     }
 }
 
