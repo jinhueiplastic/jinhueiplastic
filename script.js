@@ -889,21 +889,31 @@ async function renderCategoryList() {
     try {
         const allProducts = await fetchGASProducts();
         const filtered = allProducts.filter(p => String(p["Category"] || "").trim() === String(rawCatName).trim());
+        
+        // Debug 用，檢查資料到底長怎樣
+        if (filtered.length > 0) console.log("GAS Data Sample:", filtered[0]);
+
         const localizedCatName = getLocalizedCategoryName(rawCatName);
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
 
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
-            const img = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
+            
+            // 增加容錯：嘗試抓取不同寫法的圖片欄位
+            const imgRaw = item["image_url"] || item["Image_URL"] || item["image"] || "";
+            const img = imgRaw ? String(imgRaw).split(",")[0].trim() : "";
+            
             const code = item["Item code (ERP)"];
             
-            // 這裡補回了原本被省略的 HTML 結構
             return `
                 <a href="?page=product&id=${code}&lang=${currentLang}" 
                    class="category-card group block" 
                    onclick="event.preventDefault(); event.stopPropagation(); switchPage('product', {id: '${code}'})">
                     <div class="category-img-container">
-                        <img src="${img}" class="hover:scale-110 transition duration-500" alt="${name}">
+                        <img src="${img}" 
+                             onerror="this.src='https://via.placeholder.com/300?text=No+Image'" 
+                             class="hover:scale-110 transition duration-500" 
+                             alt="${name}">
                     </div>
                     <div class="p-4 text-center">
                         <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
