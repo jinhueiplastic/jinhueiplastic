@@ -956,7 +956,7 @@ async function renderProductDetail() {
 console.log("GAS回傳的第一筆原始資料樣貌：", allProducts[0]);
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
         
-        if (!item) {
+        if (!item || !item["Item code (ERP)"]) {
             app.innerHTML = `<div class="text-center py-20">${currentLang === 'zh' ? '找不到商品內容。' : 'Product not found.'}</div>`;
             return;
         }
@@ -1009,7 +1009,6 @@ console.log("GAS回傳的第一筆原始資料樣貌：", allProducts[0]);
                 <nav class="flex text-gray-400 text-sm mb-8 italic">
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${labels.catalog}</span>
                     <span class="mx-2">&gt;</span>
-                    // 在 renderProductDetail 的渲染 HTML 內修改這行
 <span class="cursor-pointer hover:text-blue-600" 
       onclick="switchPage('category', {cat: '${rawCatName}', title: '${localizedCatName}'})">
       ${localizedCatName}
