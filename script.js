@@ -592,30 +592,27 @@ const target = pageName || 'Content';
             updateTabTitle();
         }
 
-// 6. 更新網址 URL (關鍵修正)
-        if (updateUrl) {
-            const searchParams = new URLSearchParams(window.location.search);
-            const q = searchParams.get('q') || '';
-            const newUrl = `?page=${encodeURIComponent(target)}&lang=${currentLang}${target === 'search' ? '&q=' + q : ''}`;
-            
-            // 只有當目前的 URL 跟要更新的 URL 不同時，才推入紀錄
-            if (window.location.search !== newUrl) {
-                window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
-            }
-        }
+// 6. 更新網址 URL (加入「防重複寫入」邏輯)
+if (updateUrl) {
+    const currentSearch = window.location.search;
+    const targetUrlParams = new URLSearchParams();
+    targetUrlParams.set('page', target);
+    targetUrlParams.set('lang', currentLang);
+    
+    // 如果是搜尋頁面，要保留 q 參數
+    if (target === 'search') {
+        const q = new URLSearchParams(window.location.search).get('q') || '';
+        targetUrlParams.set('q', q);
+    }
 
-    } catch (e) {
-        console.error(`${target} 載入失敗:`, e);
-        app.innerHTML = `
-            <div class="text-center py-20">
-                <p class="text-gray-400 mb-4">${currentLang === 'zh' ? '載入失敗，請確認網路連線。' : 'Load failed, please check your connection.'}</p>
-                <button onclick="location.reload()" class="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg transition">
-                    ${currentLang === 'zh' ? '重新整理' : 'Reload'}
-                </button>
-            </div>`;
-} finally {
-        if (!skipLoading) hideLoader();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    const newSearchString = `?${targetUrlParams.toString()}`;
+
+    // 關鍵判斷：只有當「目前的網址」跟「要更新的網址」不一樣時，才執行 pushState
+    if (currentSearch !== newSearchString) {
+        console.log("偵測到網址不同，執行 pushState");
+        window.history.pushState({ page: target, lang: currentLang }, '', newSearchString);
+    } else {
+        console.log("網址已一致，跳過 pushState 避免重複紀錄");
     }
 }
 
