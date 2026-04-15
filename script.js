@@ -122,23 +122,25 @@ function renderLogoAndStores() {
 /* --- 路由與頁面切換邏輯 --- */
 function switchPage(page, params = {}) {
     const targetPage = page || 'Content';
+    currentPage = targetPage;
+    
+    // 構建新的網址
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', targetPage);
     u.searchParams.set('lang', currentLang); 
     
+    // 將 params 中的所有屬性 (如 id, cat, title) 寫入網址
     for (const key in params) { 
         if (params[key]) u.searchParams.set(key, params[key]); 
     }
 
-    // 這裡是唯一產生「新紀錄」的地方
-    console.log('--- switchPage 觸發了 pushState ---', targetPage);
-    window.history.pushState({ page: targetPage, lang: currentLang }, '', u.search.toString() ? u.search : `?page=${targetPage}&lang=${currentLang}`);
-    currentPage = targetPage;
+    // 更新瀏覽器歷史紀錄 (網址會在這裡發生變化)
+    window.history.pushState({ page: targetPage, params: params }, '', u.toString());
 
+    // 更新標籤頁標題 (如果 params 沒帶 title，先傳 targetPage 做緩衝)
     updateTabTitle(params.title || targetPage);
+    
     renderNav();
-
-    // 呼叫 loadPage 時，絕對要傳 false
     loadPage(targetPage, false, true); 
     window.scrollTo(0, 0);
 }
@@ -448,18 +450,20 @@ async function initWebsite() {
         currentLang = params.get('lang') || 'zh';
         currentPage = params.get('page') || 'Content'; 
 
-        // 1. 顯示 Loading
         showLoader(); 
 
-        // 2. 抓取初始資料 (Logo, 導覽列等)
         await fetchData(); 
         renderLogoAndStores();
         renderNav();
-        updateLangButton(); // 建議同步更新語系按鈕文字
+        updateLangButton();
 
+        // 重新整理時，updateTabTitle 會去網址抓 title 參數，抓不到則顯示預設
+        updateTabTitle(params.get('title'));
+
+        // 載入當前頁面
         await loadPage(currentPage, true, false);
 
-        // 4. 點擊攔截監聽
+        // 點擊攔截監聽
         document.addEventListener('click', (e) => {
             const anchor = e.target.closest('a');
             if (anchor && anchor.getAttribute('href')?.startsWith('?page=')) {
@@ -468,7 +472,8 @@ async function initWebsite() {
                 const page = urlParams.get('page');
                 const id = urlParams.get('id');
                 const cat = urlParams.get('cat');
-                switchPage(page, { id, cat });
+                const title = urlParams.get('title');
+                switchPage(page, { id, cat, title });
             }
         });
 
@@ -476,7 +481,6 @@ async function initWebsite() {
         console.error("初始化失敗:", e);
         document.getElementById('app').innerHTML = `<div class="text-center py-20">載入失敗，請檢查網路連線。</div>`;
     } finally {
-        // 5. 確保最後關閉 Loading
         hideLoader();
     }
 }
@@ -949,13 +953,19 @@ async function renderProductDetail() {
     const itemCode = params.get('id');
     const app = document.getElementById('app');
     
+    if (!itemCode) {
+        app.innerHTML = `<div class="text-center py-20">Missing Product ID.</div>`;
+        return;
+    }
+
     app.innerHTML = `<div class="flex justify-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
 
     try {
         const allProducts = await fetchGASProducts();
-console.log("GAS回傳的第一筆原始資料樣貌：", allProducts[0]);
+        // 過濾並尋找商品
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
         
+        // 雙重保險判斷
         if (!item || !item["Item code (ERP)"]) {
             app.innerHTML = `<div class="text-center py-20">${currentLang === 'zh' ? '找不到商品內容。' : 'Product not found.'}</div>`;
             return;
@@ -985,34 +995,36 @@ console.log("GAS回傳的第一筆原始資料樣貌：", allProducts[0]);
             }
         });
 
-        // 3. 語言與標籤
+        // 3. 語言與名稱處理
         const isZH = (currentLang === 'zh');
         const rawCatName = (item["Category"] || "").trim();
         const localizedCatName = getLocalizedCategoryName(rawCatName);
+        const name = isZH ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
+        
+        // 關鍵：更新分頁標題為「商品名稱」
+        updateTabTitle(name);
+
         const labels = {
             catalog: isZH ? '商品目錄' : 'Product Catalog',
             packing: isZH ? '包裝規格' : 'Packing',
             category: isZH ? '商品分類' : 'Category',
             specs: isZH ? '商品描述與規格' : 'Specifications'
         };
-        
-        const name = isZH ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
-        updateTabTitle(name);
 
         const zhDesc = item["desc_zh"] || "";
         const enDesc = item["desc_en"] || "";
         const images = item["image_url"] ? String(item["image_url"]).split(",").map(s => s.trim()) : [];
 
-        // 4. 渲染
+        // 4. 渲染 HTML
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="flex text-gray-400 text-sm mb-8 italic">
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${labels.catalog}</span>
                     <span class="mx-2">&gt;</span>
-<span class="cursor-pointer hover:text-blue-600" 
-      onclick="switchPage('category', {cat: '${rawCatName}', title: '${localizedCatName}'})">
-      ${localizedCatName}
-</span>
+                    <span class="cursor-pointer hover:text-blue-600" 
+                          onclick="switchPage('category', {cat: '${rawCatName}', title: '${localizedCatName}'})">
+                          ${localizedCatName}
+                    </span>
                 </nav>
 
                 <div class="flex flex-col md:flex-row gap-12">
@@ -1054,7 +1066,7 @@ console.log("GAS回傳的第一筆原始資料樣貌：", allProducts[0]);
             </div>`;
 
     } catch (e) { 
-        app.innerHTML = `<div class="text-center py-20 text-red-500">Error loading product.</div>`; 
+        app.innerHTML = `<div class="text-center py-20 text-red-500">Error loading product data.</div>`; 
     }
 }
 
@@ -1095,20 +1107,19 @@ function updateTabTitle(pageTitle = "") {
     
     let displayTitle = pageTitle;
     
-    // 如果沒有手動傳入標題，則自動從網址參數或全域變數偵測
-    if (!displayTitle) {
-        // 1. 優先嘗試從網址的 title 參數抓取
+    // 如果沒有手動傳入標題，則嘗試從網址或預設值偵測
+    if (!displayTitle || displayTitle === 'product' || displayTitle === 'category') {
+        // 1. 優先嘗試從網址的 title 參數抓取 (處理從別頁點進來的情況)
         displayTitle = params.get('title');
         
-        // 2. 如果網址沒 title，則根據 currentPage 判斷語系顯示
+        // 2. 如果還是沒標題，則根據 currentPage 判斷
         if (!displayTitle) {
             if (currentPage === 'Content') {
                 displayTitle = isEn ? "Home" : "首頁";
             } else if (currentPage === 'Product Catalog') {
                 displayTitle = isEn ? "Catalog" : "商品目錄";
             } else if (currentPage === 'category') {
-                // 自動根據當前語言抓取分類名稱
-                displayTitle = getLocalizedCategoryName(params.get('cat'));
+                displayTitle = getLocalizedCategoryName(params.get('cat')) || (isEn ? "Category" : "商品分類");
             } else if (currentPage === 'product') {
                 displayTitle = isEn ? "Product Detail" : "商品詳情";
             } else {
@@ -1117,7 +1128,7 @@ function updateTabTitle(pageTitle = "") {
         }
     }
     
-    // 最後組合：[頁面標題] | [公司名]
+    // 最終組合標題
     document.title = `${displayTitle} | ${companyName}`;
 }
 
