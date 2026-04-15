@@ -1091,23 +1091,29 @@ function updateTabTitle(pageTitle = "") {
     
     let displayTitle = pageTitle;
     
-    // 如果沒有手動傳入標題，則自動偵測
+    // 如果沒有手動傳入標題，則自動從網址參數或全域變數偵測
     if (!displayTitle) {
-        if (currentPage === 'Content') {
-            displayTitle = isEn ? "Home" : "首頁";
-        } else if (currentPage === 'Product Catalog') {
-            displayTitle = isEn ? "Catalog" : "商品目錄";
-        } else if (currentPage === 'category') {
-            // 關鍵修改：如果是分類頁，嘗試從網址抓 title 參數，抓不到就用 getLocalizedCategoryName 轉譯
-            displayTitle = params.get('title') || getLocalizedCategoryName(params.get('cat'));
-        } else if (currentPage === 'product') {
-            // 如果是產品頁，通常 renderProductDetail 內部會再呼叫一次 updateTabTitle 並傳入產品名稱
-            displayTitle = params.get('title') || (isEn ? "Product Detail" : "產品詳情");
-        } else {
-            displayTitle = currentPage;
+        // 1. 優先嘗試從網址的 title 參數抓取
+        displayTitle = params.get('title');
+        
+        // 2. 如果網址沒 title，則根據 currentPage 判斷語系顯示
+        if (!displayTitle) {
+            if (currentPage === 'Content') {
+                displayTitle = isEn ? "Home" : "首頁";
+            } else if (currentPage === 'Product Catalog') {
+                displayTitle = isEn ? "Catalog" : "商品目錄";
+            } else if (currentPage === 'category') {
+                // 自動根據當前語言抓取分類名稱
+                displayTitle = getLocalizedCategoryName(params.get('cat'));
+            } else if (currentPage === 'product') {
+                displayTitle = isEn ? "Product Detail" : "商品詳情";
+            } else {
+                displayTitle = currentPage;
+            }
         }
     }
     
+    // 最後組合：[頁面標題] | [公司名]
     document.title = `${displayTitle} | ${companyName}`;
 }
 
