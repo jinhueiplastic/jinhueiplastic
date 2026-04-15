@@ -890,12 +890,20 @@ async function renderCategoryList() {
             const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
             const img = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
             const code = item["Item code (ERP)"];
-return `
-    <a href="?page=product&id=${code}&lang=${currentLang}" 
-       class="category-card group block" 
-       onclick="event.preventDefault(); event.stopPropagation(); switchPage('product', {id: '${code}'})">
-        ...
-    </a>`;
+            
+            // 這裡補回了原本被省略的 HTML 結構
+            return `
+                <a href="?page=product&id=${code}&lang=${currentLang}" 
+                   class="category-card group block" 
+                   onclick="event.preventDefault(); event.stopPropagation(); switchPage('product', {id: '${code}'})">
+                    <div class="category-img-container">
+                        <img src="${img}" class="hover:scale-110 transition duration-500" alt="${name}">
+                    </div>
+                    <div class="p-4 text-center">
+                        <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
+                        <h4 class="font-bold text-gray-800">${name}</h4>
+                    </div>
+                </a>`;
         }).join('');
 
         app.innerHTML = `
@@ -905,9 +913,12 @@ return `
                     <span class="mx-2">&gt;</span> 
                     <span class="text-gray-900 font-bold">${localizedCatName}</span>
                 </nav>
-                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">${itemsHtml || '<p>No products found.</p>'}</div>
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                    ${itemsHtml || '<p class="col-span-full text-center py-10">No products found.</p>'}
+                </div>
             </div>`;
     } catch (e) {
+        console.error("渲染分類清單錯誤:", e);
         app.innerHTML = `<div class="text-center py-20 text-red-500">載入失敗。</div>`;
     }
 }
