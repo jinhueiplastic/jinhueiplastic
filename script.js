@@ -129,12 +129,16 @@ function switchPage(page, params = {}) {
     for (const key in params) { 
         if (params[key]) u.searchParams.set(key, params[key]); 
     }
-    window.history.pushState({}, '', u);
+
+    // 修正點：帶入 state 物件，並確保與 loadPage 內部的 pushState 格式一致
+    window.history.pushState({ page: targetPage, lang: currentLang }, '', u);
     currentPage = targetPage;
 
     updateTabTitle(params.title || targetPage);
     renderNav();
-    loadPage(targetPage, false, true);
+    
+    // 確保這裡是 false
+    loadPage(targetPage, false, true); 
     window.scrollTo(0, 0);
 }
 
@@ -594,10 +598,15 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
             updateTabTitle();
         }
 
-        // 6. 更新網址 URL (如果不跳過 pushState)
-        if (updateUrl) {
+        // 6. 更新網址 URL
+    // 這裡要加一個判斷：只有當 updateUrl 為 true 且目前的 state 不是該頁面時才動作
+    if (updateUrl) {
         const newUrl = `?page=${encodeURIComponent(target)}&lang=${currentLang}${target === 'search' ? '&q=' + (new URLSearchParams(window.location.search).get('q') || '') : ''}`;
-        window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
+        
+        // 額外保險：檢查目前的網址是否已經是目標網址，避免重複推入
+        if (window.location.search !== newUrl) {
+            window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
+        }
     }
 
     } catch (e) {
