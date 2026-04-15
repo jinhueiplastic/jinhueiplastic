@@ -452,10 +452,7 @@ async function initWebsite() {
         renderNav();
         updateLangButton(); // 建議同步更新語系按鈕文字
 
-        // 3. 關鍵修正：必須使用 await，且參數要對應 loadPage(pageName, updateUrl, skipLoading)
-        // 這裡 skipLoading 設為 true，因為我們在第一步已經手動 showLoader 了，
-        // 或者直接 loadPage(currentPage, false, false) 讓 loadPage 自己管也可以。
-        await loadPage(currentPage, false, false);
+        await loadPage(currentPage, true, false);
 
         // 4. 點擊攔截監聽
         document.addEventListener('click', (e) => {
@@ -591,9 +588,9 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
 
         // 6. 更新網址 URL (如果不跳過 pushState)
         if (updateUrl) {
-            const newUrl = `?page=${encodeURIComponent(target)}&lang=${currentLang}${target === 'search' ? '&q=' + (new URLSearchParams(window.location.search).get('q') || '') : ''}`;
-            window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
-        }
+        const newUrl = `?page=${encodeURIComponent(target)}&lang=${currentLang}${target === 'search' ? '&q=' + (new URLSearchParams(window.location.search).get('q') || '') : ''}`;
+        window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
+    }
 
     } catch (e) {
         console.error(`${target} 載入失敗:`, e);
