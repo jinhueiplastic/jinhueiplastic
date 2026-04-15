@@ -377,14 +377,26 @@ async function executeSearch(query) {
     try {
         const allProducts = await fetchGASProducts();
         const filtered = allProducts.filter(p => {
-            const keys = Object.keys(p);
-            const itemCode = String(p[keys[1]] || "").toLowerCase();
-            const chineseName = String(p[keys[3]] || "").toLowerCase();
-            const englishName = String(p[keys[6]] || "").toLowerCase();
-            return itemCode.includes(query) || chineseName.includes(query) || englishName.includes(query);
+            // 自動尋找包含這些關鍵字的欄位名稱
+            const rowData = JSON.stringify(p).toLowerCase(); 
+            
+            // 檢查該產品物件中是否包含搜尋字
+            // 或者更精確地針對特定欄位：
+            const itemCode = String(p["Item code (ERP)"] || "").toLowerCase();
+            const zhName = String(p["Chinese product name"] || "").toLowerCase();
+            const enName = String(p["English product name"] || "").toLowerCase();
+            
+            // 如果你在試算表新增了 keywords 欄位，也要加進來：
+            const keywords = String(p["keywords"] || "").toLowerCase();
+
+            return itemCode.includes(query) || 
+                   zhName.includes(query) || 
+                   enName.includes(query) || 
+                   keywords.includes(query);
         });
         renderSearchResults(filtered, query);
     } catch (e) {
+        console.error("搜尋執行錯誤:", e);
         app.innerHTML = `<div class="text-center py-20 text-red-500">搜尋出錯。</div>`;
     }
 }
@@ -394,12 +406,20 @@ function renderSearchResults(products, query) {
     const title = currentLang === 'zh' ? `搜尋結果: ${query}` : `Search Results: ${query}`;
     
     let itemsHtml = products.map(item => {
-        const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
+        // 語系名稱判定
+        const name = (currentLang === 'zh') 
+            ? (item["Chinese product name"] || item["Item code (ERP)"]) 
+            : (item["English product name"] || item["Item code (ERP)"]);
+        
+        // 圖片判定：現在你已經改成了英文標題 image_url
         const img = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
         const code = item["Item code (ERP)"];
+
         return `
             <a href="?page=product&id=${code}&lang=${currentLang}" class="category-card group block" onclick="event.preventDefault(); switchPage('product', {id: '${code}'})">
-                <div class="category-img-container"><img src="${img}" class="hover:scale-110 transition duration-500"></div>
+                <div class="category-img-container">
+                    <img src="${img}" class="hover:scale-110 transition duration-500" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
+                </div>
                 <div class="p-4 text-center">
                     <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
                     <h4 class="font-bold text-gray-800">${name}</h4>
@@ -410,7 +430,9 @@ function renderSearchResults(products, query) {
     app.innerHTML = `
         <div class="max-w-7xl mx-auto px-4">
             <h2 class="text-2xl font-bold mb-8 pb-2 border-b">${title}</h2>
-            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">${itemsHtml || '<p class="col-span-full text-center">No results.</p>'}</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                ${itemsHtml || '<p class="col-span-full text-center py-10 text-gray-400">沒有找到符合的產品。</p>'}
+            </div>
         </div>`;
 }
 
