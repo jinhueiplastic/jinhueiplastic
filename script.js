@@ -130,14 +130,14 @@ function switchPage(page, params = {}) {
         if (params[key]) u.searchParams.set(key, params[key]); 
     }
 
-    // 修正點：帶入 state 物件，並確保與 loadPage 內部的 pushState 格式一致
-    window.history.pushState({ page: targetPage, lang: currentLang }, '', u);
+    // 這裡是唯一產生「新紀錄」的地方
+    window.history.pushState({ page: targetPage, lang: currentLang }, '', u.search.toString() ? u.search : `?page=${targetPage}&lang=${currentLang}`);
     currentPage = targetPage;
 
     updateTabTitle(params.title || targetPage);
     renderNav();
-    
-    // 確保這裡是 false
+
+    // 呼叫 loadPage 時，絕對要傳 false
     loadPage(targetPage, false, true); 
     window.scrollTo(0, 0);
 }
@@ -519,22 +519,16 @@ function renderNav() {
  * @param {boolean} skipLoading - 是否跳過顯示全螢幕 Loading (例如在背景更新時使用)
  */
 async function loadPage(pageName, updateUrl = true, skipLoading = false) {
-    // 1. 參數初始化
-    const target = pageName || 'Content';
-    currentPage = target; // 更新全域變數
-    console.log(`執行 loadPage: ${target}`);
+const target = pageName || 'Content';
+    currentPage = target;
     
     const app = document.getElementById('app');
     if (!app) return;
 
     const langIdx = (currentLang === 'zh') ? 1 : 2;
-    // 定義哪些頁面屬於產品相關（需顯示搜尋框）
     const isProductRelatedPage = ['Product Catalog', 'category', 'search'].includes(target);
 
-    // 2. 顯示全螢幕 Loading 狀態
-    if (!skipLoading) {
-        showLoader(); 
-    }
+    if (!skipLoading) showLoader();
 
     try {
         // 3. 分流渲染邏輯
@@ -598,16 +592,17 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
             updateTabTitle();
         }
 
-        // 6. 更新網址 URL
-    // 這裡要加一個判斷：只有當 updateUrl 為 true 且目前的 state 不是該頁面時才動作
-    if (updateUrl) {
-        const newUrl = `?page=${encodeURIComponent(target)}&lang=${currentLang}${target === 'search' ? '&q=' + (new URLSearchParams(window.location.search).get('q') || '') : ''}`;
-        
-        // 額外保險：檢查目前的網址是否已經是目標網址，避免重複推入
-        if (window.location.search !== newUrl) {
-            window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
+// 6. 更新網址 URL (關鍵修正)
+        if (updateUrl) {
+            const searchParams = new URLSearchParams(window.location.search);
+            const q = searchParams.get('q') || '';
+            const newUrl = `?page=${encodeURIComponent(target)}&lang=${currentLang}${target === 'search' ? '&q=' + q : ''}`;
+            
+            // 只有當目前的 URL 跟要更新的 URL 不同時，才推入紀錄
+            if (window.location.search !== newUrl) {
+                window.history.pushState({ page: target, lang: currentLang }, '', newUrl);
+            }
         }
-    }
 
     } catch (e) {
         console.error(`${target} 載入失敗:`, e);
@@ -618,12 +613,8 @@ async function loadPage(pageName, updateUrl = true, skipLoading = false) {
                     ${currentLang === 'zh' ? '重新整理' : 'Reload'}
                 </button>
             </div>`;
-    } finally {
-        // 7. 關閉全螢幕 Loading
-        if (!skipLoading) {
-            hideLoader();
-        }
-        // 捲動回頂部
+} finally {
+        if (!skipLoading) hideLoader();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 }
@@ -1026,26 +1017,26 @@ async function renderProductDetail() {
     }
 }
 
-// 確保這個函式是在最外層，不要包在 initWebsite 裡面
 async function toggleLang() {
-    // 1. 取得目前的網址參數
     const urlParams = new URLSearchParams(window.location.search);
     
-    // 2. 切換語系變數
+    // 1. 切換語系
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
     
-    // 3. 同步更新 URL 中的 lang 參數，其餘 (page, cat, id) 會被保留
+    // 2. 更新 URL 參數
     urlParams.set('lang', currentLang);
     const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
-    window.history.pushState({ path: newUrl }, '', newUrl);
 
-    // 4. 更新介面 UI
+    // 關鍵修正：使用 replaceState 代替 pushState
+    // 這樣切換語言時就不會產生「多餘的歷史紀錄」
+    window.history.replaceState({ page: currentPage, lang: currentLang }, '', newUrl);
+
+    // 3. 更新介面 UI
     updateLangButton();
     renderLogoAndStores();
     renderNav();
 
-    // 5. 重新載入當前頁面
-    // 注意：這裡傳入 false 是為了避免 loadPage 再次 pushState 導致網址亂掉
+    // 4. 重新載入當前頁面 (確保 updateUrl 是 false)
     await loadPage(currentPage, false);
 }
 
