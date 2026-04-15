@@ -518,8 +518,8 @@ function renderNav() {
  * @param {boolean} updateUrl - 是否更新瀏覽器 URL 歷史
  * @param {boolean} skipLoading - 是否跳過顯示全螢幕 Loading (例如在背景更新時使用)
  */
-async function loadPage(pageName, updateUrl = true, skipLoading = false) {
-const target = pageName || 'Content';
+async function loadPage(pageName, updateUrl = false, skipLoading = false) {
+    const target = pageName || 'Content';
     currentPage = target;
     
     const app = document.getElementById('app');
@@ -543,7 +543,7 @@ const target = pageName || 'Content';
             await executeSearch(p.get('q')); 
         } 
         else {
-            // 一般分頁資料抓取（若無快取則發起請求）
+            // 一般分頁資料抓取
             let data = rawDataCache[target];
             if (!data || data.length === 0) {
                 data = await fetchSheetData(target);
@@ -552,7 +552,6 @@ const target = pageName || 'Content';
             
             if (!data || data.length === 0) throw new Error("無資料內容");
 
-            // 根據頁面名稱調用對應的渲染函式
             switch (target) {
                 case "Content":
                     await renderHome(data, langIdx, target);
@@ -578,7 +577,7 @@ const target = pageName || 'Content';
             }
         }
 
-        // 4. 插入搜尋框（僅限產品相關目錄頁）
+        // 4. 插入搜尋框
         if (isProductRelatedPage) {
             if (typeof getSearchBoxHtml === 'function') {
                 if (!document.getElementById('product-search-input')) {
@@ -587,32 +586,37 @@ const target = pageName || 'Content';
             }
         }
 
-        // 5. 更新分頁標題 (Browser Tab Title)
+        // 5. 更新分頁標題
         if (typeof updateTabTitle === 'function') {
             updateTabTitle();
         }
 
-// 6. 更新網址 URL (加入「防重複寫入」邏輯)
-if (updateUrl) {
-    const currentSearch = window.location.search;
-    const targetUrlParams = new URLSearchParams();
-    targetUrlParams.set('page', target);
-    targetUrlParams.set('lang', currentLang);
-    
-    // 如果是搜尋頁面，要保留 q 參數
-    if (target === 'search') {
-        const q = new URLSearchParams(window.location.search).get('q') || '';
-        targetUrlParams.set('q', q);
-    }
+        // 6. 更新網址 URL (防重複邏輯)
+        if (updateUrl) {
+            const currentSearch = window.location.search;
+            const targetUrlParams = new URLSearchParams();
+            targetUrlParams.set('page', target);
+            targetUrlParams.set('lang', currentLang);
+            
+            if (target === 'search') {
+                const q = new URLSearchParams(window.location.search).get('q') || '';
+                targetUrlParams.set('q', q);
+            }
 
-    const newSearchString = `?${targetUrlParams.toString()}`;
+            const newSearchString = `?${targetUrlParams.toString()}`;
 
-    // 關鍵判斷：只有當「目前的網址」跟「要更新的網址」不一樣時，才執行 pushState
-    if (currentSearch !== newSearchString) {
-        console.log("偵測到網址不同，執行 pushState");
-        window.history.pushState({ page: target, lang: currentLang }, '', newSearchString);
-    } else {
-        console.log("網址已一致，跳過 pushState 避免重複紀錄");
+            if (currentSearch !== newSearchString) {
+                window.history.pushState({ page: target, lang: currentLang }, '', newSearchString);
+            }
+        }
+
+    } catch (e) {
+        console.error(`${target} 載入失敗:`, e);
+        app.innerHTML = `<div class="text-center py-20">載入失敗，請稍後再試。</div>`;
+    } finally {
+        // 7. 確保關閉 Loader 並滾動回頂部
+        if (!skipLoading) hideLoader();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 }
 
