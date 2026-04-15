@@ -503,12 +503,14 @@ function renderNav() {
             if (titleRow) displayName = titleRow[langIdx] || tab;
         }
         const isActive = (currentPage === tab);
-        navHtml += `
-            <li class="nav-item ${isActive ? 'active' : ''}">
-                <a href="?page=${tab}&lang=${currentLang}" class="block px-4 py-2" onclick="event.preventDefault(); switchPage('${tab}')">
-                    ${displayName}
-                </a>
-            </li>`;
+navHtml += `
+    <li class="nav-item ${isActive ? 'active' : ''}">
+        <a href="javascript:void(0)" 
+           class="block px-4 py-2" 
+           onclick="switchPage('${tab}')">
+            ${displayName}
+        </a>
+    </li>`;
     }
     nav.innerHTML = navHtml;
 }
