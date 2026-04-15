@@ -131,6 +131,7 @@ function switchPage(page, params = {}) {
     }
 
     // 這裡是唯一產生「新紀錄」的地方
+    console.log('--- switchPage 觸發了 pushState ---', targetPage);
     window.history.pushState({ page: targetPage, lang: currentLang }, '', u.search.toString() ? u.search : `?page=${targetPage}&lang=${currentLang}`);
     currentPage = targetPage;
 
@@ -605,7 +606,10 @@ async function loadPage(pageName, updateUrl = false, skipLoading = false) {
 
             const newSearchString = `?${targetUrlParams.toString()}`;
 
-            if (currentSearch !== newSearchString) {
+if (currentSearch !== newSearchString) {
+                // 加上這行 Log
+                console.log('--- loadPage 內部觸發了 pushState ---', target);
+
                 window.history.pushState({ page: target, lang: currentLang }, '', newSearchString);
             }
         }
