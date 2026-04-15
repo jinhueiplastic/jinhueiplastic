@@ -898,23 +898,28 @@ async function renderCategoryList() {
 
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
-            
-            // 增加容錯：嘗試抓取不同寫法的圖片欄位
-            const imgRaw = item["image_url"] || item["Image_URL"] || item["image"] || "";
-            const img = imgRaw ? String(imgRaw).split(",")[0].trim() : "";
-            
             const code = item["Item code (ERP)"];
+
+            // --- 強度更正：確保 image_url 轉換為字串並處理多網址 ---
+            let img = "";
+            if (item["image_url"]) {
+                // 強制轉字串並移除可能的換行或空格
+                const rawUrl = String(item["image_url"]).trim(); 
+                img = rawUrl.split(",")[0].trim();
+            }
             
+            // 如果還是沒圖，可以在控制台列印出該商品的 code 與抓到的 url
+            if (!img) console.warn(`商品 ${code} 找不到圖片網址`);
+
             return `
                 <a href="?page=product&id=${code}&lang=${currentLang}" 
                    class="category-card group block" 
                    onclick="event.preventDefault(); event.stopPropagation(); switchPage('product', {id: '${code}'})">
                     <div class="category-img-container">
                         <img src="${img}" 
-                             onerror="this.src='https://via.placeholder.com/300?text=No+Image'" 
+                             alt="${name}"
                              class="hover:scale-110 transition duration-500" 
-                             alt="${name}">
-                    </div>
+                             style="background-color: #f3f4f6;"> </div>
                     <div class="p-4 text-center">
                         <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
                         <h4 class="font-bold text-gray-800">${name}</h4>
