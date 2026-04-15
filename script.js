@@ -395,7 +395,7 @@ function renderSearchResults(products, query) {
     
     let itemsHtml = products.map(item => {
         const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
-        const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
+        const img = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
         const code = item["Item code (ERP)"];
         return `
             <a href="?page=product&id=${code}&lang=${currentLang}" class="category-card group block" onclick="event.preventDefault(); switchPage('product', {id: '${code}'})">
@@ -854,7 +854,7 @@ async function renderCategoryList() {
 
         let itemsHtml = filtered.map(item => {
             const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
-            const img = item["圖片"] ? item["圖片"].split(",")[0].trim() : "";
+            const img = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
             const code = item["Item code (ERP)"];
             return `
                 <a href="?page=product&id=${code}&lang=${currentLang}" class="category-card group block" onclick="event.preventDefault(); switchPage('product', {id: '${code}'})">
@@ -934,9 +934,9 @@ async function renderProductDetail() {
         const name = isZH ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
         updateTabTitle(name);
 
-        const zhDesc = item["Description中文描述"] || "";
-        const enDesc = item["English description英文描述"] || "";
-        const images = item["圖片"] ? String(item["圖片"]).split(",").map(s => s.trim()) : [];
+        const zhDesc = item["desc_zh"] || "";
+        const enDesc = item["desc_en"] || "";
+        const images = item["image_url"] ? String(item["image_url"]).split(",").map(s => s.trim()) : [];
 
         // 4. 渲染
         app.innerHTML = `
