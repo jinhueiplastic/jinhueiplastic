@@ -890,14 +890,12 @@ async function renderCategoryList() {
             const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
             const img = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
             const code = item["Item code (ERP)"];
-            return `
-                <a href="?page=product&id=${code}&lang=${currentLang}" class="category-card group block" onclick="event.preventDefault(); switchPage('product', {id: '${code}'})">
-                    <div class="category-img-container"><img src="${img}" class="hover:scale-110 transition duration-500" alt="${name}"></div>
-                    <div class="p-4 text-center">
-                        <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
-                        <h4 class="font-bold text-gray-800">${name}</h4>
-                    </div>
-                </a>`;
+return `
+    <a href="?page=product&id=${code}&lang=${currentLang}" 
+       class="category-card group block" 
+       onclick="event.preventDefault(); event.stopPropagation(); switchPage('product', {id: '${code}'})">
+        ...
+    </a>`;
         }).join('');
 
         app.innerHTML = `
