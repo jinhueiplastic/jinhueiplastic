@@ -476,6 +476,14 @@ async function initWebsite() {
     }
 }
 
+// 當使用者按瀏覽器回退/前進鍵時，重新渲染畫面
+window.addEventListener('popstate', () => {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page') || 'Content';
+    currentLang = params.get('lang') || 'zh';
+    loadPage(page, false, false); // 這裡絕對不能再 pushState，否則會陷入死循環
+});
+
 function renderNav() {
     const nav = document.getElementById('main-nav');
     if (!nav) return;
