@@ -744,11 +744,17 @@ async function renderHome(contentData, langIdx) {
 /* --- 輔助與工具函數 --- */
 
 function getLocalizedCategoryName(rawCatName) {
-    const data = rawDataCache["Product Catalog"];
-    if (!data) return rawCatName;
+    if (!rawCatName) return ""; // 如果傳進來是空的，直接回傳空字串
+
+    const catalogSheetData = rawDataCache["Product Catalog"] || [];
     const langIdx = (currentLang === 'zh') ? 1 : 2;
-    const row = data.find(r => r[4] && r[4].trim() === rawCatName.trim());
-    return (row && row[langIdx]) ? row[langIdx] : rawCatName;
+
+    // 加上 ?. 和 (r[0] || "") 的防呆
+    const row = catalogSheetData.find(r => 
+        r && r[0] && String(r[0]).trim().toLowerCase() === String(rawCatName).trim().toLowerCase()
+    );
+
+    return row ? (row[langIdx] || rawCatName) : rawCatName;
 }
 
 /**
@@ -875,7 +881,7 @@ function processLinks(text) {
 
 async function renderCategoryList() {
     const params = new URLSearchParams(window.location.search);
-    const rawCatName = params.get('cat');
+    const rawCatName = params.get('cat') || "";
     const app = document.getElementById('app');
     
     app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
