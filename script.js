@@ -1089,18 +1089,15 @@ function updateTabTitle(pageTitle = "") {
     
     let displayTitle = "";
 
-    // A. 如果是商品詳細頁，且有傳入商品名稱 (來自 renderProductDetail)
     if (pageTitle && currentPage === 'product') {
         displayTitle = pageTitle;
     } 
-    // B. 如果是分類頁，強制重新翻譯，不要理會網址上的 &title=...
     else if (currentPage === 'category') {
         const catId = params.get('cat');
+        // 這裡會觸發上面修正後的邏輯，去抓 B 或 C 欄
         displayTitle = getLocalizedCategoryName(catId); 
     } 
-    // C. 其他頁面
     else {
-        // 先嘗試從網址抓 title，若沒有才給預設值
         displayTitle = params.get('title');
         if (!displayTitle) {
             if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
@@ -1109,7 +1106,6 @@ function updateTabTitle(pageTitle = "") {
         }
     }
 
-    // 更新瀏覽器標籤
     document.title = `${displayTitle} | ${companyName}`;
 }
 
