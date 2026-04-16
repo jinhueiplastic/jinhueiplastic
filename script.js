@@ -1055,16 +1055,21 @@ async function toggleLang() {
     urlParams.set('lang', currentLang);
     const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
 
-    // 關鍵修正：使用 replaceState 代替 pushState
-    // 這樣切換語言時就不會產生「多餘的歷史紀錄」
+    // 使用 replaceState 維持瀏覽紀錄乾淨
     window.history.replaceState({ page: currentPage, lang: currentLang }, '', newUrl);
 
     // 3. 更新介面 UI
     updateLangButton();
     renderLogoAndStores();
     renderNav();
+    
+    // --- 關鍵新增：切換語言後，立刻根據新語言更新標籤頁標題 ---
+    if (typeof updateTabTitle === 'function') {
+        // 如果是 category 頁面，updateTabTitle 內部會去抓新的語言名稱
+        updateTabTitle(); 
+    }
 
-    // 4. 重新載入當前頁面 (確保 updateUrl 是 false)
+    // 4. 重新載入當前頁面內容
     await loadPage(currentPage, false);
 }
 
@@ -1080,36 +1085,32 @@ function updateTabTitle(pageTitle = "") {
     const companyName = isEn ? "JIN HUEI PLASTIC" : "錦輝塑膠業有限公司";
     const params = new URLSearchParams(window.location.search);
     
-    // 1. 處理分類頁面的特殊情況：強制重新翻譯，解決切換語言標題不換的問題
+    // 如果傳入的是有效的商品名，優先使用
+    if (pageTitle && pageTitle !== 'product' && pageTitle !== 'category') {
+        document.title = `${pageTitle} | ${companyName}`;
+        return; 
+    }
+
+    let displayTitle = "";
+
+    // 針對 category 頁面，強制重新呼叫 getLocalizedCategoryName，確保語系同步
     if (currentPage === 'category') {
         const catId = params.get('cat');
-        const translatedCat = getLocalizedCategoryName(catId);
-        if (translatedCat) {
-            document.title = `${translatedCat} | ${companyName}`;
-            return;
+        displayTitle = getLocalizedCategoryName(catId);
+    } 
+    // 如果不是 category，才去抓網址的 title 參數或使用預設值
+    else {
+        displayTitle = params.get('title');
+        if (!displayTitle) {
+            if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
+            else if (currentPage === 'Product Catalog') displayTitle = isEn ? "Catalog" : "商品目錄";
+            else if (currentPage === 'product') displayTitle = isEn ? "Product Detail" : "商品詳情";
+            else displayTitle = currentPage;
         }
     }
 
-    // 2. 如果有手動傳入具體的商品名稱，則使用它
-    if (pageTitle && pageTitle !== 'product' && pageTitle !== 'category' && pageTitle !== 'Content') {
-        document.title = `${pageTitle} | ${companyName}`;
-        return;
-    }
-
-    // 3. 後備邏輯：先看網址有沒有 title，沒有則根據頁面類型給予預設值
-    let displayTitle = params.get('title');
-    
-    if (!displayTitle) {
-        if (currentPage === 'Content') {
-            displayTitle = isEn ? "Home" : "首頁";
-        } else if (currentPage === 'Product Catalog') {
-            displayTitle = isEn ? "Catalog" : "商品目錄";
-        } else if (currentPage === 'product') {
-            displayTitle = isEn ? "Product Detail" : "商品詳情";
-        } else {
-            displayTitle = currentPage;
-        }
-    }
+    // 最後防呆：如果上面都沒抓到，給一個預設值
+    if (!displayTitle) displayTitle = isEn ? "Page" : "頁面";
     
     document.title = `${displayTitle} | ${companyName}`;
 }
