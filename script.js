@@ -732,18 +732,22 @@ async function renderHome(contentData, langIdx) {
 function getLocalizedCategoryName(rawCatName) {
     if (!rawCatName) return ""; 
 
-    // 確保這裡是用來存放「分類翻譯」的工作表（通常是 Product Catalog 或 Category List）
     const catalogSheetData = rawDataCache["Product Catalog"] || [];
     
-    // 根據你的試算表格式：1 是中文，2 是英文
+    // B 欄是索引 1 (中文)，C 欄是索引 2 (英文)
     const langIdx = (currentLang === 'zh') ? 1 : 2;
 
+    // 尋找 A 欄 (index 0) 匹配的資料
     const row = catalogSheetData.find(r => 
         r && r[0] && String(r[0]).trim().toLowerCase() === String(rawCatName).trim().toLowerCase()
     );
 
-    // 如果找到了，回傳對應語言；找不到，回傳原始名稱
-    return row ? (row[langIdx] || rawCatName) : rawCatName;
+    if (row) {
+        // 返回 B 欄 (1) 或 C 欄 (2)
+        return (row[langIdx] || row[1] || rawCatName).trim(); 
+    }
+
+    return rawCatName;
 }
 
 /**
@@ -1054,11 +1058,9 @@ async function toggleLang() {
     // 1. 切換語系
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
     
-    // 2. 更新 URL 參數
+    // 2. 更新 URL 參數並替換網址
     urlParams.set('lang', currentLang);
     const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
-
-    // 使用 replaceState 維持瀏覽紀錄乾淨
     window.history.replaceState({ page: currentPage, lang: currentLang }, '', newUrl);
 
     // 3. 更新介面 UI
@@ -1066,13 +1068,10 @@ async function toggleLang() {
     renderLogoAndStores();
     renderNav();
     
-    // --- 關鍵新增：切換語言後，立刻根據新語言更新標籤頁標題 ---
-    if (typeof updateTabTitle === 'function') {
-        // 如果是 category 頁面，updateTabTitle 內部會去抓新的語言名稱
-        updateTabTitle(); 
-    }
+    // 4. 更新標籤頁標題 (這會根據新的 currentLang 去 B/C 欄抓資料)
+    updateTabTitle(); 
 
-    // 4. 重新載入當前頁面內容
+    // 5. 重新載入當前頁面內容
     await loadPage(currentPage, false);
 }
 
@@ -1090,27 +1089,27 @@ function updateTabTitle(pageTitle = "") {
     
     let displayTitle = "";
 
-    // 1. 如果是商品頁，且有傳入商品名稱
-    if (pageTitle && pageTitle !== 'product' && pageTitle !== 'category') {
+    // A. 如果是商品詳細頁，且有傳入商品名稱 (來自 renderProductDetail)
+    if (pageTitle && currentPage === 'product') {
         displayTitle = pageTitle;
     } 
-    // 2. 如果是分類頁，強制從原始 ID 重新翻譯（不看網址上的 title 參數）
+    // B. 如果是分類頁，強制重新翻譯，不要理會網址上的 &title=...
     else if (currentPage === 'category') {
         const catId = params.get('cat');
-        displayTitle = getLocalizedCategoryName(catId);
+        displayTitle = getLocalizedCategoryName(catId); 
     } 
-    // 3. 其他頁面
+    // C. 其他頁面
     else {
-        // 先看網址有沒有 title，沒有才跑預設值
+        // 先嘗試從網址抓 title，若沒有才給預設值
         displayTitle = params.get('title');
         if (!displayTitle) {
             if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
             else if (currentPage === 'Product Catalog') displayTitle = isEn ? "Catalog" : "商品目錄";
-            else if (currentPage === 'product') displayTitle = isEn ? "Product Detail" : "商品詳情";
             else displayTitle = currentPage;
         }
     }
 
+    // 更新瀏覽器標籤
     document.title = `${displayTitle} | ${companyName}`;
 }
 
