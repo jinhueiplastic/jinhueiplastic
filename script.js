@@ -730,16 +730,19 @@ async function renderHome(contentData, langIdx) {
 /* --- 輔助與工具函數 --- */
 
 function getLocalizedCategoryName(rawCatName) {
-    if (!rawCatName) return ""; // 如果傳進來是空的，直接回傳空字串
+    if (!rawCatName) return ""; 
 
+    // 確保這裡是用來存放「分類翻譯」的工作表（通常是 Product Catalog 或 Category List）
     const catalogSheetData = rawDataCache["Product Catalog"] || [];
+    
+    // 根據你的試算表格式：1 是中文，2 是英文
     const langIdx = (currentLang === 'zh') ? 1 : 2;
 
-    // 加上 ?. 和 (r[0] || "") 的防呆
     const row = catalogSheetData.find(r => 
         r && r[0] && String(r[0]).trim().toLowerCase() === String(rawCatName).trim().toLowerCase()
     );
 
+    // 如果找到了，回傳對應語言；找不到，回傳原始名稱
     return row ? (row[langIdx] || rawCatName) : rawCatName;
 }
 
@@ -1085,21 +1088,20 @@ function updateTabTitle(pageTitle = "") {
     const companyName = isEn ? "JIN HUEI PLASTIC" : "錦輝塑膠業有限公司";
     const params = new URLSearchParams(window.location.search);
     
-    // 如果傳入的是有效的商品名，優先使用
-    if (pageTitle && pageTitle !== 'product' && pageTitle !== 'category') {
-        document.title = `${pageTitle} | ${companyName}`;
-        return; 
-    }
-
     let displayTitle = "";
 
-    // 針對 category 頁面，強制重新呼叫 getLocalizedCategoryName，確保語系同步
-    if (currentPage === 'category') {
+    // 1. 如果是商品頁，且有傳入商品名稱
+    if (pageTitle && pageTitle !== 'product' && pageTitle !== 'category') {
+        displayTitle = pageTitle;
+    } 
+    // 2. 如果是分類頁，強制從原始 ID 重新翻譯（不看網址上的 title 參數）
+    else if (currentPage === 'category') {
         const catId = params.get('cat');
         displayTitle = getLocalizedCategoryName(catId);
     } 
-    // 如果不是 category，才去抓網址的 title 參數或使用預設值
+    // 3. 其他頁面
     else {
+        // 先看網址有沒有 title，沒有才跑預設值
         displayTitle = params.get('title');
         if (!displayTitle) {
             if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
@@ -1109,9 +1111,6 @@ function updateTabTitle(pageTitle = "") {
         }
     }
 
-    // 最後防呆：如果上面都沒抓到，給一個預設值
-    if (!displayTitle) displayTitle = isEn ? "Page" : "頁面";
-    
     document.title = `${displayTitle} | ${companyName}`;
 }
 
