@@ -1080,20 +1080,35 @@ function updateTabTitle(pageTitle = "") {
     const companyName = isEn ? "JIN HUEI PLASTIC" : "錦輝塑膠業有限公司";
     const params = new URLSearchParams(window.location.search);
     
-    // 如果有手動傳入具體的名稱（不是 'product' 這種 ID），就直接用它
-    if (pageTitle && pageTitle !== 'product' && pageTitle !== 'category') {
-        document.title = `${pageTitle} | ${companyName}`;
-        return; // 直接結束，不跑後面的邏輯
+    // 1. 處理分類頁面的特殊情況：強制重新翻譯，解決切換語言標題不換的問題
+    if (currentPage === 'category') {
+        const catId = params.get('cat');
+        const translatedCat = getLocalizedCategoryName(catId);
+        if (translatedCat) {
+            document.title = `${translatedCat} | ${companyName}`;
+            return;
+        }
     }
 
-    // 以下是後備邏輯（預設值）
+    // 2. 如果有手動傳入具體的商品名稱，則使用它
+    if (pageTitle && pageTitle !== 'product' && pageTitle !== 'category' && pageTitle !== 'Content') {
+        document.title = `${pageTitle} | ${companyName}`;
+        return;
+    }
+
+    // 3. 後備邏輯：先看網址有沒有 title，沒有則根據頁面類型給予預設值
     let displayTitle = params.get('title');
+    
     if (!displayTitle) {
-        if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
-        else if (currentPage === 'Product Catalog') displayTitle = isEn ? "Catalog" : "商品目錄";
-        else if (currentPage === 'category') displayTitle = getLocalizedCategoryName(params.get('cat')) || (isEn ? "Category" : "商品分類");
-        else if (currentPage === 'product') displayTitle = isEn ? "Product Detail" : "商品詳情";
-        else displayTitle = currentPage;
+        if (currentPage === 'Content') {
+            displayTitle = isEn ? "Home" : "首頁";
+        } else if (currentPage === 'Product Catalog') {
+            displayTitle = isEn ? "Catalog" : "商品目錄";
+        } else if (currentPage === 'product') {
+            displayTitle = isEn ? "Product Detail" : "商品詳情";
+        } else {
+            displayTitle = currentPage;
+        }
     }
     
     document.title = `${displayTitle} | ${companyName}`;
