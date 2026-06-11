@@ -67,7 +67,8 @@ async function fetchSheetData(sheetName) {
 async function fetchGASProducts() {
     if (allProductsCache) return allProductsCache;
     try {
-        const data = await supabaseFetch(`products?select=*&limit=5`);
+        const data = await supabaseFetch(
+            `products?select=*&is_active=eq.true&order=sort_order.asc`
         );
         allProductsCache = data.map(p => ({
             "Category":                p.category_name_zh || '',
