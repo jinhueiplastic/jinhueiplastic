@@ -1,17 +1,15 @@
 /* --- 全域變數與配置 --- */
-const SPREADSHEET_ID = '1Z3xaacD4N1Piagjg7mWAH2bzGadCUX8zS24RbInF4QM';
-const GAS_PRODUCT_URL = 'https://script.google.com/macros/s/AKfycby0WRTp_F33uuVYp1tq8wAYWIw80XM3v3vdPErq8joVZoZu5DpLW_qNtVruHJ5o1AFw/exec';
-const tabs = ["Content", "About Us", "Business Scope", "Product Catalog", "Join Us", "Contact Us"];
+const SUPABASE_URL = 'https://nfpfguorxfhwhkylacoe.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5mcGZndW9yeGZod2hreWxhY29lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNTE5OTcsImV4cCI6MjA5NjcyNzk5N30.YMrxU9VZoh4ieO9Lqd2qPiXMA4FFPCg1zUa7gG80QDw';
 
+const tabs = ["Content", "About Us", "Business Scope", "Product Catalog", "Join Us", "Contact Us"];
 let currentLang = 'zh';
-let currentPage = 'Content'; 
+let currentPage = 'Content';
 let rawDataCache = {};
 let allProductsCache = null;
-let storeLogoMap = {}; 
+let storeLogoMap = {};
 
-/* --- 核心資料抓取邏輯 --- */
-const getSheetUrl = (sheetName) => `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
-
+/* --- Loader --- */
 function showLoader() {
     const loader = document.getElementById('global-loader');
     if (loader) {
@@ -25,65 +23,99 @@ function hideLoader() {
     if (loader) {
         loader.style.transition = 'opacity 0.3s ease';
         loader.style.opacity = '0';
-        setTimeout(() => {
-            loader.style.display = 'none';
-        }, 300);
+        setTimeout(() => { loader.style.display = 'none'; }, 300);
     }
 }
 
+/* --- Supabase 核心請求函數 --- */
+async function supabaseFetch(path) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+        headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+    });
+    if (!res.ok) throw new Error(`Supabase error: ${res.status} on ${path}`);
+    return res.json();
+}
+
+/* --- 資料抓取：網站內容（對應原本 fetchSheetData）--- */
+// 從 Supabase site_content 表抓資料，轉換成原本 Google Sheet 二維陣列格式
+// 格式：[row_key, chinese, english, image, link]
+//        row[0]   row[1]   row[2]   row[3] row[4]
 async function fetchSheetData(sheetName) {
     try {
-        const url = getSheetUrl(sheetName);
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("網路請求沒回應");
-        const text = await response.text();
-        const json = JSON.parse(text.substring(47).slice(0, -2));
-        if (json.table && json.table.rows) {
-            return json.table.rows.map(row => 
-                row.c.map(cell => (cell ? (cell.v || "").toString() : ""))
-            );
-        }
-        return [];
+        const data = await supabaseFetch(
+            `site_content?page=eq.${encodeURIComponent(sheetName)}&order=row_index.asc`
+        );
+        return data.map(row => [
+            row.row_key  || '',
+            row.chinese  || '',
+            row.english  || '',
+            row.image    || '',
+            row.link     || ''
+        ]);
     } catch (e) {
-        console.error(`❌ ${sheetName} 請求出錯:`, e);
+        console.error(`❌ fetchSheetData(${sheetName}) 失敗:`, e);
         return [];
     }
 }
 
+/* --- 資料抓取：產品資料（對應原本 fetchGASProducts）--- */
+// 從 Supabase products 表抓資料，轉換成原本 GAS API 的物件格式
+// 讓所有現有的渲染函數（renderCategoryList、renderProductDetail 等）不需要改動
 async function fetchGASProducts() {
     if (allProductsCache) return allProductsCache;
     try {
-        const response = await fetch(GAS_PRODUCT_URL);
-        const data = await response.json();
-        allProductsCache = data; 
-        return data;
+        const data = await supabaseFetch(
+            `products?select=*,categories(name_zh,name_en)&is_active=eq.true&order=sort_order.asc`
+        );
+        allProductsCache = data.map(p => ({
+            "Category":                p.categories?.name_zh || '',
+            "Item code (ERP)":         p.erp_code     || '',
+            "Item code (catalog)":     p.catalog_code || '',
+            "Chinese product name":    p.name_zh      || '',
+            "English product name":    p.name_en      || '',
+            "image_url":               p.image_url    || '',
+            "desc_zh":                 p.desc_zh      || '',
+            "desc_en":                 p.desc_en      || '',
+            "Packing規格":             p.pcs_per_pack || '',
+            "Unit單位":                p.unit         || '',
+            "keywords":                p.keywords     || '',
+            "Store 1網址":             p.store1_url   || '',
+            "Store 2網址":             p.store2_url   || '',
+            "Store 3網址":             p.store3_url   || '',
+            "Store 4網址":             p.store4_url   || '',
+        }));
+        return allProductsCache;
     } catch (e) {
-        console.error("產品 JSON 抓取失敗:", e);
+        console.error("❌ fetchGASProducts 失敗:", e);
         throw e;
     }
 }
 
+/* --- 主資料載入（對應原本 fetchData）--- */
 async function fetchData() {
     try {
-        console.log("開始同步抓取所有資料...");
-        const [sheetResults, gasData] = await Promise.all([
+        console.log("開始從 Supabase 抓取所有資料...");
+        // 同時抓取所有分頁內容 + 產品資料
+        const [sheetResults, products] = await Promise.all([
             Promise.all(tabs.map(tab => fetchSheetData(tab))),
-            fetch(GAS_PRODUCT_URL).then(res => res.json())
+            fetchGASProducts()
         ]);
         tabs.forEach((tab, index) => {
             rawDataCache[tab] = sheetResults[index];
         });
-        rawDataCache["allProducts"] = gasData;
-        allProductsCache = gasData; 
-        console.log("資料全部載入完成", rawDataCache);
+        rawDataCache["allProducts"] = products;
+        console.log("✅ 資料全部載入完成", rawDataCache);
         return true;
     } catch (e) {
-        console.error("fetchData 發生錯誤:", e);
+        console.error("❌ fetchData 發生錯誤:", e);
         throw e;
     }
 }
 
-/* --- 渲染 Logo 與 賣場圖標 --- */
+/* --- 渲染 Logo 與賣場圖標 --- */
 function renderLogoAndStores() {
     const logoContainer = document.getElementById('logo-container');
     const storeContainer = document.getElementById('store-container');
@@ -95,14 +127,15 @@ function renderLogoAndStores() {
         return;
     }
 
-    logoContainer.innerHTML = ''; 
+    logoContainer.innerHTML = '';
     storeContainer.innerHTML = '';
+
     data.forEach(row => {
         const aColRaw = (row[0] || "").trim();
         const aColLower = aColRaw.toLowerCase();
         const imgUrl = (row[3] || "").trim();
         const linkUrl = (row[4] || "").trim() || "#";
-        
+
         if (aColLower === 'logo' && imgUrl) {
             logoContainer.innerHTML = `
                 <a href="?page=Content" onclick="event.preventDefault(); switchPage('Content')">
@@ -111,7 +144,7 @@ function renderLogoAndStores() {
         }
         if (aColLower.startsWith('store') && imgUrl) {
             const a = document.createElement('a');
-            a.href = linkUrl; 
+            a.href = linkUrl;
             a.target = "_blank";
             a.innerHTML = `<img src="${imgUrl}" class="store-img hover:opacity-75 transition" style="height: 30px; width: auto;">`;
             storeContainer.appendChild(a);
@@ -119,36 +152,28 @@ function renderLogoAndStores() {
     });
 }
 
-/* --- 路由與頁面切換邏輯 --- */
+/* --- 路由與頁面切換 --- */
 function switchPage(page, params = {}) {
     const targetPage = page || 'Content';
     currentPage = targetPage;
-    
-    // 構建新的網址
+
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set('page', targetPage);
-    u.searchParams.set('lang', currentLang); 
-    
-    // 將 params 中的所有屬性 (如 id, cat, title) 寫入網址
-    for (const key in params) { 
-        if (params[key]) u.searchParams.set(key, params[key]); 
+    u.searchParams.set('lang', currentLang);
+
+    for (const key in params) {
+        if (params[key]) u.searchParams.set(key, params[key]);
     }
 
-    // 更新瀏覽器歷史紀錄 (網址會在這裡發生變化)
     window.history.pushState({ page: targetPage, params: params }, '', u.toString());
-
-    // 更新標籤頁標題 (如果 params 沒帶 title，先傳 targetPage 做緩衝)
     updateTabTitle(params.title || targetPage);
-    
     renderNav();
-    loadPage(targetPage, false, true); 
+    loadPage(targetPage, false, true);
     window.scrollTo(0, 0);
 }
 
-/**
- * 渲染業務範圍 (Business Scope)
- * 從試算表抓取對應語系的圖片進行長條狀排列
- */
+/* --- 渲染各頁面 --- */
+
 function renderBusinessScope(data, langIdx, pageName) {
     const app = document.getElementById('app');
     const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
@@ -156,9 +181,7 @@ function renderBusinessScope(data, langIdx, pageName) {
 
     data.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
-        // 根據目前語系決定要抓取的關鍵字
         const target = (currentLang === 'zh') ? 'chinese content' : 'english content';
-
         if (key.includes(target) && row[3]) {
             contentImages += `<img src="${row[3]}" class="home-bottom-image mb-8 max-w-4xl mx-auto block" alt="Business Scope">`;
         }
@@ -171,23 +194,18 @@ function renderBusinessScope(data, langIdx, pageName) {
         </div>`;
 }
 
-/**
- * 渲染產品目錄主頁 (Product Catalog)
- * 顯示分類卡片，點擊後透過 switchPage 跳轉至特定分類
- */
 function renderProductCatalog(data, langIdx) {
     const app = document.getElementById('app');
     let catHtml = '';
 
     data.forEach(row => {
-        // row[0] 包含 categories, row[langIdx] 為分類名稱, row[4] 為分類 ID, row[3] 為圖片
         if (row[0] && row[0].toLowerCase().trim().includes('categories') && row[langIdx]) {
             const displayName = row[langIdx];
             const catId = row[4];
             const imgUrl = row[3] || 'https://via.placeholder.com/300';
 
             catHtml += `
-                <div class="category-card group cursor-pointer" 
+                <div class="category-card group cursor-pointer"
                      onclick="switchPage('category', {cat: '${catId}', title: '${displayName}'})">
                     <div class="category-img-container">
                         <img src="${imgUrl}" class="group-hover:scale-110 transition duration-500" alt="${displayName}">
@@ -207,13 +225,9 @@ function renderProductCatalog(data, langIdx) {
         </div>`;
 }
 
-/**
- * 渲染關於我們 (About Us) 或 通用頁面
- * 包含：頂部圖片網格、公司名稱、介紹內容、地址區塊、底部圖片
- */
 function renderAboutOrContent(data, langIdx, pageName) {
     const app = document.getElementById('app');
-    let upperImages = ''; 
+    let upperImages = '';
     let companyNames = '';
     let introContent = '';
     let addressBlock = '';
@@ -227,8 +241,8 @@ function renderAboutOrContent(data, langIdx, pageName) {
         }
         if (key.includes('company name')) {
             companyNames += `
-                <div class="mb-2 flex flex-col items-start"> 
-                    <div class="w-3/4 md:w-full text-left"> 
+                <div class="mb-2 flex flex-col items-start">
+                    <div class="w-3/4 md:w-full text-left">
                         <h2 class="text-lg md:text-3xl font-black text-gray-900 leading-tight">${row[1]}</h2>
                         <h3 class="text-xs md:text-xl font-bold text-gray-400 mt-0 leading-tight">${row[2]}</h3>
                     </div>
@@ -274,10 +288,6 @@ function renderAboutOrContent(data, langIdx, pageName) {
     }
 }
 
-/**
- * 渲染加入我們 (Join Us)
- * 自動解析 Position 與 Description 的配對關係
- */
 function renderJoinUs(data, langIdx, pageName) {
     const app = document.getElementById('app');
     const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
@@ -309,14 +319,10 @@ function renderJoinUs(data, langIdx, pageName) {
         </div>`;
 }
 
-/**
- * 渲染聯繫我們 (Contact Us)
- * 包含文字資訊與內嵌 Google Maps
- */
 function renderContactUs(data, langIdx, pageName) {
     const app = document.getElementById('app');
     const titleRow = data.find(r => r[0] && r[0].toLowerCase().trim() === 'title');
-    let info = ''; 
+    let info = '';
     let mapUrl = '';
 
     data.forEach(row => {
@@ -336,10 +342,6 @@ function renderContactUs(data, langIdx, pageName) {
         </div>`;
 }
 
-/**
- * 產生搜尋欄的 HTML
- * 用於 Product Catalog 頁面頂部
- */
 function getSearchBoxHtml() {
     const placeholder = currentLang === 'zh' ? '搜尋產品編號或名稱...' : 'Search item code or name...';
     const params = new URLSearchParams(window.location.search);
@@ -348,11 +350,11 @@ function getSearchBoxHtml() {
     return `
         <div class="flex justify-end mb-8">
             <div class="relative w-full max-w-sm flex gap-2">
-                <input type="text" id="product-search-input" 
-                       class="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all" 
+                <input type="text" id="product-search-input"
+                       class="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all"
                        placeholder="${placeholder}" value="${currentQuery}"
                        onkeypress="if(event.key === 'Enter') handleSearch()">
-                <button onclick="handleSearch()" 
+                <button onclick="handleSearch()"
                         class="bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-colors shadow-md flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -360,11 +362,6 @@ function getSearchBoxHtml() {
                 </button>
             </div>
         </div>`;
-}
-
-function updateTabTitle(customTitle) {
-    const baseTitle = "錦輝塑膠業有限公司 JIN HUEI PLASTIC";
-    document.title = customTitle ? `${customTitle} | ${baseTitle}` : baseTitle;
 }
 
 /* --- 搜尋功能 --- */
@@ -384,22 +381,11 @@ async function executeSearch(query) {
     try {
         const allProducts = await fetchGASProducts();
         const filtered = allProducts.filter(p => {
-            // 自動尋找包含這些關鍵字的欄位名稱
-            const rowData = JSON.stringify(p).toLowerCase(); 
-            
-            // 檢查該產品物件中是否包含搜尋字
-            // 或者更精確地針對特定欄位：
             const itemCode = String(p["Item code (ERP)"] || "").toLowerCase();
-            const zhName = String(p["Chinese product name"] || "").toLowerCase();
-            const enName = String(p["English product name"] || "").toLowerCase();
-            
-            // 如果你在試算表新增了 keywords 欄位，也要加進來：
+            const zhName   = String(p["Chinese product name"] || "").toLowerCase();
+            const enName   = String(p["English product name"] || "").toLowerCase();
             const keywords = String(p["keywords"] || "").toLowerCase();
-
-            return itemCode.includes(query) || 
-                   zhName.includes(query) || 
-                   enName.includes(query) || 
-                   keywords.includes(query);
+            return itemCode.includes(query) || zhName.includes(query) || enName.includes(query) || keywords.includes(query);
         });
         renderSearchResults(filtered, query);
     } catch (e) {
@@ -411,21 +397,20 @@ async function executeSearch(query) {
 function renderSearchResults(products, query) {
     const app = document.getElementById('app');
     const title = currentLang === 'zh' ? `搜尋結果: ${query}` : `Search Results: ${query}`;
-    
+
     let itemsHtml = products.map(item => {
-        // 語系名稱判定
-        const name = (currentLang === 'zh') 
-            ? (item["Chinese product name"] || item["Item code (ERP)"]) 
+        const name = (currentLang === 'zh')
+            ? (item["Chinese product name"] || item["Item code (ERP)"])
             : (item["English product name"] || item["Item code (ERP)"]);
-        
-        // 圖片判定：現在你已經改成了英文標題 image_url
-        const img = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
+        const img  = item["image_url"] ? item["image_url"].split(",")[0].trim() : "";
         const code = item["Item code (ERP)"];
 
         return `
-            <a href="?page=product&id=${code}&lang=${currentLang}" class="category-card group block" onclick="event.preventDefault(); switchPage('product', {id: '${code}'})">
+            <a href="?page=product&id=${code}&lang=${currentLang}" class="category-card group block"
+               onclick="event.preventDefault(); switchPage('product', {id: '${code}'})">
                 <div class="category-img-container">
-                    <img src="${img}" class="hover:scale-110 transition duration-500" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
+                    <img src="${img}" class="hover:scale-110 transition duration-500"
+                         onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
                 </div>
                 <div class="p-4 text-center">
                     <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
@@ -443,35 +428,29 @@ function renderSearchResults(products, query) {
         </div>`;
 }
 
-/* --- 初始化與導覽 --- */
+/* --- 初始化 --- */
 async function initWebsite() {
     try {
         const params = new URLSearchParams(window.location.search);
         currentLang = params.get('lang') || 'zh';
-        currentPage = params.get('page') || 'Content'; 
+        currentPage = params.get('page') || 'Content';
 
-        showLoader(); 
-
-        await fetchData(); 
+        showLoader();
+        await fetchData();
         renderLogoAndStores();
         renderNav();
         updateLangButton();
-
-        // 重新整理時，updateTabTitle 會去網址抓 title 參數，抓不到則顯示預設
         updateTabTitle(params.get('title'));
-
-        // 載入當前頁面
         await loadPage(currentPage, true, false);
 
-        // 點擊攔截監聽
         document.addEventListener('click', (e) => {
             const anchor = e.target.closest('a');
             if (anchor && anchor.getAttribute('href')?.startsWith('?page=')) {
                 e.preventDefault();
                 const urlParams = new URLSearchParams(anchor.getAttribute('href'));
-                const page = urlParams.get('page');
-                const id = urlParams.get('id');
-                const cat = urlParams.get('cat');
+                const page  = urlParams.get('page');
+                const id    = urlParams.get('id');
+                const cat   = urlParams.get('cat');
                 const title = urlParams.get('title');
                 switchPage(page, { id, cat, title });
             }
@@ -485,18 +464,18 @@ async function initWebsite() {
     }
 }
 
-// 當使用者按瀏覽器回退/前進鍵時，重新渲染畫面
 window.addEventListener('popstate', () => {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page') || 'Content';
     currentLang = params.get('lang') || 'zh';
-    loadPage(page, false, false); // 這裡絕對不能再 pushState，否則會陷入死循環
+    loadPage(page, false, false);
 });
 
+/* --- 導覽列 --- */
 function renderNav() {
     const nav = document.getElementById('main-nav');
     if (!nav) return;
-    const langIdx = (currentLang === 'zh') ? 1 : 2; 
+    const langIdx = (currentLang === 'zh') ? 1 : 2;
     let navHtml = '';
 
     for (const tab of tabs) {
@@ -507,28 +486,21 @@ function renderNav() {
             if (titleRow) displayName = titleRow[langIdx] || tab;
         }
         const isActive = (currentPage === tab);
-navHtml += `
-    <li class="nav-item ${isActive ? 'active' : ''}">
-        <a href="javascript:void(0)" 
-           class="block px-4 py-2" 
-           onclick="switchPage('${tab}')">
-            ${displayName}
-        </a>
-    </li>`;
+        navHtml += `
+            <li class="nav-item ${isActive ? 'active' : ''}">
+                <a href="javascript:void(0)" class="block px-4 py-2" onclick="switchPage('${tab}')">
+                    ${displayName}
+                </a>
+            </li>`;
     }
     nav.innerHTML = navHtml;
 }
 
-/**
- * 核心分頁加載函式
- * @param {string} pageName - 分頁名稱
- * @param {boolean} updateUrl - 是否更新瀏覽器 URL 歷史
- * @param {boolean} skipLoading - 是否跳過顯示全螢幕 Loading (例如在背景更新時使用)
- */
+/* --- 核心頁面載入函式 --- */
 async function loadPage(pageName, updateUrl = false, skipLoading = false) {
     const target = pageName || 'Content';
     currentPage = target;
-    
+
     const app = document.getElementById('app');
     if (!app) return;
 
@@ -538,18 +510,14 @@ async function loadPage(pageName, updateUrl = false, skipLoading = false) {
     if (!skipLoading) showLoader();
 
     try {
-        // 3. 分流渲染邏輯 (保留你原本的所有判斷)
         if (target === 'category') {
-            await renderCategoryList(); 
-        } 
-        else if (target === 'product') {
-            await renderProductDetail(); 
-        } 
-        else if (target === 'search') {
+            await renderCategoryList();
+        } else if (target === 'product') {
+            await renderProductDetail();
+        } else if (target === 'search') {
             const p = new URLSearchParams(window.location.search);
-            await executeSearch(p.get('q')); 
-        } 
-        else {
+            await executeSearch(p.get('q'));
+        } else {
             let data = rawDataCache[target];
             if (!data || data.length === 0) {
                 data = await fetchSheetData(target);
@@ -558,17 +526,16 @@ async function loadPage(pageName, updateUrl = false, skipLoading = false) {
             if (!data || data.length === 0) throw new Error("無資料內容");
 
             switch (target) {
-                case "Content": await renderHome(data, langIdx, target); break;
+                case "Content":         await renderHome(data, langIdx, target); break;
                 case "Product Catalog": await renderProductCatalog(data, langIdx); break;
-                case "About Us": await renderAboutOrContent(data, langIdx, target); break;
-                case "Business Scope": await renderBusinessScope(data, langIdx, target); break;
-                case "Join Us": await renderJoinUs(data, langIdx, target); break;
-                case "Contact Us": await renderContactUs(data, langIdx, target); break;
-                default: await renderAboutOrContent(data, langIdx, target); break;
+                case "About Us":        await renderAboutOrContent(data, langIdx, target); break;
+                case "Business Scope":  await renderBusinessScope(data, langIdx, target); break;
+                case "Join Us":         await renderJoinUs(data, langIdx, target); break;
+                case "Contact Us":      await renderContactUs(data, langIdx, target); break;
+                default:                await renderAboutOrContent(data, langIdx, target); break;
             }
         }
 
-        // 4. 插入搜尋框 (保留)
         if (isProductRelatedPage) {
             if (typeof getSearchBoxHtml === 'function') {
                 if (!document.getElementById('product-search-input')) {
@@ -577,28 +544,20 @@ async function loadPage(pageName, updateUrl = false, skipLoading = false) {
             }
         }
 
-        // 5. 更新分頁標題 (保留)
         if (typeof updateTabTitle === 'function') {
             updateTabTitle();
         }
 
-        // 6. 更新網址 URL (核心修正：保留 id 參數)
         if (updateUrl) {
-            const currentUrl = new URL(window.location.href);
-            const targetUrlParams = new URLSearchParams(window.location.search); // 讀取現有的參數
-            
+            const targetUrlParams = new URLSearchParams(window.location.search);
             targetUrlParams.set('page', target);
             targetUrlParams.set('lang', currentLang);
-            
-            // 如果是搜尋頁，確保 q 存在；如果是商品頁，id 會原本就在 targetUrlParams 裡被保留
             if (target === 'search') {
                 const q = targetUrlParams.get('q') || '';
                 targetUrlParams.set('q', q);
             }
-
             const newSearchString = `?${targetUrlParams.toString()}`;
             if (window.location.search !== newSearchString) {
-                console.log('--- loadPage 修正版更新網址 ---', target);
                 window.history.pushState({ page: target, lang: currentLang }, '', newSearchString);
             }
         }
@@ -612,25 +571,21 @@ async function loadPage(pageName, updateUrl = false, skipLoading = false) {
     }
 }
 
+/* --- 首頁渲染 --- */
 async function renderHome(contentData, langIdx) {
     const app = document.getElementById('app');
     if (!app) return;
+    app.innerHTML = '';
 
-    // --- 關鍵修正：徹底清空 app 容器，確保 loadPage 產生的轉圈圈完全消失 ---
-    app.innerHTML = ''; 
-
-    let companyNames = ''; 
-    let introContent = ''; 
+    let companyNames = '';
+    let introContent = '';
     let youtubeEmbed = '';
 
-    // A. 處理首頁主體 (YouTube + 公司名 + 簡介)
     contentData.forEach(row => {
         const key = (row[0] || "").toLowerCase().trim();
-        // 抓取 YouTube 嵌入碼
         if (key.includes('youtube') && row[4]) {
             youtubeEmbed = `<div class="youtube-container shadow-2xl rounded-2xl overflow-hidden aspect-video">${row[4]}</div>`;
         }
-        // 抓取公司中英文名稱
         if (key.includes('company name')) {
             companyNames += `
                 <div class="mb-4 flex flex-col items-start">
@@ -640,7 +595,6 @@ async function renderHome(contentData, langIdx) {
                     </div>
                 </div>`;
         }
-        // 抓取簡介標題與內文
         if (key.includes('introduction title')) {
             introContent += `<h4 class="text-2xl font-bold mb-4 text-gray-800">${row[langIdx]}</h4>`;
         }
@@ -649,19 +603,16 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // B. 準備向左走馬燈 (產品分類) - 修正為 <a> 標籤
     const catalogData = rawDataCache['Product Catalog'] || [];
     let categoryItems = '';
     catalogData.forEach(row => {
         if (row[0] && row[0].toLowerCase().trim().includes('categories') && row[4]) {
-            const catName = row[4]; // 這是分類的 Key (ID)
+            const catName    = row[4];
             const displayName = row[langIdx] || catName;
-            const imgUrl = row[3];
-            
-            // 使用 <a> 標籤並配合 onclick 切換頁面
+            const imgUrl     = row[3];
             categoryItems += `
-                <a href="?page=category&cat=${catName}&lang=${currentLang}" 
-                   class="flex flex-col items-center gap-2 shrink-0 w-64 group cursor-pointer" 
+                <a href="?page=category&cat=${catName}&lang=${currentLang}"
+                   class="flex flex-col items-center gap-2 shrink-0 w-64 group cursor-pointer"
                    onclick="event.preventDefault(); switchPage('category', {cat: '${catName}', title: '${displayName}'})">
                     <div class="w-full aspect-square overflow-hidden rounded-2xl shadow-md border group-hover:border-blue-500 group-hover:shadow-xl transition-all duration-300 bg-white">
                         <img src="${imgUrl}" class="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500" alt="${displayName}">
@@ -671,7 +622,6 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // C. 準備向右走馬燈 (廠房展示)
     const aboutData = rawDataCache['About Us'] || [];
     let aboutImages = '';
     aboutData.forEach(row => {
@@ -684,25 +634,21 @@ async function renderHome(contentData, langIdx) {
         }
     });
 
-    // D. 語系標題判斷
-    const titleCat = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
+    const titleCat     = currentLang === 'zh' ? '熱門商品分類' : 'Featured Categories';
     const titleGallery = currentLang === 'zh' ? '廠房展示與實績' : 'Factory & Gallery';
 
-    // E. 渲染完整 HTML
     app.innerHTML = `
         <div class="w-full flex flex-col items-center">
             <div class="max-w-7xl w-full px-4 flex flex-col md:flex-row gap-8 items-center text-left py-8 md:py-16">
                 <div class="w-full md:w-1/2">${companyNames}</div>
                 <div class="w-full md:w-1/2">${youtubeEmbed}</div>
             </div>
-
-            ${(introContent.trim()) ? `
+            ${introContent.trim() ? `
             <div class="w-full bg-white mb-16">
                 <div class="max-w-4xl mx-auto px-4 text-center">
                     <div class="prose prose-lg max-w-none text-gray-600">${introContent}</div>
                 </div>
             </div>` : ''}
-
             <div class="w-full mb-16">
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-blue-600 pl-4">${titleCat}</h2>
@@ -713,7 +659,6 @@ async function renderHome(contentData, langIdx) {
                     </div>
                 </div>
             </div>
-
             <div class="w-full bg-gray-50 py-16">
                 <div class="max-w-7xl mx-auto px-4">
                     <h2 class="text-2xl font-black mb-8 text-left border-l-4 border-gray-400 pl-4">${titleGallery}</h2>
@@ -727,66 +672,45 @@ async function renderHome(contentData, langIdx) {
         </div>`;
 }
 
-/* --- 輔助與工具函數 --- */
-
+/* --- 輔助函數 --- */
 function getLocalizedCategoryName(rawCatName) {
-    if (!rawCatName) return ""; 
-
+    if (!rawCatName) return "";
     const catalogSheetData = rawDataCache["Product Catalog"] || [];
-    
-    // B 欄是索引 1 (中文)，C 欄是索引 2 (英文)
     const langIdx = (currentLang === 'zh') ? 1 : 2;
-
-    // 尋找 A 欄 (index 0) 匹配的資料
-    const row = catalogSheetData.find(r => 
+    const row = catalogSheetData.find(r =>
         r && r[0] && String(r[0]).trim().toLowerCase() === String(rawCatName).trim().toLowerCase()
     );
-
-    if (row) {
-        // 返回 B 欄 (1) 或 C 欄 (2)
-        return (row[langIdx] || row[1] || rawCatName).trim(); 
-    }
-
+    if (row) return (row[langIdx] || row[1] || rawCatName).trim();
     return rawCatName;
 }
 
-/**
- * 修正後的 Markdown 解析函數
- * 支援 Rowspan (^) 與 Colspan (>) 合併單元格
- */
 function parseMarkdownTable(zhText, enText) {
     let text = (currentLang === 'zh') ? (zhText || "") : (enText || zhText || "");
     if (!text) return "";
-    
+
     const lines = text.split('\n');
     let html = '';
     let tableBuffer = [];
     let isProcessingTable = false;
-    
+
     for (let i = 0; i <= lines.length; i++) {
         const rawLine = lines[i];
         const line = rawLine !== undefined ? rawLine.trim() : null;
-        
         const isTableLine = line && line.startsWith('|') && line.includes('|');
         const isSeparator = line && line.match(/^[|:\s-]+$/);
-        
+
         if (isTableLine && !isSeparator) {
             isProcessingTable = true;
-            // 過濾掉頭尾的空元素
             let cells = line.split('|').map(c => c.trim()).filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
             tableBuffer.push(cells);
             continue;
         }
-        
+
         if ((!isTableLine || i === lines.length) && isProcessingTable) {
             if (tableBuffer.length > 0) {
                 html += '<div class="overflow-x-auto my-4"><table class="custom-data-table">';
-                
-                // 表頭渲染
                 html += '<thead><tr>';
-                tableBuffer[0].forEach(cell => {
-                    html += `<th>${processLinks(cell)}</th>`;
-                });
+                tableBuffer[0].forEach(cell => { html += `<th>${processLinks(cell)}</th>`; });
                 html += '</tr></thead><tbody>';
 
                 const dataRows = tableBuffer.slice(1);
@@ -794,58 +718,43 @@ function parseMarkdownTable(zhText, enText) {
                 const colCount = tableBuffer[0].length;
                 let skipMap = Array.from({ length: rowCount }, () => Array(colCount).fill(false));
 
-                // 表身合併邏輯
                 for (let r = 0; r < rowCount; r++) {
                     html += '<tr>';
                     for (let c = 0; c < colCount; c++) {
                         if (skipMap[r][c]) continue;
-
                         let cellContent = dataRows[r][c];
                         let rowspan = 1;
                         let colspan = 1;
 
-                        // 1. 計算 Colspan (>)
                         for (let nextC = c + 1; nextC < colCount; nextC++) {
-                            if (dataRows[r][nextC] === '>') {
-                                colspan++;
-                                skipMap[r][nextC] = true;
-                            } else break;
+                            if (dataRows[r][nextC] === '>') { colspan++; skipMap[r][nextC] = true; } else break;
                         }
-
-                        // 2. 計算 Rowspan (^)
                         if (cellContent !== '^' && cellContent !== '>') {
                             for (let nextR = r + 1; nextR < rowCount; nextR++) {
                                 if (dataRows[nextR][c] === '^') {
                                     rowspan++;
                                     skipMap[nextR][c] = true;
-                                    for (let spanC = 1; spanC < colspan; spanC++) {
-                                        skipMap[nextR][c + spanC] = true;
-                                    }
+                                    for (let spanC = 1; spanC < colspan; spanC++) skipMap[nextR][c + spanC] = true;
                                 } else break;
                             }
                         } else continue;
 
                         let cellClass = "";
-                        if (cellContent.startsWith('#')) {
-                            cellClass = "no-border-cell"; 
-                            cellContent = cellContent.substring(1);
-                        }
+                        if (cellContent.startsWith('#')) { cellClass = "no-border-cell"; cellContent = cellContent.substring(1); }
 
                         const processedContent = processLinks(cellContent);
                         const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
                         const colspanAttr = colspan > 1 ? ` colspan="${colspan}"` : '';
-                        
                         html += `<td${rowspanAttr}${colspanAttr} class="${cellClass}">${processedContent}</td>`;
                     }
                     html += '</tr>';
                 }
                 html += '</tbody></table></div>';
             }
-            tableBuffer = []; 
+            tableBuffer = [];
             isProcessingTable = false;
         }
 
-        // 處理非表格內容
         if (line !== null && !isTableLine && !isSeparator) {
             const isImageUrl = line.match(/^https?:\/\/.*\.(jpg|jpeg|png|webp|gif|svg)$/i);
             if (isImageUrl) {
@@ -870,49 +779,43 @@ function processLinks(text) {
     });
 }
 
-/* --- 頁面渲染邏輯 --- */
-
+/* --- 分類列表頁 --- */
 async function renderCategoryList() {
     const params = new URLSearchParams(window.location.search);
     const rawCatName = params.get('cat') || "";
     const app = document.getElementById('app');
-    
+
     app.innerHTML = `<div class="flex justify-center items-center py-20"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>`;
-    
+
     try {
         const allProducts = await fetchGASProducts();
         const filtered = allProducts.filter(p => String(p["Category"] || "").trim() === String(rawCatName).trim());
-        
-        // Debug 用，檢查資料到底長怎樣
-        if (filtered.length > 0) console.log("GAS Data Sample:", filtered[0]);
+
+        if (filtered.length > 0) console.log("Supabase Data Sample:", filtered[0]);
 
         const localizedCatName = getLocalizedCategoryName(rawCatName);
         const breadcrumbLabel = (currentLang === 'zh') ? '商品目錄' : 'Product Catalog';
 
         let itemsHtml = filtered.map(item => {
-            const name = (currentLang === 'zh') ? (item["Chinese product name"] || item["Item code (ERP)"]) : (item["English product name"] || item["Item code (ERP)"]);
+            const name = (currentLang === 'zh')
+                ? (item["Chinese product name"] || item["Item code (ERP)"])
+                : (item["English product name"] || item["Item code (ERP)"]);
             const code = item["Item code (ERP)"];
-
-            // --- 強度更正：確保 image_url 轉換為字串並處理多網址 ---
             let img = "";
             if (item["image_url"]) {
-                // 強制轉字串並移除可能的換行或空格
-                const rawUrl = String(item["image_url"]).trim(); 
-                img = rawUrl.split(",")[0].trim();
+                img = String(item["image_url"]).trim().split(",")[0].trim();
             }
-            
-            // 如果還是沒圖，可以在控制台列印出該商品的 code 與抓到的 url
             if (!img) console.warn(`商品 ${code} 找不到圖片網址`);
 
             return `
-                <a href="?page=product&id=${code}&lang=${currentLang}" 
-                   class="category-card group block" 
+                <a href="?page=product&id=${code}&lang=${currentLang}"
+                   class="category-card group block"
                    onclick="event.preventDefault(); event.stopPropagation(); switchPage('product', {id: '${code}'})">
                     <div class="category-img-container">
-                        <img src="${img}" 
-                             alt="${name}"
-                             class="hover:scale-110 transition duration-500" 
-                             style="background-color: #f3f4f6;"> </div>
+                        <img src="${img}" alt="${name}"
+                             class="hover:scale-110 transition duration-500"
+                             style="background-color: #f3f4f6;">
+                    </div>
                     <div class="p-4 text-center">
                         <p class="text-xs text-blue-600 font-bold mb-1">${code}</p>
                         <h4 class="font-bold text-gray-800">${name}</h4>
@@ -923,8 +826,8 @@ async function renderCategoryList() {
         app.innerHTML = `
             <div class="max-w-7xl mx-auto px-4 text-left">
                 <nav class="text-gray-500 text-sm mb-8 italic">
-                    <a href="?page=Product Catalog&lang=${currentLang}" onclick="event.preventDefault(); switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a> 
-                    <span class="mx-2">&gt;</span> 
+                    <a href="?page=Product Catalog&lang=${currentLang}" onclick="event.preventDefault(); switchPage('Product Catalog')" class="hover:text-blue-600">${breadcrumbLabel}</a>
+                    <span class="mx-2">&gt;</span>
                     <span class="text-gray-900 font-bold">${localizedCatName}</span>
                 </nav>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
@@ -937,11 +840,12 @@ async function renderCategoryList() {
     }
 }
 
+/* --- 產品詳細頁 --- */
 async function renderProductDetail() {
     const params = new URLSearchParams(window.location.search);
     const itemCode = params.get('id');
     const app = document.getElementById('app');
-    
+
     if (!itemCode) {
         app.innerHTML = `<div class="text-center py-20">Missing Product ID.</div>`;
         return;
@@ -952,12 +856,13 @@ async function renderProductDetail() {
     try {
         const allProducts = await fetchGASProducts();
         const item = allProducts.find(p => String(p["Item code (ERP)"] || "").trim() == String(itemCode).trim());
-        
+
         if (!item || !item["Item code (ERP)"]) {
             app.innerHTML = `<div class="text-center py-20">${currentLang === 'zh' ? '找不到商品內容。' : 'Product not found.'}</div>`;
             return;
         }
 
+        // 從 Product Catalog 分頁資料抓取賣場 logo
         const catalogSheetData = rawDataCache["Product Catalog"] || [];
         const logoLibrary = {};
         catalogSheetData.forEach(row => {
@@ -971,7 +876,7 @@ async function renderProductDetail() {
         let storeLinksHtml = '';
         [{ key: "Store 1網址", id: "store1" }, { key: "Store 2網址", id: "store2" }, { key: "Store 3網址", id: "store3" }, { key: "Store 4網址", id: "store4" }].forEach(store => {
             const storeUrl = (item[store.key] || "").trim();
-            const logoUrl = logoLibrary[store.id];
+            const logoUrl  = logoLibrary[store.id];
             if (storeUrl && storeUrl !== "#" && logoUrl) {
                 storeLinksHtml += `
                     <a href="${storeUrl}" target="_blank" class="hover:scale-110 transition shrink-0 block">
@@ -981,18 +886,17 @@ async function renderProductDetail() {
         });
 
         const isZH = (currentLang === 'zh');
-        const rawCatName = (item["Category"] || "").trim();
+        const rawCatName       = (item["Category"] || "").trim();
         const localizedCatName = getLocalizedCategoryName(rawCatName);
-        const name = isZH ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
-        
-        // 1. 立即更新標題
+        const name             = isZH ? (item["Chinese product name"] || itemCode) : (item["English product name"] || itemCode);
+
         updateTabTitle(name);
 
         const labels = {
-            catalog: isZH ? '商品目錄' : 'Product Catalog',
-            packing: isZH ? '包裝規格' : 'Packing',
+            catalog:  isZH ? '商品目錄' : 'Product Catalog',
+            packing:  isZH ? '包裝規格' : 'Packing',
             category: isZH ? '商品分類' : 'Category',
-            specs: isZH ? '商品描述與規格' : 'Specifications'
+            specs:    isZH ? '商品描述與規格' : 'Specifications'
         };
 
         const zhDesc = item["desc_zh"] || "";
@@ -1004,7 +908,7 @@ async function renderProductDetail() {
                 <nav class="flex text-gray-400 text-sm mb-8 italic">
                     <span class="cursor-pointer hover:text-blue-600" onclick="switchPage('Product Catalog')">${labels.catalog}</span>
                     <span class="mx-2">&gt;</span>
-                    <span class="cursor-pointer hover:text-blue-600" 
+                    <span class="cursor-pointer hover:text-blue-600"
                           onclick="switchPage('category', {cat: '${rawCatName}', title: '${localizedCatName}'})">
                           ${localizedCatName}
                     </span>
@@ -1044,38 +948,27 @@ async function renderProductDetail() {
                 </div>
             </div>`;
 
-        // 2. 渲染完成後再次強制確認標題（解決被 loadPage 覆蓋的問題）
         setTimeout(() => updateTabTitle(name), 150);
 
-    } catch (e) { 
-        app.innerHTML = `<div class="text-center py-20 text-red-500">Error loading product data.</div>`; 
+    } catch (e) {
+        console.error("renderProductDetail 錯誤:", e);
+        app.innerHTML = `<div class="text-center py-20 text-red-500">Error loading product data.</div>`;
     }
 }
 
+/* --- 語系切換 --- */
 async function toggleLang() {
     const urlParams = new URLSearchParams(window.location.search);
-    
-    // 1. 切換語系
     currentLang = (currentLang === 'zh') ? 'en' : 'zh';
-    
-    // 2. 更新 URL 參數並替換網址
     urlParams.set('lang', currentLang);
     const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
     window.history.replaceState({ page: currentPage, lang: currentLang }, '', newUrl);
-
-    // 3. 更新介面 UI
     updateLangButton();
     renderLogoAndStores();
     renderNav();
-    
-    // 4. 更新標籤頁標題 (這會根據新的 currentLang 去 B/C 欄抓資料)
-    updateTabTitle(); 
-
-    // 5. 重新載入當前頁面內容
+    updateTabTitle();
     await loadPage(currentPage, false);
 }
-
-/* --- 系統 UI 同步 --- */
 
 function updateLangButton() {
     const btn = document.getElementById('lang-toggle-btn');
@@ -1086,18 +979,14 @@ function updateTabTitle(pageTitle = "") {
     const isEn = (currentLang === 'en');
     const companyName = isEn ? "JIN HUEI PLASTIC" : "錦輝塑膠業有限公司";
     const params = new URLSearchParams(window.location.search);
-    
-    let displayTitle = "";
 
+    let displayTitle = "";
     if (pageTitle && currentPage === 'product') {
         displayTitle = pageTitle;
-    } 
-    else if (currentPage === 'category') {
+    } else if (currentPage === 'category') {
         const catId = params.get('cat');
-        // 這裡會觸發上面修正後的邏輯，去抓 B 或 C 欄
-        displayTitle = getLocalizedCategoryName(catId); 
-    } 
-    else {
+        displayTitle = getLocalizedCategoryName(catId);
+    } else {
         displayTitle = params.get('title');
         if (!displayTitle) {
             if (currentPage === 'Content') displayTitle = isEn ? "Home" : "首頁";
@@ -1111,9 +1000,8 @@ function updateTabTitle(pageTitle = "") {
 
 window.onpopstate = function(event) {
     const params = new URLSearchParams(window.location.search);
-    currentLang = params.get('lang') || 'zh'; 
+    currentLang = params.get('lang') || 'zh';
     currentPage = params.get('page') || 'Content';
-    
     loadPage(currentPage, false, true);
     renderNav();
     updateLangButton();
