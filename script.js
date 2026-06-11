@@ -68,10 +68,10 @@ async function fetchGASProducts() {
     if (allProductsCache) return allProductsCache;
     try {
         const data = await supabaseFetch(
-            `products?select=*,categories(name_zh,name_en)&is_active=eq.true&order=sort_order.asc`
+            `products?select=*&is_active=eq.true&order=sort_order.asc`
         );
         allProductsCache = data.map(p => ({
-            "Category": p.category_name_zh || '',  // ← 改這行
+            "Category":                p.category_name_zh || '',
             "Item code (ERP)":         p.erp_code     || '',
             "Item code (catalog)":     p.catalog_code || '',
             "Chinese product name":    p.name_zh      || '',
