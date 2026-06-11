@@ -68,7 +68,7 @@ async function fetchGASProducts() {
     if (allProductsCache) return allProductsCache;
     try {
         const data = await supabaseFetch(
-            `products?select=*&is_active=eq.true&order=sort_order.asc`
+            `products?select=*&is_active=eq.true`
         );
         allProductsCache = data.map(p => ({
             "Category":                p.category_name_zh || '',
