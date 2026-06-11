@@ -71,7 +71,7 @@ async function fetchGASProducts() {
             `products?select=*,categories(name_zh,name_en)&is_active=eq.true&order=sort_order.asc`
         );
         allProductsCache = data.map(p => ({
-            "Category":                p.categories?.name_zh || '',
+            "Category": p.category_name_zh || '',  // ← 改這行
             "Item code (ERP)":         p.erp_code     || '',
             "Item code (catalog)":     p.catalog_code || '',
             "Chinese product name":    p.name_zh      || '',
