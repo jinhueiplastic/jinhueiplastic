@@ -1,0 +1,32 @@
+body {
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+
+table td, table th {
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+}
+
+table tbody tr:hover {
+    background-color: #fafafa;
+}
+
+.field-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.field-input {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.875rem;
+}
+
+.field-input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: 1px;
+}
