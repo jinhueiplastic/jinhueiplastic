@@ -58,11 +58,17 @@
                     </div>
                     <button type="button" id="new-customer-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100">+ 新增客戶</button>
                 </div>
-                <div id="new-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
-                    <div><label class="field-label">名稱</label><input type="text" id="nc-name" class="field-input"></div>
+                <div id="new-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                    <div><label class="field-label">客戶名稱</label><input type="text" id="nc-name" class="field-input"></div>
+                    <div><label class="field-label">工地名稱</label><input type="text" id="nc-site-name" class="field-input"></div>
+                    <div>
+                        <label class="field-label">區域</label>
+                        <input type="text" id="nc-region" class="field-input" list="nc-region-datalist">
+                        <datalist id="nc-region-datalist"></datalist>
+                    </div>
                     <div><label class="field-label">地址</label><input type="text" id="nc-address" class="field-input"></div>
                     <div><label class="field-label">電話</label><input type="text" id="nc-phone" class="field-input"></div>
-                    <button type="button" id="nc-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">新增並選用</button>
+                    <button type="button" id="nc-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 md:col-span-5 w-fit">新增並選用</button>
                 </div>
                 <div id="customer-info" class="text-sm text-gray-500 mt-3"></div>
             </div>

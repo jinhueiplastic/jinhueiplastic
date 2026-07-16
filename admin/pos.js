@@ -85,11 +85,18 @@ async function initPos() {
 function renderCustomerOptions() {
     customerSelect.innerHTML = '<option value="">請選擇客戶…</option>' +
         customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+
+    const regionList = document.getElementById('nc-region-datalist');
+    const regions = [...new Set(customers.map(c => (c.region || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    regionList.innerHTML = regions.map(r => `<option value="${escapeHtml(r)}">`).join('');
 }
 
 customerSelect.addEventListener('change', () => {
     const c = customers.find(x => String(x.id) === customerSelect.value);
-    customerInfo.textContent = c ? `地址：${c.address || '（無）'}　電話：${c.phone || '（無）'}` : '';
+    customerInfo.textContent = c
+        ? `工地：${c.site_name || '（無）'}　區域：${c.region || '（無）'}　地址：${c.address || '（無）'}　電話：${c.phone || '（無）'}`
+        : '';
 });
 
 newCustomerToggle.addEventListener('click', () => {
@@ -101,6 +108,8 @@ document.getElementById('nc-save-btn').addEventListener('click', async () => {
     if (!name) { alert('請輸入客戶名稱'); return; }
     const payload = {
         name,
+        site_name: document.getElementById('nc-site-name').value.trim(),
+        region: document.getElementById('nc-region').value.trim(),
         address: document.getElementById('nc-address').value.trim(),
         phone: document.getElementById('nc-phone').value.trim(),
     };
@@ -113,7 +122,7 @@ document.getElementById('nc-save-btn').addEventListener('click', async () => {
     customerSelect.value = data.id;
     customerSelect.dispatchEvent(new Event('change'));
     newCustomerPanel.classList.add('hidden');
-    ['nc-name', 'nc-address', 'nc-phone'].forEach(id => { document.getElementById(id).value = ''; });
+    ['nc-name', 'nc-site-name', 'nc-region', 'nc-address', 'nc-phone'].forEach(id => { document.getElementById(id).value = ''; });
 });
 
 // ===== 商品瀏覽：目錄 → 商品圖片 → 規格 =====
