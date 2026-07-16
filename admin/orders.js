@@ -3,19 +3,34 @@ let allOrders = [];
 const statusMsg         = document.getElementById('status-msg');
 const resultsContainer  = document.getElementById('results-container');
 
+function renderCustomerDatalist(customers) {
+    const dl = document.getElementById('customer-datalist');
+    if (!dl) return;
+    const byName  = customers.map(c => `<option value="${escapeHtml(c.name)}">`).join('');
+    const byPhone = customers.filter(c => c.phone)
+        .map(c => `<option value="${escapeHtml(c.phone)}">${escapeHtml(c.name)}</option>`).join('');
+    dl.innerHTML = byName + byPhone;
+}
+
 async function loadOrders() {
     statusMsg.textContent = '載入訂單中…';
-    const { data, error } = await sb
-        .from('orders')
-        .select('*, customers(name,phone,address), order_items(*)')
-        .order('created_at', { ascending: false })
-        .limit(500);
+
+    const [{ data, error }, { data: customerData, error: customerError }] = await Promise.all([
+        sb.from('orders')
+            .select('*, customers(name,phone,address), order_items(*)')
+            .order('created_at', { ascending: false })
+            .limit(500),
+        sb.from('customers').select('name,phone').order('name', { ascending: true }),
+    ]);
 
     if (error) {
         statusMsg.textContent = '';
         resultsContainer.innerHTML = `<p class="text-red-600">讀取失敗：${escapeHtml(error.message)}</p>`;
         return;
     }
+    if (customerError) console.error(customerError);
+
+    renderCustomerDatalist(customerData || []);
 
     allOrders = data || [];
     statusMsg.textContent = `共 ${allOrders.length} 筆訂單（最多顯示近 500 筆）`;
