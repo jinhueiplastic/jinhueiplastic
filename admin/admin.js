@@ -507,23 +507,49 @@ productForm.addEventListener('submit', async (e) => {
     loadProducts();
 });
 
-/* --- POS 規格／孔徑／顏色選項（pos_item_variants），在編輯商品時直接管理 --- */
+/* --- POS 規格／孔徑／顏色選項（pos_item_variants），在編輯商品時直接管理 ---
+   流程：先分別幫規格/孔徑/顏色各自新增選項（斜線分隔一次加多個），
+   下面會自動列出所有組合，每個組合各自有一個「上傳圖片」按鈕。 */
 let currentVariantErp = null;
+let currentAxisOptions = { spec: [], bore: [], color: [] };
+
+function splitBulkValues(text) {
+    return text.split('/').map(v => v.trim()).filter(Boolean);
+}
+
+// 只填一欄的列＝定義一個軸選項；填兩欄以上的列＝那個確切組合的實際照片
+function categorizeVariantRows(rows) {
+    const axisOptions = { spec: [], bore: [], color: [] };
+    const comboByKey = {};
+    rows.forEach(r => {
+        const filledCount = [r.spec, r.bore, r.color].filter(Boolean).length;
+        if (filledCount === 1) {
+            const type = r.spec ? 'spec' : (r.bore ? 'bore' : 'color');
+            axisOptions[type].push(r);
+        } else if (filledCount >= 2) {
+            comboByKey[[r.spec || '', r.bore || '', r.color || ''].join('||')] = r;
+        }
+    });
+    return { axisOptions, comboByKey };
+}
 
 async function loadVariantSection(product) {
     const section = document.getElementById('variant-section');
-    const listEl = document.getElementById('variant-list');
 
     if (!product || !product.erp_code) {
         currentVariantErp = null;
         section.classList.add('opacity-50', 'pointer-events-none');
-        listEl.innerHTML = '<p class="text-xs text-gray-400">請先儲存商品，才能新增規格選項。</p>';
+        ['spec', 'bore', 'color'].forEach(type => {
+            document.getElementById(`axis-${type}-chips`).innerHTML = '';
+        });
+        document.getElementById('variant-combo-list').innerHTML =
+            '<p class="text-xs text-gray-400">請先儲存商品，才能新增規格選項。</p>';
         return;
     }
 
     currentVariantErp = product.erp_code;
     section.classList.remove('opacity-50', 'pointer-events-none');
-    listEl.innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
+    document.getElementById('variant-combo-list').innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
 
     const { data, error } = await sb
         .from('pos_item_variants')
@@ -532,91 +558,128 @@ async function loadVariantSection(product) {
         .order('sort_order', { ascending: true });
 
     if (error) {
-        listEl.innerHTML = `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
+        document.getElementById('variant-combo-list').innerHTML =
+            `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
         return;
     }
-    renderVariantList(data || []);
+
+    renderVariantSection(data || []);
 }
 
-function renderVariantList(rows) {
-    const listEl = document.getElementById('variant-list');
-    if (!rows.length) {
-        listEl.innerHTML = '<p class="text-xs text-gray-400">目前沒有規格選項。</p>';
+function renderVariantSection(rows) {
+    const { axisOptions, comboByKey } = categorizeVariantRows(rows);
+    currentAxisOptions = axisOptions;
+
+    ['spec', 'bore', 'color'].forEach(type => {
+        const chipsEl = document.getElementById(`axis-${type}-chips`);
+        chipsEl.innerHTML = axisOptions[type].map(r => `
+            <span class="axis-chip">
+                ${escapeHtml(r.spec || r.bore || r.color)}
+                <button type="button" data-id="${r.id}" class="axis-chip-del">×</button>
+            </span>`).join('');
+
+        chipsEl.querySelectorAll('.axis-chip-del').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const { error } = await sb.from('pos_item_variants').delete().eq('id', btn.dataset.id);
+                if (error) { alert('刪除失敗：' + error.message); return; }
+                loadVariantSection({ erp_code: currentVariantErp });
+            });
+        });
+    });
+
+    renderComboList(axisOptions, comboByKey);
+}
+
+function renderComboList(axisOptions, comboByKey) {
+    const container = document.getElementById('variant-combo-list');
+    const activeAxes = ['spec', 'bore', 'color'].filter(type => axisOptions[type].length > 0);
+
+    if (activeAxes.length < 2) {
+        container.innerHTML = '<p class="text-xs text-gray-400">至少要有兩種軸（例如規格＋顏色）都新增選項，才會列出組合照片。</p>';
         return;
     }
 
-    listEl.innerHTML = rows.map(r => {
-        const filledCount = [r.spec, r.bore, r.color].filter(Boolean).length;
-        const label = [r.spec, r.bore, r.color].filter(Boolean).join(' / ') || '（未命名）';
-        const kind = filledCount > 1 ? '組合照片' : '選項按鈕';
+    const specs  = axisOptions.spec.length  ? axisOptions.spec.map(r => r.spec)   : [''];
+    const bores  = axisOptions.bore.length  ? axisOptions.bore.map(r => r.bore)   : [''];
+    const colors = axisOptions.color.length ? axisOptions.color.map(r => r.color) : [''];
+
+    const combos = [];
+    specs.forEach(spec => bores.forEach(bore => colors.forEach(color => combos.push({ spec, bore, color }))));
+
+    container.innerHTML = combos.map(combo => {
+        const key = [combo.spec, combo.bore, combo.color].join('||');
+        const existing = comboByKey[key];
+        const label = [combo.spec, combo.bore, combo.color].filter(Boolean).join(', ');
         return `
-            <div class="flex items-center gap-3 border rounded-lg p-2">
-                <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb" style="width:40px;height:40px;">
-                <div class="flex-1 text-sm">
-                    <span class="font-medium">${escapeHtml(label)}</span>
-                    <span class="text-xs text-gray-400 ml-2">${kind}</span>
-                </div>
-                <button type="button" data-id="${r.id}" class="variant-del-btn text-red-400 hover:text-red-600 text-xs">刪除</button>
+            <div class="flex items-center gap-3 border rounded-lg p-2"
+                 data-spec="${escapeHtml(combo.spec)}" data-bore="${escapeHtml(combo.bore)}" data-color="${escapeHtml(combo.color)}">
+                <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
+                <div class="flex-1 text-sm">${escapeHtml(label)}</div>
+                <span class="combo-upload-status text-xs text-gray-400"></span>
+                <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
+                    上傳圖片
+                    <input type="file" accept="image/*" class="hidden combo-upload-input">
+                </label>
             </div>`;
     }).join('');
 
-    listEl.querySelectorAll('.variant-del-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (!confirm('確定要刪除這個選項嗎？')) return;
-            const { error } = await sb.from('pos_item_variants').delete().eq('id', btn.dataset.id);
-            if (error) {
-                alert('刪除失敗：' + error.message);
-                return;
+    container.querySelectorAll('.combo-upload-input').forEach(input => {
+        input.addEventListener('change', async () => {
+            const file = input.files[0];
+            if (!file || !currentVariantErp) return;
+
+            const row = input.closest('[data-spec]');
+            const thumbImg = row.querySelector('.combo-thumb');
+            const statusEl = row.querySelector('.combo-upload-status');
+
+            statusEl.textContent = '上傳中…';
+            try {
+                const url = await uploadImageToCloudinary(file);
+                const { error } = await sb.from('pos_item_variants').upsert({
+                    erp_code: currentVariantErp,
+                    spec: row.dataset.spec,
+                    bore: row.dataset.bore,
+                    color: row.dataset.color,
+                    image_url: url,
+                }, { onConflict: 'erp_code,spec,bore,color' });
+                if (error) throw error;
+                thumbImg.src = url;
+                statusEl.textContent = '';
+            } catch (e) {
+                statusEl.textContent = '';
+                alert('上傳失敗：' + e.message);
+            } finally {
+                input.value = '';
             }
-            loadVariantSection({ erp_code: currentVariantErp });
         });
     });
 }
 
-document.getElementById('add-variant-btn').addEventListener('click', async () => {
-    if (!currentVariantErp) return;
+document.querySelectorAll('.add-axis-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!currentVariantErp) return;
+        const type = btn.dataset.type;
+        const input = document.getElementById(`axis-${type}-input`);
+        const values = splitBulkValues(input.value);
+        if (!values.length) return;
 
-    const spec = document.getElementById('new-variant-spec').value.trim();
-    const bore = document.getElementById('new-variant-bore').value.trim();
-    const color = document.getElementById('new-variant-color').value.trim();
-    const fileInput = document.getElementById('new-variant-image');
-    const statusEl = document.getElementById('variant-add-status');
+        const existing = new Set(currentAxisOptions[type].map(r => r.spec || r.bore || r.color));
+        const newValues = values.filter(v => !existing.has(v));
+        if (!newValues.length) { input.value = ''; return; }
 
-    if (!spec && !bore && !color) {
-        alert('規格／孔徑／顏色至少要填一個');
-        return;
-    }
+        const rows = newValues.map(v => ({
+            erp_code: currentVariantErp,
+            spec: type === 'spec' ? v : '',
+            bore: type === 'bore' ? v : '',
+            color: type === 'color' ? v : '',
+        }));
 
-    let imageUrl = '';
-    if (fileInput.files[0]) {
-        statusEl.textContent = '圖片上傳中…';
-        try {
-            imageUrl = await uploadImageToCloudinary(fileInput.files[0]);
-        } catch (e) {
-            statusEl.textContent = '';
-            alert('圖片上傳失敗：' + e.message);
-            return;
-        }
-    }
+        const { error } = await sb.from('pos_item_variants').insert(rows);
+        if (error) { alert('新增失敗：' + error.message); return; }
 
-    statusEl.textContent = '儲存中…';
-    const { error } = await sb.from('pos_item_variants').insert({
-        erp_code: currentVariantErp,
-        spec, bore, color,
-        image_url: imageUrl,
+        input.value = '';
+        loadVariantSection({ erp_code: currentVariantErp });
     });
-    statusEl.textContent = '';
-
-    if (error) {
-        alert('新增失敗：' + error.message);
-        return;
-    }
-
-    ['new-variant-spec', 'new-variant-bore', 'new-variant-color'].forEach(id => {
-        document.getElementById(id).value = '';
-    });
-    fileInput.value = '';
-    loadVariantSection({ erp_code: currentVariantErp });
 });
 
 initAdminAuth('products', loadProducts);

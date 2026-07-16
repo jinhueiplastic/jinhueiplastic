@@ -81,32 +81,36 @@
 
                 <div id="variant-section" class="border-t pt-4 mt-2">
                     <h3 class="font-bold text-sm text-gray-700 mb-2">POS 規格／孔徑／顏色選項</h3>
-                    <div id="variant-list" class="space-y-2 mb-3"></div>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end border rounded-lg p-3 bg-gray-50">
+
+                    <div class="space-y-3">
                         <div>
-                            <label class="field-label">規格</label>
-                            <input type="text" id="new-variant-spec" class="field-input">
+                            <label class="field-label">規格（用 / 分隔，例如 1/2/3）</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="axis-spec-input" class="field-input" placeholder="1/2/3">
+                                <button type="button" data-type="spec" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                            </div>
+                            <div id="axis-spec-chips" class="flex flex-wrap gap-1 mt-1"></div>
                         </div>
                         <div>
-                            <label class="field-label">孔徑</label>
-                            <input type="text" id="new-variant-bore" class="field-input">
+                            <label class="field-label">孔徑（用 / 分隔，例如 1"/2"/3"）</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="axis-bore-input" class="field-input" placeholder="1&quot;/2&quot;/3&quot;">
+                                <button type="button" data-type="bore" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                            </div>
+                            <div id="axis-bore-chips" class="flex flex-wrap gap-1 mt-1"></div>
                         </div>
                         <div>
-                            <label class="field-label">顏色</label>
-                            <input type="text" id="new-variant-color" class="field-input">
-                        </div>
-                        <div>
-                            <label class="field-label">圖片</label>
-                            <input type="file" id="new-variant-image" accept="image/*" class="text-xs">
-                        </div>
-                        <div class="col-span-2 sm:col-span-4 flex items-center gap-2">
-                            <button type="button" id="add-variant-btn" class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">
-                                新增選項
-                            </button>
-                            <span id="variant-add-status" class="text-xs text-gray-400"></span>
+                            <label class="field-label">顏色（用 / 分隔，例如 黑/白）</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="axis-color-input" class="field-input" placeholder="黑/白">
+                                <button type="button" data-type="color" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                            </div>
+                            <div id="axis-color-chips" class="flex flex-wrap gap-1 mt-1"></div>
                         </div>
                     </div>
-                    <p class="text-xs text-gray-400 mt-2">只填一欄＝定義一個可點選項目；兩欄以上都填＝那個確切組合的實際照片。</p>
+
+                    <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">組合照片（至少兩種軸都有選項才會列出來）</h4>
+                    <div id="variant-combo-list" class="space-y-2"></div>
                 </div>
 
                 <p id="form-error" class="text-sm text-red-600 hidden"></p>
