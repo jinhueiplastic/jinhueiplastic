@@ -6,6 +6,7 @@ let categoryCards = [];      // 官網「商品目錄」頁用的分類卡片：
 let categoryNameById = {};   // catId -> 中文分類顯示名稱
 let variantOptionsByErp = {}; // erp_code -> { spec: [{value,image_url}], bore: [...], color: [...] }
 let selectedVariant = { spec: '', bore: '', color: '' }; // 目前規格畫面上，用按鈕點選的值
+let comboImagesByErp = {}; // erp_code -> { 'spec||bore||color': image_url }，每個確切組合各自的商品照
 
 // 瀏覽狀態：categories（分類卡片）→ products（該分類/搜尋結果的商品卡片）→ variant（選規格數量）
 let browseMode = 'categories';
@@ -29,16 +30,18 @@ const saveOrderBtn       = document.getElementById('save-order-btn');
 async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: comboData, error: comboErr }] = await Promise.all([
         sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
         sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }),
+        sb.from('pos_item_combo_images').select('*'),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
     if (catErr) console.error(catErr);
     if (vErr) console.error(vErr);
+    if (comboErr) console.error(comboErr);
     products = productData || [];
     customers = customerData || [];
 
@@ -48,6 +51,12 @@ async function initPos() {
         if (variantOptionsByErp[v.erp_code][v.variant_type]) {
             variantOptionsByErp[v.erp_code][v.variant_type].push(v);
         }
+    });
+
+    comboImagesByErp = {};
+    (comboData || []).forEach(c => {
+        if (!comboImagesByErp[c.erp_code]) comboImagesByErp[c.erp_code] = {};
+        comboImagesByErp[c.erp_code][[c.spec || '', c.bore || '', c.color || ''].join('||')] = c.image_url;
     });
 
     // 跟官網「商品目錄」頁用同一份分類卡片資料（site_content，page = Product Catalog）：
@@ -236,7 +245,7 @@ function variantFieldHtml(type, product) {
 function renderVariantPickerHtml(p) {
     return `
         <div class="flex gap-4 flex-col sm:flex-row">
-            <img src="${escapeHtml(thumbOf(p))}" alt=""
+            <img id="variant-preview-img" src="${escapeHtml(thumbOf(p))}" alt=""
                  style="width:140px;height:140px;object-fit:cover;flex-shrink:0;background:#f3f4f6;"
                  class="rounded-lg border">
             <div class="flex-1">
@@ -347,6 +356,21 @@ function currentVariantValue(type) {
     return textEl ? textEl.value.trim() : '';
 }
 
+// 有這個確切組合（規格+孔徑+顏色）的實際商品照片就用那張，沒有的話退回該商品的一般照片。
+function findComboImage(erp, spec, bore, color) {
+    const key = [spec || '', bore || '', color || ''].join('||');
+    return (comboImagesByErp[erp] && comboImagesByErp[erp][key]) || '';
+}
+
+function currentComboImage(p) {
+    return findComboImage(p.erp_code, currentVariantValue('spec'), currentVariantValue('bore'), currentVariantValue('color')) || thumbOf(p);
+}
+
+function updateVariantPreviewImage(p) {
+    const img = document.getElementById('variant-preview-img');
+    if (img) img.src = currentComboImage(p);
+}
+
 function resetVariantPicker() {
     selectedVariant = { spec: '', bore: '', color: '' };
     document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
@@ -366,6 +390,8 @@ function wireVariantPicker(p) {
     ['spec', 'bore', 'color'].forEach(type => {
         const list = document.getElementById(`variant-${type}-list`);
         if (list) list.innerHTML = suggested[type].map(v => `<option value="${escapeHtml(v)}">`).join('');
+        const textEl = document.getElementById(`variant-${type}-text`);
+        if (textEl) textEl.addEventListener('input', () => updateVariantPreviewImage(p));
     });
 
     document.querySelectorAll('.variant-tile').forEach(btn => {
@@ -376,8 +402,11 @@ function wireVariantPicker(p) {
             document.querySelectorAll(`.variant-tile[data-type="${type}"]`).forEach(b => {
                 b.classList.toggle('selected', b.dataset.value === selectedVariant[type]);
             });
+            updateVariantPreviewImage(p);
         });
     });
+
+    updateVariantPreviewImage(p);
 
     document.getElementById('add-to-cart-btn').addEventListener('click', () => {
         const qty = Number(document.getElementById('variant-qty').value) || 1;
@@ -385,7 +414,7 @@ function wireVariantPicker(p) {
             rowId: ++cartCounter,
             erp: p.erp_code,
             name_zh: p.name_zh,
-            image_url: thumbOf(p),
+            image_url: currentComboImage(p),
             spec: currentVariantValue('spec'),
             bore: currentVariantValue('bore'),
             color: currentVariantValue('color'),
@@ -396,6 +425,7 @@ function wireVariantPicker(p) {
         // 加入後留在同一個商品的規格畫面，方便同一項商品連續加不同規格；
         // 要換商品的話可以按上面的「← 返回」或「主分類」。
         resetVariantPicker();
+        updateVariantPreviewImage(p);
     });
 }
 

@@ -29,6 +29,12 @@ const POS_ITEMS_TAB = 'POS items';
 // （規格/孔徑/顏色三欄不是填值，是哪一欄有打記號代表這列屬於哪個類型，見下面 variantTypeFromMarkerCols）
 const POS_VARIANTS_TAB = 'POS variants';
 
+// 每個確切的規格+孔徑+顏色組合各自的實際商品照片，欄位：
+// erp_code | 規格 | 孔徑 | 顏色 | 圖片網址
+// 這裡的規格/孔徑/顏色三欄跟 POS variants 不一樣，是直接填「值」（例如 1.0mm），不是打記號；
+// 商品沒有的軸留空就好（例如商品沒有孔徑屬性，孔徑欄空著）。
+const POS_COMBO_IMAGES_TAB = 'POS combo images';
+
 // ===== 主選單 =====
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('🔄 Supabase 同步')
@@ -43,6 +49,9 @@ function onOpen() {
     .addSeparator()
     .addItem('只推送 POS variants 到 Supabase', 'syncPosVariants')
     .addItem('⬇️ 從 Supabase 拉回 POS variants', 'pullPosVariantsFromSupabase')
+    .addSeparator()
+    .addItem('只推送 POS combo images 到 Supabase', 'syncPosComboImages')
+    .addItem('⬇️ 從 Supabase 拉回 POS combo images', 'pullPosComboImagesFromSupabase')
     .addToUi();
 }
 
@@ -362,6 +371,82 @@ function pullPosVariantsFromSupabase() {
     values[6] = v.sort_order || 0;
 
     const rowNum = rowByKey[keyOf(erp, v.variant_type, value)];
+    if (rowNum) {
+      sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
+      updated++;
+    } else {
+      newRows.push(values);
+      appended++;
+    }
+  });
+
+  if (newRows.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
+  }
+
+  SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
+}
+
+// ===== 推送 Sheet 2「POS combo images」→ Supabase pos_item_combo_images =====
+function syncPosComboImages() {
+  const ss = SpreadsheetApp.openById(SHEET2_ID);
+  const sheet = ss.getSheetByName(POS_COMBO_IMAGES_TAB);
+  if (!sheet) { Logger.log('找不到 ' + POS_COMBO_IMAGES_TAB + ' 分頁'); return; }
+
+  const data = sheet.getDataRange().getValues();
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const erp = String(r[0] || '').trim();
+    const imageUrl = String(r[4] || '').trim();
+    if (!erp || !imageUrl) continue;
+
+    rows.push({
+      erp_code: erp,
+      spec: String(r[1] || '').trim(),
+      bore: String(r[2] || '').trim(),
+      color: String(r[3] || '').trim(),
+      image_url: imageUrl,
+    });
+  }
+
+  batchUpsertOnConflict('/rest/v1/pos_item_combo_images', rows, 'erp_code,spec,bore,color');
+  Logger.log('POS combo images 同步完成，共 ' + rows.length + ' 筆');
+}
+
+// ===== 拉回 Supabase pos_item_combo_images → Sheet 2「POS combo images」 =====
+function pullPosComboImagesFromSupabase() {
+  const ss = SpreadsheetApp.openById(SHEET2_ID);
+  const sheet = ss.getSheetByName(POS_COMBO_IMAGES_TAB);
+  if (!sheet) { SpreadsheetApp.getUi().alert('找不到 ' + POS_COMBO_IMAGES_TAB + ' 分頁'); return; }
+
+  const items = supabaseRequest('GET', '/rest/v1/pos_item_combo_images?select=*&order=erp_code.asc', null);
+  if (!items) {
+    SpreadsheetApp.getUi().alert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
+    return;
+  }
+
+  const keyOf = (erp, spec, bore, color) => [erp, spec, bore, color].join('||');
+
+  const data = sheet.getDataRange().getValues();
+  const rowByKey = {};
+  for (let i = 1; i < data.length; i++) {
+    const erp = String(data[i][0] || '').trim();
+    if (!erp) continue;
+    rowByKey[keyOf(erp, String(data[i][1] || '').trim(), String(data[i][2] || '').trim(), String(data[i][3] || '').trim())] = i + 1;
+  }
+
+  let updated = 0, appended = 0;
+  const newRows = [];
+
+  items.forEach(v => {
+    const erp = String(v.erp_code || '').trim();
+    if (!erp) return;
+    const spec = v.spec || '';
+    const bore = v.bore || '';
+    const color = v.color || '';
+    const values = [erp, spec, bore, color, v.image_url || ''];
+    const rowNum = rowByKey[keyOf(erp, spec, bore, color)];
     if (rowNum) {
       sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
       updated++;
