@@ -38,6 +38,33 @@ table tbody tr:hover {
     border-bottom: 2px solid #bfdbfe;
 }
 
+.admin-nav {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0 1rem;
+    max-width: 1280px;
+    margin: 0 auto;
+    border-top: 1px solid #f3f4f6;
+}
+
+.admin-nav-link {
+    display: inline-block;
+    padding: 0.6rem 0.25rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
+}
+
+.admin-nav-link:hover {
+    color: #1f2937;
+}
+
+.admin-nav-link.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    font-weight: 600;
+}
+
 .table-tool-panel button:disabled {
     opacity: 0.25;
     cursor: not-allowed;

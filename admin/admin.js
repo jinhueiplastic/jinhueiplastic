@@ -1,8 +1,3 @@
-const SUPABASE_URL = 'https://nfpfguorxfhwhkylacoe.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5mcGZndW9yeGZod2hreWxhY29lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNTE5OTcsImV4cCI6MjA5NjcyNzk5N30.YMrxU9VZoh4ieO9Lqd2qPiXMA4FFPCg1zUa7gG80QDw';
-
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 const PRODUCT_FIELDS = [
     { key: 'category_name_zh', label: '分類（中文）' },
     { key: 'category_name_en', label: '分類（英文）' },
@@ -25,11 +20,6 @@ const PRODUCT_FIELDS = [
 let allProducts = [];
 let editingId = null;
 
-const loginView   = document.getElementById('login-view');
-const appView     = document.getElementById('app-view');
-const loginForm   = document.getElementById('login-form');
-const loginError  = document.getElementById('login-error');
-const userEmailEl = document.getElementById('user-email');
 const statusMsg   = document.getElementById('status-msg');
 const tbody       = document.getElementById('product-tbody');
 const searchInput = document.getElementById('search-input');
@@ -40,49 +30,9 @@ const formFields    = document.getElementById('form-fields');
 const productForm   = document.getElementById('product-form');
 const formError      = document.getElementById('form-error');
 
-function showLoginError(msg) {
-    loginError.textContent = msg;
-    loginError.classList.remove('hidden');
-}
-
 function setStatus(msg) {
     statusMsg.textContent = msg;
 }
-
-async function checkSession() {
-    const { data } = await sb.auth.getSession();
-    if (data.session) {
-        onLoggedIn(data.session);
-    } else {
-        loginView.classList.remove('hidden');
-        appView.classList.add('hidden');
-    }
-}
-
-function onLoggedIn(session) {
-    loginView.classList.add('hidden');
-    appView.classList.remove('hidden');
-    userEmailEl.textContent = session.user.email || '';
-    loadProducts();
-}
-
-loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    loginError.classList.add('hidden');
-    const email = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-password').value;
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) {
-        showLoginError('登入失敗：' + error.message);
-        return;
-    }
-    onLoggedIn(data.session);
-});
-
-document.getElementById('logout-btn').addEventListener('click', async () => {
-    await sb.auth.signOut();
-    location.reload();
-});
 
 async function loadProducts() {
     setStatus('載入商品資料中…');
@@ -525,12 +475,4 @@ productForm.addEventListener('submit', async (e) => {
     loadProducts();
 });
 
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
-checkSession();
+initAdminAuth('products', loadProducts);
