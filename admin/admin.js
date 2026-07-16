@@ -104,24 +104,47 @@ async function loadProducts() {
     renderTable(allProducts);
 }
 
-function renderTable(products) {
-    if (!products.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">目前沒有商品資料</td></tr>`;
-        return;
-    }
-    tbody.innerHTML = products.map(p => `
+function groupByCategory(products) {
+    const groups = new Map();
+    products.forEach(p => {
+        const cat = (p.category_name_zh || '').trim() || '未分類';
+        if (!groups.has(cat)) groups.set(cat, []);
+        groups.get(cat).push(p);
+    });
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+}
+
+function productRowHtml(p) {
+    const img = String(p.image_url || '').split(',')[0].trim();
+    const thumb = img
+        ? `<img src="${img}" alt="" class="product-thumb">`
+        : `<div class="product-thumb"></div>`;
+    return `
         <tr>
             <td class="px-3 py-2">
                 <input type="checkbox" data-id="${p.id}" class="active-toggle" ${p.is_active ? 'checked' : ''}>
             </td>
-            <td class="px-3 py-2">${escapeHtml(p.category_name_zh || '')}</td>
+            <td class="px-3 py-2">${thumb}</td>
             <td class="px-3 py-2">${escapeHtml(p.erp_code || '')}</td>
             <td class="px-3 py-2">${escapeHtml(p.name_zh || '')}</td>
             <td class="px-3 py-2">${escapeHtml(p.name_en || '')}</td>
             <td class="px-3 py-2">
                 <button data-id="${p.id}" class="edit-btn text-blue-600 hover:underline text-sm">編輯</button>
             </td>
+        </tr>`;
+}
+
+function renderTable(products) {
+    if (!products.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">目前沒有商品資料</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = groupByCategory(products).map(([cat, items]) => `
+        <tr class="category-header">
+            <td colspan="6" class="px-3 py-2">${escapeHtml(cat)}（${items.length}）</td>
         </tr>
+        ${items.map(productRowHtml).join('')}
     `).join('');
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
@@ -167,6 +190,19 @@ function buildFormFields(product) {
                 <div class="sm:col-span-2">
                     <label class="field-label">${f.label}</label>
                     <textarea class="field-input" rows="3" data-key="${f.key}">${escaped}</textarea>
+                </div>`;
+        }
+        if (f.key === 'image_url') {
+            const previewSrc = String(value).split(',')[0].trim();
+            return `
+                <div class="sm:col-span-2">
+                    <label class="field-label">${f.label}</label>
+                    <div class="flex items-start gap-3">
+                        <img id="image-preview" src="${escapeHtml(previewSrc)}" alt=""
+                             class="product-thumb" style="width:64px;height:64px;">
+                        <input type="text" class="field-input" data-key="${f.key}" value="${escaped}"
+                               oninput="document.getElementById('image-preview').src = this.value.split(',')[0].trim()">
+                    </div>
                 </div>`;
         }
         return `
