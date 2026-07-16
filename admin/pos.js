@@ -16,6 +16,7 @@ const newCustomerToggle  = document.getElementById('new-customer-toggle');
 const newCustomerPanel   = document.getElementById('new-customer-panel');
 const customerInfo       = document.getElementById('customer-info');
 const searchInput        = document.getElementById('product-search-input');
+const homeBtn            = document.getElementById('browse-home-btn');
 const backBtn            = document.getElementById('browse-back-btn');
 const breadcrumb         = document.getElementById('browse-breadcrumb');
 const browseArea         = document.getElementById('browse-area');
@@ -135,6 +136,13 @@ backBtn.addEventListener('click', () => {
     renderBrowseArea();
 });
 
+homeBtn.addEventListener('click', () => {
+    browseMode = 'categories';
+    browseCategory = null;
+    searchInput.value = '';
+    renderBrowseArea();
+});
+
 function renderCategoryGridHtml() {
     const groups = groupProductsByCategory();
     const countByCat = new Map(groups.map(([cat, items]) => [cat, items.length]));
@@ -223,6 +231,7 @@ function renderVariantPickerHtml(p) {
 
 function renderBrowseArea() {
     if (browseMode === 'categories') {
+        homeBtn.classList.add('hidden');
         backBtn.classList.add('hidden');
         breadcrumb.classList.add('hidden');
         browseArea.innerHTML = renderCategoryGridHtml();
@@ -238,6 +247,7 @@ function renderBrowseArea() {
     }
 
     if (browseMode === 'products') {
+        homeBtn.classList.remove('hidden');
         backBtn.classList.remove('hidden');
         breadcrumb.classList.remove('hidden');
         breadcrumb.textContent = browseCategory
@@ -255,6 +265,7 @@ function renderBrowseArea() {
     }
 
     if (browseMode === 'variant' && browseProduct) {
+        homeBtn.classList.remove('hidden');
         backBtn.classList.remove('hidden');
         breadcrumb.classList.remove('hidden');
         breadcrumb.textContent = (browseCategory ? `分類：${categoryNameById[browseCategory] || browseCategory}　` : '') + `商品：${browseProduct.name_zh || browseProduct.erp_code}`;
