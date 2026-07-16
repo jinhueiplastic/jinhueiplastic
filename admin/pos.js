@@ -1,4 +1,4 @@
-let products = [];
+let products = []; // 其實是 Supabase 的 pos_items 表資料，變數名稱沿用舊的
 let customers = [];
 let cart = [];
 let cartCounter = 0;
@@ -24,8 +24,10 @@ const resultBanner       = document.getElementById('result-banner');
 const saveOrderBtn       = document.getElementById('save-order-btn');
 
 async function initPos() {
+    // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
+    // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
     const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }] = await Promise.all([
-        sb.from('products').select('*').order('category_name_zh', { ascending: true }),
+        sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
     ]);

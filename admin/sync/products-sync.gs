@@ -21,6 +21,9 @@ const PRODUCT_COLUMNS = [
 const NUMERIC_FIELDS = ['dim_l', 'dim_w', 'dim_h', 'weight_kg', 'price_twd', 'price_usd'];
 const BOOLEAN_FIELDS = ['on_alibaba', 'will_upload_alibaba'];
 
+// POS 下單用的商品子集合，放在 Sheet 2 的另一個分頁，欄位順序跟 Categories 分頁完全一樣
+const POS_ITEMS_TAB = 'POS items';
+
 // ===== 主選單 =====
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('🔄 Supabase 同步')
@@ -29,6 +32,9 @@ function onOpen() {
     .addItem('只推送產品資料到 Supabase', 'syncProducts')
     .addSeparator()
     .addItem('⬇️ 從 Supabase 拉回產品資料', 'pullProductsFromSupabase')
+    .addSeparator()
+    .addItem('只推送 POS items 到 Supabase', 'syncPosItems')
+    .addItem('⬇️ 從 Supabase 拉回 POS items', 'pullPosItemsFromSupabase')
     .addToUi();
 }
 
@@ -153,6 +159,96 @@ function pullProductsFromSupabase() {
   const newRows = [];
 
   products.forEach(p => {
+    const erp = String(p.erp_code || '').trim();
+    if (!erp) return;
+    const cat = String(p.category_name_zh || '').trim();
+    const values = toRowValues(p);
+    const rowNum = rowByKey[keyOf(erp, cat)];
+    if (rowNum) {
+      sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
+      updated++;
+    } else {
+      newRows.push(values);
+      appended++;
+    }
+  });
+
+  if (newRows.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
+  }
+
+  SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
+}
+
+// ===== 推送 Sheet 2「POS items」→ Supabase pos_items（upsert，不會刪除既有資料） =====
+// POS items 只是 POS 可下單商品的子集合，跟 Categories/products 是分開獨立的資料，
+// 官網跟「修改商品資料」頁面都不會用到 pos_items，只有 POS 下單頁面會讀。
+// 欄位跟 Categories 分頁一樣，所以直接沿用同一份 PRODUCT_COLUMNS 對照表；
+// 這裡沒有分類 id 對應，category_name_zh 就單純存文字。
+function syncPosItems() {
+  const ss = SpreadsheetApp.openById(SHEET2_ID);
+  const sheet = ss.getSheetByName(POS_ITEMS_TAB);
+  if (!sheet) { Logger.log('找不到 ' + POS_ITEMS_TAB + ' 分頁'); return; }
+
+  const data = sheet.getDataRange().getValues();
+  const items = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const catName = String(r[0]).trim();
+    const erp = String(r[1] || '').trim();
+    if (!catName || !erp) continue;
+
+    const item = {};
+    PRODUCT_COLUMNS.forEach((key, ci) => {
+      const raw = r[ci];
+      if (NUMERIC_FIELDS.includes(key)) {
+        item[key] = parseFloat(raw) || null;
+      } else if (BOOLEAN_FIELDS.includes(key)) {
+        item[key] = raw === true || raw === 'TRUE' || raw === '是';
+      } else {
+        item[key] = String(raw || '').trim();
+      }
+    });
+    items.push(item);
+  }
+
+  batchUpsertOnConflict('/rest/v1/pos_items', items, 'erp_code,category_name_zh');
+  Logger.log('POS items 同步完成，共 ' + items.length + ' 筆');
+}
+
+// ===== 拉回 Supabase pos_items → Sheet 2「POS items」 =====
+function pullPosItemsFromSupabase() {
+  const ss = SpreadsheetApp.openById(SHEET2_ID);
+  const sheet = ss.getSheetByName(POS_ITEMS_TAB);
+  if (!sheet) { SpreadsheetApp.getUi().alert('找不到 ' + POS_ITEMS_TAB + ' 分頁'); return; }
+
+  const items = supabaseRequest('GET', '/rest/v1/pos_items?select=*&order=erp_code.asc', null);
+  if (!items) {
+    SpreadsheetApp.getUi().alert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
+    return;
+  }
+
+  const keyOf = (erp, cat) => erp + '||' + cat;
+
+  const data = sheet.getDataRange().getValues();
+  const rowByKey = {};
+  for (let i = 1; i < data.length; i++) {
+    const erp = String(data[i][1] || '').trim();
+    const cat = String(data[i][0] || '').trim();
+    if (erp) rowByKey[keyOf(erp, cat)] = i + 1;
+  }
+
+  const toRowValues = p => PRODUCT_COLUMNS.map(key => {
+    const v = p[key];
+    if (BOOLEAN_FIELDS.includes(key)) return !!v;
+    if (NUMERIC_FIELDS.includes(key)) return (v === null || v === undefined) ? '' : v;
+    return v || '';
+  });
+
+  let updated = 0, appended = 0;
+  const newRows = [];
+
+  items.forEach(p => {
     const erp = String(p.erp_code || '').trim();
     if (!erp) return;
     const cat = String(p.category_name_zh || '').trim();
