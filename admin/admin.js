@@ -181,7 +181,13 @@ searchInput.addEventListener('input', () => {
     renderTable(filtered);
 });
 
+let descTableStates = {};
+
 function buildFormFields(product) {
+    descTableStates = {
+        desc_zh: parseFirstTable(product ? (product.desc_zh || '') : ''),
+        desc_en: parseFirstTable(product ? (product.desc_en || '') : ''),
+    };
     formFields.innerHTML = PRODUCT_FIELDS.map(f => {
         const value = product ? (product[f.key] ?? '') : '';
         const escaped = escapeHtml(String(value));
@@ -191,10 +197,10 @@ function buildFormFields(product) {
                 <div class="sm:col-span-2">
                     <div class="flex items-center justify-between mb-1">
                         <label class="field-label !mb-0">${f.label}</label>
-                        ${isTableField ? `<button type="button" class="table-tool-toggle text-xs text-blue-600 hover:underline" data-key="${f.key}">規格表格編輯工具</button>` : ''}
+                        ${isTableField ? `<button type="button" class="table-tool-toggle text-xs text-blue-600 hover:underline" data-toggle-key="${f.key}">規格表格編輯工具</button>` : ''}
                     </div>
                     <textarea class="field-input" rows="4" data-key="${f.key}">${escaped}</textarea>
-                    ${isTableField ? `<div class="table-tool-panel hidden mt-2 border rounded-lg p-3 bg-gray-50" data-key="${f.key}"></div>` : ''}
+                    ${isTableField ? `<div class="table-tool-panel hidden mt-2 border rounded-lg p-3 bg-gray-50" data-panel-key="${f.key}"></div>` : ''}
                 </div>`;
         }
         if (f.key === 'image_url') {
@@ -222,7 +228,7 @@ function buildFormFields(product) {
         </div>`;
 
     formFields.querySelectorAll('.table-tool-toggle').forEach(btn => {
-        btn.addEventListener('click', () => toggleTableTool(btn.dataset.key));
+        btn.addEventListener('click', () => toggleTableTool(btn.dataset.toggleKey));
     });
 }
 
@@ -267,22 +273,61 @@ function composeText(state) {
     return [state.prefix, table, state.suffix].map(s => (s || '').trim()).filter(Boolean).join('\n\n');
 }
 
+function swap(arr, i, j) {
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+}
+
 function toggleTableTool(key) {
-    const panel = formFields.querySelector(`.table-tool-panel[data-key="${key}"]`);
-    const textarea = formFields.querySelector(`textarea[data-key="${key}"]`);
+    const panel = formFields.querySelector(`.table-tool-panel[data-panel-key="${key}"]`);
     if (!panel.classList.contains('hidden')) {
         panel.classList.add('hidden');
         panel.innerHTML = '';
         return;
     }
     panel.classList.remove('hidden');
-    renderTableToolPanel(panel, textarea, parseFirstTable(textarea.value));
+    renderTableToolPanel(key);
 }
 
-function renderTableToolPanel(panel, textarea, state) {
+function syncTextarea(key) {
+    const textarea = formFields.querySelector(`textarea[data-key="${key}"]`);
+    if (textarea) textarea.value = composeText(descTableStates[key]);
+}
+
+// 結構性操作（新增/刪除/移動 列或欄）從中文表格同步到英文表格，
+// 讓中英文表格的列數、欄數、順序保持一致；儲存格文字（規格數值通常中英通用）也一併帶過去。
+// 英文表格單獨操作則不會回寫中文表格。
+function runOp(key, mutateFn) {
+    mutateFn(descTableStates[key]);
+    syncTextarea(key);
+    if (key === 'desc_zh') {
+        mutateFn(descTableStates['desc_en']);
+        syncTextarea('desc_en');
+        const enPanel = formFields.querySelector(`.table-tool-panel[data-panel-key="desc_en"]`);
+        if (enPanel && !enPanel.classList.contains('hidden')) renderTableToolPanel('desc_en');
+    }
+    renderTableToolPanel(key);
+}
+
+function renderPreviewTable(state) {
+    const headRow = state.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+    const bodyRows = state.rows.map(row => `
+        <tr>${state.headers.map((_, ci) => `<td>${escapeHtml(row[ci] || '')}</td>`).join('')}</tr>`).join('');
+    return `<table class="custom-data-table"><thead><tr>${headRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+}
+
+function renderTableToolPanel(key) {
+    const panel = formFields.querySelector(`.table-tool-panel[data-panel-key="${key}"]`);
+    const state = descTableStates[key];
+
     const headerCells = state.headers.map((h, ci) => `
         <th class="border px-1 py-1 bg-white">
             <div class="flex items-center gap-1">
+                <div class="flex flex-col">
+                    <button type="button" class="col-left text-gray-400 hover:text-blue-600 text-xs leading-none" data-ci="${ci}" title="左移" ${ci === 0 ? 'disabled' : ''}>◀</button>
+                    <button type="button" class="col-right text-gray-400 hover:text-blue-600 text-xs leading-none" data-ci="${ci}" title="右移" ${ci === state.headers.length - 1 ? 'disabled' : ''}>▶</button>
+                </div>
                 <input type="text" class="field-input text-xs th-input" style="min-width:5rem" data-ci="${ci}" value="${escapeHtml(h)}">
                 <button type="button" class="col-del text-red-400 hover:text-red-600 text-xs shrink-0" data-ci="${ci}" title="刪除欄">×</button>
             </div>
@@ -290,6 +335,12 @@ function renderTableToolPanel(panel, textarea, state) {
 
     const bodyRows = state.rows.map((row, ri) => `
         <tr>
+            <td class="border px-1 py-1 text-center bg-white">
+                <div class="flex flex-col">
+                    <button type="button" class="row-up text-gray-400 hover:text-blue-600 text-xs leading-none" data-ri="${ri}" title="上移" ${ri === 0 ? 'disabled' : ''}>▲</button>
+                    <button type="button" class="row-down text-gray-400 hover:text-blue-600 text-xs leading-none" data-ri="${ri}" title="下移" ${ri === state.rows.length - 1 ? 'disabled' : ''}>▼</button>
+                </div>
+            </td>
             ${state.headers.map((_, ci) => `
                 <td class="border px-1 py-1 bg-white">
                     <input type="text" class="field-input text-xs cell-input" style="min-width:5rem" data-ri="${ri}" data-ci="${ci}" value="${escapeHtml(row[ci] || '')}">
@@ -302,7 +353,7 @@ function renderTableToolPanel(panel, textarea, state) {
     panel.innerHTML = `
         <div class="overflow-x-auto">
             <table class="text-xs border-collapse">
-                <thead><tr>${headerCells}<th class="border px-1 py-1 bg-white"></th></tr></thead>
+                <thead><tr><th class="border px-1 py-1 bg-white"></th>${headerCells}<th class="border px-1 py-1 bg-white"></th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table>
         </div>
@@ -310,53 +361,89 @@ function renderTableToolPanel(panel, textarea, state) {
             <button type="button" class="add-row px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100">+ 新增列</button>
             <button type="button" class="add-col px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100">+ 新增欄</button>
         </div>
-        <p class="text-xs text-gray-400 mt-2">上面的表格會自動同步到上方的說明欄位，儲存時會一併存入。</p>`;
-
-    const sync = () => { textarea.value = composeText(state); };
+        <p class="text-xs text-gray-500 font-medium mt-3 mb-1">即時預覽</p>
+        <div class="preview-box overflow-x-auto">${renderPreviewTable(state)}</div>
+        ${key === 'desc_zh' ? '<p class="text-xs text-gray-400 mt-2">新增／刪除／移動列欄時，英文說明的表格會自動同步結構與內容。</p>' : ''}`;
 
     panel.querySelectorAll('.th-input').forEach(input => {
         input.addEventListener('input', () => {
             state.headers[Number(input.dataset.ci)] = input.value;
-            sync();
+            syncTextarea(key);
+            panel.querySelector('.preview-box').innerHTML = renderPreviewTable(state);
         });
     });
     panel.querySelectorAll('.cell-input').forEach(input => {
         input.addEventListener('input', () => {
-            state.rows[Number(input.dataset.ri)][Number(input.dataset.ci)] = input.value;
-            sync();
+            const ri = Number(input.dataset.ri);
+            const ci = Number(input.dataset.ci);
+            const value = input.value;
+            runOp(key, s => { if (s.rows[ri]) s.rows[ri][ci] = value; });
         });
     });
     panel.querySelectorAll('.row-del').forEach(btn => {
         btn.addEventListener('click', () => {
-            state.rows.splice(Number(btn.dataset.ri), 1);
-            if (!state.rows.length) state.rows.push(state.headers.map(() => ''));
-            sync();
-            renderTableToolPanel(panel, textarea, state);
+            const ri = Number(btn.dataset.ri);
+            runOp(key, s => {
+                s.rows.splice(ri, 1);
+                if (!s.rows.length) s.rows.push(s.headers.map(() => ''));
+            });
+        });
+    });
+    panel.querySelectorAll('.row-up').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const ri = Number(btn.dataset.ri);
+            if (ri === 0) return;
+            runOp(key, s => swap(s.rows, ri, ri - 1));
+        });
+    });
+    panel.querySelectorAll('.row-down').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const ri = Number(btn.dataset.ri);
+            runOp(key, s => { if (ri < s.rows.length - 1) swap(s.rows, ri, ri + 1); });
         });
     });
     panel.querySelectorAll('.col-del').forEach(btn => {
         btn.addEventListener('click', () => {
             if (state.headers.length <= 1) return;
             const ci = Number(btn.dataset.ci);
-            state.headers.splice(ci, 1);
-            state.rows.forEach(r => r.splice(ci, 1));
-            sync();
-            renderTableToolPanel(panel, textarea, state);
+            runOp(key, s => {
+                if (s.headers.length <= 1) return;
+                s.headers.splice(ci, 1);
+                s.rows.forEach(r => r.splice(ci, 1));
+            });
+        });
+    });
+    panel.querySelectorAll('.col-left').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const ci = Number(btn.dataset.ci);
+            if (ci === 0) return;
+            runOp(key, s => {
+                swap(s.headers, ci, ci - 1);
+                s.rows.forEach(r => swap(r, ci, ci - 1));
+            });
+        });
+    });
+    panel.querySelectorAll('.col-right').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const ci = Number(btn.dataset.ci);
+            runOp(key, s => {
+                if (ci >= s.headers.length - 1) return;
+                swap(s.headers, ci, ci + 1);
+                s.rows.forEach(r => swap(r, ci, ci + 1));
+            });
         });
     });
     panel.querySelector('.add-row').addEventListener('click', () => {
-        state.rows.push(state.headers.map(() => ''));
-        sync();
-        renderTableToolPanel(panel, textarea, state);
+        runOp(key, s => s.rows.push(s.headers.map(() => '')));
     });
     panel.querySelector('.add-col').addEventListener('click', () => {
-        state.headers.push('欄位' + (state.headers.length + 1));
-        state.rows.forEach(r => r.push(''));
-        sync();
-        renderTableToolPanel(panel, textarea, state);
+        runOp(key, s => {
+            s.headers.push('欄位' + (s.headers.length + 1));
+            s.rows.forEach(r => r.push(''));
+        });
     });
 
-    sync();
+    syncTextarea(key);
 }
 
 function openEditModal(id) {

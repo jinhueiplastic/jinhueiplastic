@@ -38,6 +38,11 @@ table tbody tr:hover {
     border-bottom: 2px solid #bfdbfe;
 }
 
+.table-tool-panel button:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+}
+
 .product-thumb {
     width: 48px;
     height: 48px;
