@@ -4,6 +4,8 @@ let cart = [];
 let cartCounter = 0;
 let categoryCards = [];      // 官網「商品目錄」頁用的分類卡片：{ catId, name, image }
 let categoryNameById = {};   // catId -> 中文分類顯示名稱
+let variantOptionsByErp = {}; // erp_code -> { spec: [{value,image_url}], bore: [...], color: [...] }
+let selectedVariant = { spec: '', bore: '', color: '' }; // 目前規格畫面上，用按鈕點選的值
 
 // 瀏覽狀態：categories（分類卡片）→ products（該分類/搜尋結果的商品卡片）→ variant（選規格數量）
 let browseMode = 'categories';
@@ -27,16 +29,26 @@ const saveOrderBtn       = document.getElementById('save-order-btn');
 async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }] = await Promise.all([
         sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
+        sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
     if (catErr) console.error(catErr);
+    if (vErr) console.error(vErr);
     products = productData || [];
     customers = customerData || [];
+
+    variantOptionsByErp = {};
+    (variantData || []).forEach(v => {
+        if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = { spec: [], bore: [], color: [] };
+        if (variantOptionsByErp[v.erp_code][v.variant_type]) {
+            variantOptionsByErp[v.erp_code][v.variant_type].push(v);
+        }
+    });
 
     // 跟官網「商品目錄」頁用同一份分類卡片資料（site_content，page = Product Catalog）：
     // row_key 含 categories 的列才是分類卡片，link 欄位是拿來比對 products.category_name_zh 的識別碼，
@@ -192,6 +204,35 @@ function renderProductGridHtml(items) {
         `</div>`;
 }
 
+const VARIANT_LABELS = { spec: '規格', bore: '孔徑', color: '顏色' };
+
+// 有圖片式選項（pos_item_variants）就畫成可以直接點的按鈕；沒有的話退回打字＋建議清單。
+function variantFieldHtml(type, product) {
+    const options = (variantOptionsByErp[product.erp_code] && variantOptionsByErp[product.erp_code][type]) || [];
+    const label = VARIANT_LABELS[type];
+
+    if (options.length) {
+        return `
+            <div>
+                <label class="field-label">${label}</label>
+                <div class="flex flex-wrap gap-2">
+                    ${options.map(o => `
+                        <button type="button" class="variant-tile" data-type="${type}" data-value="${escapeHtml(o.value)}">
+                            ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
+                            <span>${escapeHtml(o.value)}</span>
+                        </button>`).join('')}
+                </div>
+            </div>`;
+    }
+
+    return `
+        <div>
+            <label class="field-label">${label}</label>
+            <input type="text" id="variant-${type}-text" class="field-input" list="variant-${type}-list" placeholder="如有可選，或自行輸入">
+            <datalist id="variant-${type}-list"></datalist>
+        </div>`;
+}
+
 function renderVariantPickerHtml(p) {
     return `
         <div class="flex gap-4 flex-col sm:flex-row">
@@ -201,23 +242,11 @@ function renderVariantPickerHtml(p) {
             <div class="flex-1">
                 <p class="text-xs text-blue-600 font-bold">${escapeHtml(p.erp_code || '')}</p>
                 <h4 class="font-bold text-lg text-gray-800 mb-3">${escapeHtml(p.name_zh || '')}</h4>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <div>
-                        <label class="field-label">規格</label>
-                        <input type="text" id="variant-spec" class="field-input" list="variant-spec-list" placeholder="如有可選，或自行輸入">
-                        <datalist id="variant-spec-list"></datalist>
-                    </div>
-                    <div>
-                        <label class="field-label">孔徑</label>
-                        <input type="text" id="variant-bore" class="field-input" list="variant-bore-list" placeholder="如有可選，或自行輸入">
-                        <datalist id="variant-bore-list"></datalist>
-                    </div>
-                    <div>
-                        <label class="field-label">顏色</label>
-                        <input type="text" id="variant-color" class="field-input" list="variant-color-list" placeholder="如有可選，或自行輸入">
-                        <datalist id="variant-color-list"></datalist>
-                    </div>
-                    <div>
+                <div class="space-y-3">
+                    ${variantFieldHtml('spec', p)}
+                    ${variantFieldHtml('bore', p)}
+                    ${variantFieldHtml('color', p)}
+                    <div class="w-32">
                         <label class="field-label">數量</label>
                         <input type="number" id="variant-qty" class="field-input" min="1" value="1">
                     </div>
@@ -312,11 +341,43 @@ function classifyOptions(text) {
     return result;
 }
 
+function currentVariantValue(type) {
+    if (selectedVariant[type]) return selectedVariant[type];
+    const textEl = document.getElementById(`variant-${type}-text`);
+    return textEl ? textEl.value.trim() : '';
+}
+
+function resetVariantPicker() {
+    selectedVariant = { spec: '', bore: '', color: '' };
+    document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
+    ['spec', 'bore', 'color'].forEach(type => {
+        const textEl = document.getElementById(`variant-${type}-text`);
+        if (textEl) textEl.value = '';
+    });
+    const qtyEl = document.getElementById('variant-qty');
+    if (qtyEl) qtyEl.value = 1;
+}
+
 function wireVariantPicker(p) {
-    const opts = classifyOptions(p.desc_zh);
-    document.getElementById('variant-spec-list').innerHTML  = opts.spec.map(v => `<option value="${escapeHtml(v)}">`).join('');
-    document.getElementById('variant-bore-list').innerHTML  = opts.bore.map(v => `<option value="${escapeHtml(v)}">`).join('');
-    document.getElementById('variant-color-list').innerHTML = opts.color.map(v => `<option value="${escapeHtml(v)}">`).join('');
+    selectedVariant = { spec: '', bore: '', color: '' };
+
+    // 沒有圖片式選項的類型，退回打字＋建議清單（建議清單沿用 desc_zh 裡解析出來的表格）。
+    const suggested = classifyOptions(p.desc_zh);
+    ['spec', 'bore', 'color'].forEach(type => {
+        const list = document.getElementById(`variant-${type}-list`);
+        if (list) list.innerHTML = suggested[type].map(v => `<option value="${escapeHtml(v)}">`).join('');
+    });
+
+    document.querySelectorAll('.variant-tile').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const type = btn.dataset.type;
+            const value = btn.dataset.value;
+            selectedVariant[type] = (selectedVariant[type] === value) ? '' : value; // 再點一次取消選取
+            document.querySelectorAll(`.variant-tile[data-type="${type}"]`).forEach(b => {
+                b.classList.toggle('selected', b.dataset.value === selectedVariant[type]);
+            });
+        });
+    });
 
     document.getElementById('add-to-cart-btn').addEventListener('click', () => {
         const qty = Number(document.getElementById('variant-qty').value) || 1;
@@ -325,19 +386,16 @@ function wireVariantPicker(p) {
             erp: p.erp_code,
             name_zh: p.name_zh,
             image_url: thumbOf(p),
-            spec: document.getElementById('variant-spec').value.trim(),
-            bore: document.getElementById('variant-bore').value.trim(),
-            color: document.getElementById('variant-color').value.trim(),
+            spec: currentVariantValue('spec'),
+            bore: currentVariantValue('bore'),
+            color: currentVariantValue('color'),
             qty,
         });
         renderCart();
 
         // 加入後留在同一個商品的規格畫面，方便同一項商品連續加不同規格；
-        // 要換商品的話可以按上面的「← 返回」。
-        document.getElementById('variant-qty').value = 1;
-        document.getElementById('variant-spec').value = '';
-        document.getElementById('variant-bore').value = '';
-        document.getElementById('variant-color').value = '';
+        // 要換商品的話可以按上面的「← 返回」或「主分類」。
+        resetVariantPicker();
     });
 }
 

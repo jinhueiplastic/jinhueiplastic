@@ -24,6 +24,12 @@ const BOOLEAN_FIELDS = ['on_alibaba', 'will_upload_alibaba'];
 // POS 下單用的商品子集合，放在 Sheet 2 的另一個分頁，欄位順序跟 Categories 分頁完全一樣
 const POS_ITEMS_TAB = 'POS items';
 
+// POS 規格/孔徑/顏色的可點選項目（每列一個選項，可各自帶圖片），欄位：
+// erp_code | 類型（規格／孔徑／顏色）| 選項名稱 | 圖片網址 | 排序
+const POS_VARIANTS_TAB = 'POS variants';
+const VARIANT_TYPE_ZH_TO_EN = { '規格': 'spec', '孔徑': 'bore', '顏色': 'color' };
+const VARIANT_TYPE_EN_TO_ZH = { spec: '規格', bore: '孔徑', color: '顏色' };
+
 // ===== 主選單 =====
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('🔄 Supabase 同步')
@@ -35,6 +41,9 @@ function onOpen() {
     .addSeparator()
     .addItem('只推送 POS items 到 Supabase', 'syncPosItems')
     .addItem('⬇️ 從 Supabase 拉回 POS items', 'pullPosItemsFromSupabase')
+    .addSeparator()
+    .addItem('只推送 POS variants 到 Supabase', 'syncPosVariants')
+    .addItem('⬇️ 從 Supabase 拉回 POS variants', 'pullPosVariantsFromSupabase')
     .addToUi();
 }
 
@@ -254,6 +263,89 @@ function pullPosItemsFromSupabase() {
     const cat = String(p.category_name_zh || '').trim();
     const values = toRowValues(p);
     const rowNum = rowByKey[keyOf(erp, cat)];
+    if (rowNum) {
+      sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
+      updated++;
+    } else {
+      newRows.push(values);
+      appended++;
+    }
+  });
+
+  if (newRows.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
+  }
+
+  SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
+}
+
+// ===== 推送 Sheet 2「POS variants」→ Supabase pos_item_variants =====
+function syncPosVariants() {
+  const ss = SpreadsheetApp.openById(SHEET2_ID);
+  const sheet = ss.getSheetByName(POS_VARIANTS_TAB);
+  if (!sheet) { Logger.log('找不到 ' + POS_VARIANTS_TAB + ' 分頁'); return; }
+
+  const data = sheet.getDataRange().getValues();
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const erp = String(r[0] || '').trim();
+    const typeLabel = String(r[1] || '').trim();
+    const value = String(r[2] || '').trim();
+    if (!erp || !value) continue;
+
+    const variantType = VARIANT_TYPE_ZH_TO_EN[typeLabel];
+    if (!variantType) {
+      Logger.log('第 ' + (i + 1) + ' 列的類型「' + typeLabel + '」看不懂，已跳過（類型欄要填：規格／孔徑／顏色）');
+      continue;
+    }
+
+    rows.push({
+      erp_code: erp,
+      variant_type: variantType,
+      value: value,
+      image_url: String(r[3] || '').trim(),
+      sort_order: Number(r[4]) || 0,
+    });
+  }
+
+  batchUpsertOnConflict('/rest/v1/pos_item_variants', rows, 'erp_code,variant_type,value');
+  Logger.log('POS variants 同步完成，共 ' + rows.length + ' 筆');
+}
+
+// ===== 拉回 Supabase pos_item_variants → Sheet 2「POS variants」 =====
+function pullPosVariantsFromSupabase() {
+  const ss = SpreadsheetApp.openById(SHEET2_ID);
+  const sheet = ss.getSheetByName(POS_VARIANTS_TAB);
+  if (!sheet) { SpreadsheetApp.getUi().alert('找不到 ' + POS_VARIANTS_TAB + ' 分頁'); return; }
+
+  const rows = supabaseRequest('GET', '/rest/v1/pos_item_variants?select=*&order=erp_code.asc', null);
+  if (!rows) {
+    SpreadsheetApp.getUi().alert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
+    return;
+  }
+
+  const keyOf = (erp, type, value) => erp + '||' + type + '||' + value;
+
+  const data = sheet.getDataRange().getValues();
+  const rowByKey = {};
+  for (let i = 1; i < data.length; i++) {
+    const erp = String(data[i][0] || '').trim();
+    const type = VARIANT_TYPE_ZH_TO_EN[String(data[i][1] || '').trim()];
+    const value = String(data[i][2] || '').trim();
+    if (erp && type && value) rowByKey[keyOf(erp, type, value)] = i + 1;
+  }
+
+  let updated = 0, appended = 0;
+  const newRows = [];
+
+  rows.forEach(v => {
+    const erp = String(v.erp_code || '').trim();
+    const value = String(v.value || '').trim();
+    if (!erp || !value) return;
+
+    const values = [erp, VARIANT_TYPE_EN_TO_ZH[v.variant_type] || v.variant_type, value, v.image_url || '', v.sort_order || 0];
+    const rowNum = rowByKey[keyOf(erp, v.variant_type, value)];
     if (rowNum) {
       sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
       updated++;
