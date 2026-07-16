@@ -279,11 +279,31 @@ function pullPosItemsFromSupabase() {
   SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
 }
 
+const POS_VARIANTS_HEADERS = ['erp_code', '規格', '孔徑', '顏色', '圖片網址', '排序'];
+
+// 找不到「POS variants」分頁就自動新增一個；分頁存在但第一列是空的（還沒有表頭）
+// 就自動幫忙填上表頭。分頁裡已經有內容的話完全不動，不會蓋掉你打好的資料。
+function ensurePosVariantsSheet() {
+  const ss = SpreadsheetApp.openById(SHEET2_ID);
+  let sheet = ss.getSheetByName(POS_VARIANTS_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(POS_VARIANTS_TAB);
+  }
+
+  const firstRow = sheet.getRange(1, 1, 1, POS_VARIANTS_HEADERS.length).getValues()[0];
+  const isEmpty = firstRow.every(v => String(v || '').trim() === '');
+  if (isEmpty) {
+    const headerRange = sheet.getRange(1, 1, 1, POS_VARIANTS_HEADERS.length);
+    headerRange.setValues([POS_VARIANTS_HEADERS]);
+    headerRange.setFontWeight('bold');
+  }
+
+  return sheet;
+}
+
 // ===== 推送 Sheet 2「POS variants」→ Supabase pos_item_variants =====
 function syncPosVariants() {
-  const ss = SpreadsheetApp.openById(SHEET2_ID);
-  const sheet = ss.getSheetByName(POS_VARIANTS_TAB);
-  if (!sheet) { Logger.log('找不到 ' + POS_VARIANTS_TAB + ' 分頁'); return; }
+  const sheet = ensurePosVariantsSheet();
 
   const data = sheet.getDataRange().getValues();
   const rows = [];
@@ -311,9 +331,7 @@ function syncPosVariants() {
 
 // ===== 拉回 Supabase pos_item_variants → Sheet 2「POS variants」 =====
 function pullPosVariantsFromSupabase() {
-  const ss = SpreadsheetApp.openById(SHEET2_ID);
-  const sheet = ss.getSheetByName(POS_VARIANTS_TAB);
-  if (!sheet) { SpreadsheetApp.getUi().alert('找不到 ' + POS_VARIANTS_TAB + ' 分頁'); return; }
+  const sheet = ensurePosVariantsSheet();
 
   const rows = supabaseRequest('GET', '/rest/v1/pos_item_variants?select=*&order=erp_code.asc', null);
   if (!rows) {
