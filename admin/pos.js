@@ -2,6 +2,8 @@ let products = [];
 let customers = [];
 let cart = [];
 let cartCounter = 0;
+let categoryCards = [];      // 官網「商品目錄」頁用的分類卡片：{ catId, name, image }
+let categoryNameById = {};   // catId -> 中文分類顯示名稱
 
 // 瀏覽狀態：categories（分類卡片）→ products（該分類/搜尋結果的商品卡片）→ variant（選規格數量）
 let browseMode = 'categories';
@@ -22,14 +24,26 @@ const resultBanner       = document.getElementById('result-banner');
 const saveOrderBtn       = document.getElementById('save-order-btn');
 
 async function initPos() {
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }] = await Promise.all([
         sb.from('products').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
+        sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
+    if (catErr) console.error(catErr);
     products = productData || [];
     customers = customerData || [];
+
+    // 跟官網「商品目錄」頁用同一份分類卡片資料（site_content，page = Product Catalog）：
+    // row_key 含 categories 的列才是分類卡片，link 欄位是拿來比對 products.category_name_zh 的識別碼，
+    // image 欄位是官網那邊已經放好的分類封面圖。
+    categoryCards = (catData || [])
+        .filter(r => String(r.row_key || '').toLowerCase().includes('categories') && r.chinese)
+        .map(r => ({ catId: r.link || '', name: r.chinese || '', image: r.image || '' }));
+    categoryNameById = {};
+    categoryCards.forEach(c => { categoryNameById[c.catId] = c.name; });
+
     renderCustomerOptions();
 
     cart = [];
@@ -121,16 +135,32 @@ backBtn.addEventListener('click', () => {
 
 function renderCategoryGridHtml() {
     const groups = groupProductsByCategory();
-    if (!groups.length) return `<p class="text-gray-400 text-center py-10">目前沒有商品資料</p>`;
+    const countByCat = new Map(groups.map(([cat, items]) => [cat, items.length]));
+
+    // 官網「商品目錄」頁的分類卡片（有真正的封面圖），只顯示底下真的有商品的分類。
+    const curated = categoryCards
+        .map(c => ({ cat: c.catId, name: c.name, image: c.image, count: countByCat.get(c.catId) || 0 }))
+        .filter(c => c.count > 0);
+
+    // 萬一有商品的分類沒被收進官網那份分類卡片清單，還是要讓 POS 找得到，
+    // 用該分類第一項商品的照片頂著當封面圖。
+    const coveredIds = new Set(curated.map(c => c.cat));
+    const extra = groups
+        .filter(([cat]) => !coveredIds.has(cat))
+        .map(([cat, items]) => ({ cat, name: cat, image: thumbOf(items[0]), count: items.length }));
+
+    const cards = [...curated, ...extra];
+    if (!cards.length) return `<p class="text-gray-400 text-center py-10">目前沒有商品資料</p>`;
+
     return `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">` +
-        groups.map(([cat, items]) => `
-            <div class="category-card cursor-pointer" data-cat="${escapeHtml(cat)}">
+        cards.map(c => `
+            <div class="category-card cursor-pointer" data-cat="${escapeHtml(c.cat)}">
                 <div class="category-img-container">
-                    <img src="${escapeHtml(thumbOf(items[0]))}" alt="${escapeHtml(cat)}" style="background:#f3f4f6;">
+                    <img src="${escapeHtml(c.image)}" alt="${escapeHtml(c.name)}" style="background:#f3f4f6;">
                 </div>
                 <div class="p-3 text-center bg-white border-t">
-                    <h4 class="font-bold text-gray-800 text-sm">${escapeHtml(cat)}</h4>
-                    <p class="text-xs text-gray-400">${items.length} 項</p>
+                    <h4 class="font-bold text-gray-800 text-sm">${escapeHtml(c.name)}</h4>
+                    <p class="text-xs text-gray-400">${c.count} 項</p>
                 </div>
             </div>`).join('') +
         `</div>`;
@@ -208,7 +238,9 @@ function renderBrowseArea() {
     if (browseMode === 'products') {
         backBtn.classList.remove('hidden');
         breadcrumb.classList.remove('hidden');
-        breadcrumb.textContent = browseCategory ? `分類：${browseCategory}` : `搜尋結果（${browseItems.length}）`;
+        breadcrumb.textContent = browseCategory
+            ? `分類：${categoryNameById[browseCategory] || browseCategory}`
+            : `搜尋結果（${browseItems.length}）`;
         browseArea.innerHTML = renderProductGridHtml(browseItems);
         browseArea.querySelectorAll('[data-erp]').forEach(el => {
             el.addEventListener('click', () => {
@@ -223,7 +255,7 @@ function renderBrowseArea() {
     if (browseMode === 'variant' && browseProduct) {
         backBtn.classList.remove('hidden');
         breadcrumb.classList.remove('hidden');
-        breadcrumb.textContent = (browseCategory ? `分類：${browseCategory}　` : '') + `商品：${browseProduct.name_zh || browseProduct.erp_code}`;
+        breadcrumb.textContent = (browseCategory ? `分類：${categoryNameById[browseCategory] || browseCategory}　` : '') + `商品：${browseProduct.name_zh || browseProduct.erp_code}`;
         browseArea.innerHTML = renderVariantPickerHtml(browseProduct);
         wireVariantPicker(browseProduct);
     }
