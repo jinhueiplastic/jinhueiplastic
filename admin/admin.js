@@ -161,8 +161,14 @@ function buildFormFields(product) {
                     <div class="flex items-start gap-3">
                         <img id="image-preview" src="${escapeHtml(previewSrc)}" alt=""
                              class="product-thumb" style="width:64px;height:64px;">
-                        <input type="text" class="field-input" data-key="${f.key}" value="${escaped}"
-                               oninput="document.getElementById('image-preview').src = this.value.split(',')[0].trim()">
+                        <div class="flex-1 space-y-2">
+                            <input type="text" id="image-url-input" class="field-input" data-key="${f.key}" value="${escaped}"
+                                   oninput="document.getElementById('image-preview').src = this.value.split(',')[0].trim()">
+                            <div class="flex items-center gap-2">
+                                <input type="file" id="image-upload-input" accept="image/*" class="text-xs">
+                                <span id="image-upload-status" class="text-xs text-gray-400"></span>
+                            </div>
+                        </div>
                     </div>
                 </div>`;
         }
@@ -180,6 +186,30 @@ function buildFormFields(product) {
     formFields.querySelectorAll('.table-tool-toggle').forEach(btn => {
         btn.addEventListener('click', () => toggleTableTool(btn.dataset.toggleKey));
     });
+
+    const imageUploadInput = formFields.querySelector('#image-upload-input');
+    if (imageUploadInput) {
+        imageUploadInput.addEventListener('change', async () => {
+            const file = imageUploadInput.files[0];
+            if (!file) return;
+
+            const statusEl = document.getElementById('image-upload-status');
+            const urlInput = document.getElementById('image-url-input');
+            statusEl.textContent = '上傳中…';
+
+            try {
+                const url = await uploadImageToCloudinary(file);
+                const existing = urlInput.value.trim();
+                urlInput.value = existing ? existing + ', ' + url : url;
+                document.getElementById('image-preview').src = url;
+                statusEl.textContent = '上傳成功';
+            } catch (e) {
+                statusEl.textContent = '上傳失敗：' + e.message;
+            } finally {
+                imageUploadInput.value = '';
+            }
+        });
+    }
 }
 
 /* --- 規格表格編輯工具：把 desc_zh / desc_en 裡的 markdown 表格轉成可視化表格 --- */

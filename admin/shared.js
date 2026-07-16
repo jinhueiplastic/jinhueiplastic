@@ -77,3 +77,25 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 }
+
+// Cloud name 和 unsigned upload preset 都不是密鑰，可以放在前端程式碼裡；
+// 真正的 API Secret 絕對不能出現在這裡（那個要保密，用在伺服器端）。
+const CLOUDINARY_CLOUD_NAME = 'dhnctvjs8';
+const CLOUDINARY_UPLOAD_PRESET = 'POS items';
+
+async function uploadImageToCloudinary(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: 'POST',
+        body: formData,
+    });
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error('Cloudinary 上傳失敗：' + errText);
+    }
+    const data = await res.json();
+    return data.secure_url;
+}
