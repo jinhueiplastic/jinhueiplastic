@@ -310,6 +310,35 @@ function runOp(key, mutateFn) {
     renderTableToolPanel(key);
 }
 
+function updatePreviewBox(key) {
+    const panel = formFields.querySelector(`.table-tool-panel[data-panel-key="${key}"]`);
+    const box = panel && panel.querySelector('.preview-box');
+    if (box) box.innerHTML = renderPreviewTable(descTableStates[key]);
+}
+
+// 純粹修改儲存格文字：不重畫整個表格（避免打字打到一半輸入框被重建、游標跟焦點跑掉）。
+// 只有列數/欄數變動（新增、刪除、搬移）才需要整個重畫，交給 runOp 處理。
+function setCellValue(key, ri, ci, value) {
+    const state = descTableStates[key];
+    if (state.rows[ri]) state.rows[ri][ci] = value;
+    syncTextarea(key);
+    updatePreviewBox(key);
+
+    if (key === 'desc_zh') {
+        const enState = descTableStates['desc_en'];
+        if (enState.rows[ri]) {
+            enState.rows[ri][ci] = value;
+            syncTextarea('desc_en');
+            updatePreviewBox('desc_en');
+            const enPanel = formFields.querySelector(`.table-tool-panel[data-panel-key="desc_en"]`);
+            if (enPanel && !enPanel.classList.contains('hidden')) {
+                const input = enPanel.querySelector(`.cell-input[data-ri="${ri}"][data-ci="${ci}"]`);
+                if (input && document.activeElement !== input) input.value = value;
+            }
+        }
+    }
+}
+
 function renderPreviewTable(state) {
     const headRow = state.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
     const bodyRows = state.rows.map(row => `
@@ -374,10 +403,7 @@ function renderTableToolPanel(key) {
     });
     panel.querySelectorAll('.cell-input').forEach(input => {
         input.addEventListener('input', () => {
-            const ri = Number(input.dataset.ri);
-            const ci = Number(input.dataset.ci);
-            const value = input.value;
-            runOp(key, s => { if (s.rows[ri]) s.rows[ri][ci] = value; });
+            setCellValue(key, Number(input.dataset.ri), Number(input.dataset.ci), input.value);
         });
     });
     panel.querySelectorAll('.row-del').forEach(btn => {
