@@ -25,10 +25,9 @@ const BOOLEAN_FIELDS = ['on_alibaba', 'will_upload_alibaba'];
 const POS_ITEMS_TAB = 'POS items';
 
 // POS 規格/孔徑/顏色的可點選項目（每列一個選項，可各自帶圖片），欄位：
-// erp_code | 類型（規格／孔徑／顏色）| 選項名稱 | 圖片網址 | 排序
+// erp_code | 規格 | 孔徑 | 顏色 | 選項名稱 | 圖片網址 | 排序
+// （規格/孔徑/顏色三欄不是填值，是哪一欄有打記號代表這列屬於哪個類型，見下面 variantTypeFromMarkerCols）
 const POS_VARIANTS_TAB = 'POS variants';
-const VARIANT_TYPE_ZH_TO_EN = { '規格': 'spec', '孔徑': 'bore', '顏色': 'color' };
-const VARIANT_TYPE_EN_TO_ZH = { spec: '規格', bore: '孔徑', color: '顏色' };
 
 // ===== 主選單 =====
 function onOpen() {
@@ -279,6 +278,18 @@ function pullPosItemsFromSupabase() {
   SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
 }
 
+// POS variants 分頁欄位（A-G）：erp_code | 規格 | 孔徑 | 顏色 | 選項名稱 | 圖片網址 | 排序
+// 規格/孔徑/顏色這三欄不是填值，是「哪一欄有打記號（隨便打什麼都算）」代表這一列屬於哪個類型；
+// 實際的選項文字放在「選項名稱」。
+const VARIANT_MARKER_COLS = { spec: 1, bore: 2, color: 3 };
+
+function variantTypeFromMarkerCols(row) {
+  if (String(row[1] || '').trim() !== '') return 'spec';
+  if (String(row[2] || '').trim() !== '') return 'bore';
+  if (String(row[3] || '').trim() !== '') return 'color';
+  return null;
+}
+
 // ===== 推送 Sheet 2「POS variants」→ Supabase pos_item_variants =====
 function syncPosVariants() {
   const ss = SpreadsheetApp.openById(SHEET2_ID);
@@ -290,13 +301,12 @@ function syncPosVariants() {
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     const erp = String(r[0] || '').trim();
-    const typeLabel = String(r[1] || '').trim();
-    const value = String(r[2] || '').trim();
+    const value = String(r[4] || '').trim();
     if (!erp || !value) continue;
 
-    const variantType = VARIANT_TYPE_ZH_TO_EN[typeLabel];
+    const variantType = variantTypeFromMarkerCols(r);
     if (!variantType) {
-      Logger.log('第 ' + (i + 1) + ' 列的類型「' + typeLabel + '」看不懂，已跳過（類型欄要填：規格／孔徑／顏色）');
+      Logger.log('第 ' + (i + 1) + ' 列沒有在規格／孔徑／顏色任一欄打記號，已跳過');
       continue;
     }
 
@@ -304,8 +314,8 @@ function syncPosVariants() {
       erp_code: erp,
       variant_type: variantType,
       value: value,
-      image_url: String(r[3] || '').trim(),
-      sort_order: Number(r[4]) || 0,
+      image_url: String(r[5] || '').trim(),
+      sort_order: Number(r[6]) || 0,
     });
   }
 
@@ -331,8 +341,8 @@ function pullPosVariantsFromSupabase() {
   const rowByKey = {};
   for (let i = 1; i < data.length; i++) {
     const erp = String(data[i][0] || '').trim();
-    const type = VARIANT_TYPE_ZH_TO_EN[String(data[i][1] || '').trim()];
-    const value = String(data[i][2] || '').trim();
+    const type = variantTypeFromMarkerCols(data[i]);
+    const value = String(data[i][4] || '').trim();
     if (erp && type && value) rowByKey[keyOf(erp, type, value)] = i + 1;
   }
 
@@ -344,7 +354,13 @@ function pullPosVariantsFromSupabase() {
     const value = String(v.value || '').trim();
     if (!erp || !value) return;
 
-    const values = [erp, VARIANT_TYPE_EN_TO_ZH[v.variant_type] || v.variant_type, value, v.image_url || '', v.sort_order || 0];
+    const values = ['', '', '', '', '', '', ''];
+    values[0] = erp;
+    values[VARIANT_MARKER_COLS[v.variant_type]] = 'x';
+    values[4] = value;
+    values[5] = v.image_url || '';
+    values[6] = v.sort_order || 0;
+
     const rowNum = rowByKey[keyOf(erp, v.variant_type, value)];
     if (rowNum) {
       sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
