@@ -1,7 +1,7 @@
 const SUPABASE_URL = 'https://nfpfguorxfhwhkylacoe.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5mcGZndW9yeGZod2hreWxhY29lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNTE5OTcsImV4cCI6MjA5NjcyNzk5N30.YMrxU9VZoh4ieO9Lqd2qPiXMA4FFPCg1zUa7gG80QDw';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const PRODUCT_FIELDS = [
     { key: 'category_name_zh', label: '分類（中文）' },
@@ -50,7 +50,7 @@ function setStatus(msg) {
 }
 
 async function checkSession() {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await sb.auth.getSession();
     if (data.session) {
         onLoggedIn(data.session);
     } else {
@@ -71,7 +71,7 @@ loginForm.addEventListener('submit', async (e) => {
     loginError.classList.add('hidden');
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) {
         showLoginError('登入失敗：' + error.message);
         return;
@@ -80,13 +80,13 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 document.getElementById('logout-btn').addEventListener('click', async () => {
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     location.reload();
 });
 
 async function loadProducts() {
     setStatus('載入商品資料中…');
-    const { data, error } = await supabase
+    const { data, error } = await sb
         .from('products')
         .select('*')
         .order('id', { ascending: true });
@@ -133,7 +133,7 @@ function renderTable(products) {
 }
 
 async function toggleActive(id, isActive) {
-    const { error } = await supabase
+    const { error } = await sb
         .from('products')
         .update({ is_active: isActive })
         .eq('id', id);
@@ -219,9 +219,9 @@ productForm.addEventListener('submit', async (e) => {
 
     let error;
     if (editingId) {
-        ({ error } = await supabase.from('products').update(payload).eq('id', editingId));
+        ({ error } = await sb.from('products').update(payload).eq('id', editingId));
     } else {
-        ({ error } = await supabase.from('products').insert(payload));
+        ({ error } = await sb.from('products').insert(payload));
     }
 
     if (error) {
