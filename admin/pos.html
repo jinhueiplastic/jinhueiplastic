@@ -47,7 +47,7 @@
             <nav id="admin-nav" class="admin-nav"></nav>
         </header>
 
-        <main class="container mx-auto px-4 py-6 max-w-4xl">
+        <main class="container mx-auto px-4 py-6 max-w-6xl">
             <h2 class="text-lg font-bold mb-4">POS 下單</h2>
 
             <div class="bg-white border rounded-lg p-4 mb-4">
@@ -67,9 +67,18 @@
                 <div id="customer-info" class="text-sm text-gray-500 mt-3"></div>
             </div>
 
-            <h3 class="font-bold text-sm text-gray-600 mb-2">訂購商品</h3>
-            <div id="rows-container"></div>
-            <button type="button" id="add-row-btn" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 mb-6">+ 新增商品項</button>
+            <h3 class="font-bold text-sm text-gray-600 mb-2">選購商品</h3>
+            <div class="bg-white border rounded-lg p-4 mb-6">
+                <div class="flex items-center gap-2 mb-3">
+                    <input type="text" id="product-search-input" class="field-input flex-1" placeholder="搜尋商品貨號或名稱…">
+                    <button type="button" id="browse-back-btn" class="hidden px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">← 返回</button>
+                </div>
+                <p id="browse-breadcrumb" class="text-sm text-gray-500 mb-3 hidden"></p>
+                <div id="browse-area"></div>
+            </div>
+
+            <h3 class="font-bold text-sm text-gray-600 mb-2">已選購商品</h3>
+            <div id="cart-container" class="mb-6"></div>
 
             <div class="flex justify-end">
                 <button type="button" id="save-order-btn" class="px-6 py-2.5 rounded bg-blue-600 text-white font-medium hover:bg-blue-700">
