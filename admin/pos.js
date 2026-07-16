@@ -30,33 +30,38 @@ const saveOrderBtn       = document.getElementById('save-order-btn');
 async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: comboData, error: comboErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }] = await Promise.all([
         sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
         sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }),
-        sb.from('pos_item_combo_images').select('*'),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
     if (catErr) console.error(catErr);
     if (vErr) console.error(vErr);
-    if (comboErr) console.error(comboErr);
     products = productData || [];
     customers = customerData || [];
 
+    // pos_item_variants 一列可能是「單一選項按鈕」（規格/孔徑/顏色只填一欄）
+    // 或「確切組合的實際照片」（填兩欄以上），兩種都從同一份資料算出來。
     variantOptionsByErp = {};
-    (variantData || []).forEach(v => {
-        if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = { spec: [], bore: [], color: [] };
-        if (variantOptionsByErp[v.erp_code][v.variant_type]) {
-            variantOptionsByErp[v.erp_code][v.variant_type].push(v);
-        }
-    });
-
     comboImagesByErp = {};
-    (comboData || []).forEach(c => {
-        if (!comboImagesByErp[c.erp_code]) comboImagesByErp[c.erp_code] = {};
-        comboImagesByErp[c.erp_code][[c.spec || '', c.bore || '', c.color || ''].join('||')] = c.image_url;
+    (variantData || []).forEach(v => {
+        const spec = v.spec || '';
+        const bore = v.bore || '';
+        const color = v.color || '';
+        const filledCount = [spec, bore, color].filter(Boolean).length;
+        if (!filledCount) return;
+
+        if (filledCount === 1) {
+            const type = spec ? 'spec' : (bore ? 'bore' : 'color');
+            if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = { spec: [], bore: [], color: [] };
+            variantOptionsByErp[v.erp_code][type].push({ value: spec || bore || color, image_url: v.image_url });
+        } else {
+            if (!comboImagesByErp[v.erp_code]) comboImagesByErp[v.erp_code] = {};
+            comboImagesByErp[v.erp_code][[spec, bore, color].join('||')] = v.image_url;
+        }
     });
 
     // 跟官網「商品目錄」頁用同一份分類卡片資料（site_content，page = Product Catalog）：
