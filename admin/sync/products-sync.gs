@@ -112,8 +112,10 @@ function syncProducts() {
     products.push(product);
   }
 
-  batchUpsertOnConflict('/rest/v1/products', products, 'erp_code');
-  Logger.log('產品同步完成，共 ' + products.length + ' 筆（依 erp_code upsert，不會刪除既有資料）');
+  // 用「erp_code + 分類」當比對鍵：同一個 erp_code 可以同時掛在不同分類底下，
+  // 各自是獨立的一列，只用 erp_code 當鍵會把它們錯誤地合併成一筆。
+  batchUpsertOnConflict('/rest/v1/products', products, 'erp_code,category_name_zh');
+  Logger.log('產品同步完成，共 ' + products.length + ' 筆（依 erp_code+分類 upsert，不會刪除既有資料）');
 }
 
 // ===== 拉回 Supabase → Sheet 2「Categories」 =====
@@ -128,11 +130,16 @@ function pullProductsFromSupabase() {
     return;
   }
 
+  // 用「erp_code + 分類」當比對鍵（跟推送方向的 on_conflict 一致），
+  // 因為同一個 erp_code 可能同時掛在不同分類底下，各是不同一列。
+  const keyOf = (erp, cat) => erp + '||' + cat;
+
   const data = sheet.getDataRange().getValues();
-  const rowByErp = {};
+  const rowByKey = {};
   for (let i = 1; i < data.length; i++) {
     const erp = String(data[i][1] || '').trim();
-    if (erp) rowByErp[erp] = i + 1; // 試算表列號（1-based）
+    const cat = String(data[i][0] || '').trim();
+    if (erp) rowByKey[keyOf(erp, cat)] = i + 1; // 試算表列號（1-based）
   }
 
   const toRowValues = p => PRODUCT_COLUMNS.map(key => {
@@ -148,9 +155,11 @@ function pullProductsFromSupabase() {
   products.forEach(p => {
     const erp = String(p.erp_code || '').trim();
     if (!erp) return;
+    const cat = String(p.category_name_zh || '').trim();
     const values = toRowValues(p);
-    if (rowByErp[erp]) {
-      sheet.getRange(rowByErp[erp], 1, 1, values.length).setValues([values]);
+    const rowNum = rowByKey[keyOf(erp, cat)];
+    if (rowNum) {
+      sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
       updated++;
     } else {
       newRows.push(values);

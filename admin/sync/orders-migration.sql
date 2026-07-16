@@ -19,13 +19,15 @@ create table if not exists orders (
 );
 
 -- 訂單明細：每一列是一個商品項，含挑選的規格/孔徑/顏色與數量。
--- 用 erp_code（已在先前的 migration.sql 加上唯一限制）對應商品，
--- 而不是 products.id，避免要另外確認 id 欄位型別；同時把商品名稱、圖片
--- 存成快照，即使之後商品資料異動，舊訂單顯示的還是下單當時的內容。
+-- product_erp_code 只存文字，不設外鍵參照 products(erp_code)：
+-- 同一個 erp_code 可能同時掛在兩個分類底下（各是 products 表裡不同的一列），
+-- 所以 erp_code 本身不是唯一值，沒辦法拿來當外鍵參照。
+-- 這裡本來就把商品名稱、圖片存成快照，即使之後商品資料異動或該筆商品被刪除，
+-- 舊訂單顯示的還是下單當時的內容，不需要靠外鍵保證商品還存在。
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references orders(id) on delete cascade,
-  product_erp_code text references products(erp_code),
+  product_erp_code text,
   product_name_zh text,
   product_image_url text,
   spec text,
