@@ -37,7 +37,7 @@ function setStatus(msg) {
 async function loadProducts() {
     setStatus('載入商品資料中…');
     const { data, error } = await sb
-        .from('products')
+        .from('pos_items')
         .select('*')
         .order('id', { ascending: true });
 
@@ -107,7 +107,7 @@ function renderTable(products) {
 
 async function toggleActive(id, isActive) {
     const { error } = await sb
-        .from('products')
+        .from('pos_items')
         .update({ is_active: isActive })
         .eq('id', id);
     if (error) {
@@ -457,6 +457,7 @@ function openEditModal(id) {
     editingId = id;
     modalTitle.textContent = '編輯商品';
     buildFormFields(product);
+    loadVariantSection(product);
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -466,6 +467,7 @@ document.getElementById('new-product-btn').addEventListener('click', () => {
     editingId = null;
     modalTitle.textContent = '新增商品';
     buildFormFields(null);
+    loadVariantSection(null);
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -490,9 +492,9 @@ productForm.addEventListener('submit', async (e) => {
 
     let error;
     if (editingId) {
-        ({ error } = await sb.from('products').update(payload).eq('id', editingId));
+        ({ error } = await sb.from('pos_items').update(payload).eq('id', editingId));
     } else {
-        ({ error } = await sb.from('products').insert(payload));
+        ({ error } = await sb.from('pos_items').insert(payload));
     }
 
     if (error) {
@@ -503,6 +505,118 @@ productForm.addEventListener('submit', async (e) => {
 
     closeModal();
     loadProducts();
+});
+
+/* --- POS 規格／孔徑／顏色選項（pos_item_variants），在編輯商品時直接管理 --- */
+let currentVariantErp = null;
+
+async function loadVariantSection(product) {
+    const section = document.getElementById('variant-section');
+    const listEl = document.getElementById('variant-list');
+
+    if (!product || !product.erp_code) {
+        currentVariantErp = null;
+        section.classList.add('opacity-50', 'pointer-events-none');
+        listEl.innerHTML = '<p class="text-xs text-gray-400">請先儲存商品，才能新增規格選項。</p>';
+        return;
+    }
+
+    currentVariantErp = product.erp_code;
+    section.classList.remove('opacity-50', 'pointer-events-none');
+    listEl.innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
+
+    const { data, error } = await sb
+        .from('pos_item_variants')
+        .select('*')
+        .eq('erp_code', product.erp_code)
+        .order('sort_order', { ascending: true });
+
+    if (error) {
+        listEl.innerHTML = `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
+        return;
+    }
+    renderVariantList(data || []);
+}
+
+function renderVariantList(rows) {
+    const listEl = document.getElementById('variant-list');
+    if (!rows.length) {
+        listEl.innerHTML = '<p class="text-xs text-gray-400">目前沒有規格選項。</p>';
+        return;
+    }
+
+    listEl.innerHTML = rows.map(r => {
+        const filledCount = [r.spec, r.bore, r.color].filter(Boolean).length;
+        const label = [r.spec, r.bore, r.color].filter(Boolean).join(' / ') || '（未命名）';
+        const kind = filledCount > 1 ? '組合照片' : '選項按鈕';
+        return `
+            <div class="flex items-center gap-3 border rounded-lg p-2">
+                <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb" style="width:40px;height:40px;">
+                <div class="flex-1 text-sm">
+                    <span class="font-medium">${escapeHtml(label)}</span>
+                    <span class="text-xs text-gray-400 ml-2">${kind}</span>
+                </div>
+                <button type="button" data-id="${r.id}" class="variant-del-btn text-red-400 hover:text-red-600 text-xs">刪除</button>
+            </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('.variant-del-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('確定要刪除這個選項嗎？')) return;
+            const { error } = await sb.from('pos_item_variants').delete().eq('id', btn.dataset.id);
+            if (error) {
+                alert('刪除失敗：' + error.message);
+                return;
+            }
+            loadVariantSection({ erp_code: currentVariantErp });
+        });
+    });
+}
+
+document.getElementById('add-variant-btn').addEventListener('click', async () => {
+    if (!currentVariantErp) return;
+
+    const spec = document.getElementById('new-variant-spec').value.trim();
+    const bore = document.getElementById('new-variant-bore').value.trim();
+    const color = document.getElementById('new-variant-color').value.trim();
+    const fileInput = document.getElementById('new-variant-image');
+    const statusEl = document.getElementById('variant-add-status');
+
+    if (!spec && !bore && !color) {
+        alert('規格／孔徑／顏色至少要填一個');
+        return;
+    }
+
+    let imageUrl = '';
+    if (fileInput.files[0]) {
+        statusEl.textContent = '圖片上傳中…';
+        try {
+            imageUrl = await uploadImageToCloudinary(fileInput.files[0]);
+        } catch (e) {
+            statusEl.textContent = '';
+            alert('圖片上傳失敗：' + e.message);
+            return;
+        }
+    }
+
+    statusEl.textContent = '儲存中…';
+    const { error } = await sb.from('pos_item_variants').insert({
+        erp_code: currentVariantErp,
+        spec, bore, color,
+        image_url: imageUrl,
+    });
+    statusEl.textContent = '';
+
+    if (error) {
+        alert('新增失敗：' + error.message);
+        return;
+    }
+
+    ['new-variant-spec', 'new-variant-bore', 'new-variant-color'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    fileInput.value = '';
+    loadVariantSection({ erp_code: currentVariantErp });
 });
 
 initAdminAuth('products', loadProducts);

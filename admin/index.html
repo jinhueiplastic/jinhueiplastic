@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>商品資料後台 | 錦輝塑膠</title>
+    <title>修改 POS 商品 | 錦輝後台</title>
     <link rel="icon" href="/logo.png" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -15,7 +15,7 @@
 
     <div id="login-view" class="min-h-screen flex items-center justify-center px-4">
         <form id="login-form" class="bg-white shadow-md rounded-lg p-8 w-full max-w-sm space-y-4">
-            <h1 class="text-xl font-bold text-center">商品資料後台登入</h1>
+            <h1 class="text-xl font-bold text-center">錦輝後台登入</h1>
             <div>
                 <label class="block text-sm text-gray-600 mb-1">Email</label>
                 <input type="email" id="login-email" required autocomplete="username"
@@ -78,6 +78,37 @@
             </div>
             <form id="product-form" class="px-6 py-4 space-y-3">
                 <div id="form-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+
+                <div id="variant-section" class="border-t pt-4 mt-2">
+                    <h3 class="font-bold text-sm text-gray-700 mb-2">POS 規格／孔徑／顏色選項</h3>
+                    <div id="variant-list" class="space-y-2 mb-3"></div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end border rounded-lg p-3 bg-gray-50">
+                        <div>
+                            <label class="field-label">規格</label>
+                            <input type="text" id="new-variant-spec" class="field-input">
+                        </div>
+                        <div>
+                            <label class="field-label">孔徑</label>
+                            <input type="text" id="new-variant-bore" class="field-input">
+                        </div>
+                        <div>
+                            <label class="field-label">顏色</label>
+                            <input type="text" id="new-variant-color" class="field-input">
+                        </div>
+                        <div>
+                            <label class="field-label">圖片</label>
+                            <input type="file" id="new-variant-image" accept="image/*" class="text-xs">
+                        </div>
+                        <div class="col-span-2 sm:col-span-4 flex items-center gap-2">
+                            <button type="button" id="add-variant-btn" class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">
+                                新增選項
+                            </button>
+                            <span id="variant-add-status" class="text-xs text-gray-400"></span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2">只填一欄＝定義一個可點選項目；兩欄以上都填＝那個確切組合的實際照片。</p>
+                </div>
+
                 <p id="form-error" class="text-sm text-red-600 hidden"></p>
                 <div class="flex justify-end gap-2 pt-2">
                     <button type="button" id="modal-cancel-btn" class="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50">

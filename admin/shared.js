@@ -4,11 +4,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const ADMIN_PAGES = [
-    { key: 'products',  href: '/admin/',                label: '修改商品資料' },
     { key: 'pos',       href: '/admin/pos.html',         label: 'POS 下單' },
     { key: 'orders',    href: '/admin/orders.html',      label: '查詢訂單' },
     { key: 'region',    href: '/admin/region-form.html', label: '區域表單' },
     { key: 'customers', href: '/admin/customers.html',   label: '客戶資訊' },
+    { key: 'products',  href: '/admin/',                 label: '修改 POS 商品' },
 ];
 
 function renderAdminNav(activeKey) {
