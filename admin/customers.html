@@ -57,6 +57,8 @@
                     <thead class="bg-gray-100 text-gray-600 text-left">
                         <tr>
                             <th class="px-3 py-2">客戶名稱</th>
+                            <th class="px-3 py-2">工地名稱</th>
+                            <th class="px-3 py-2">區域</th>
                             <th class="px-3 py-2">地址</th>
                             <th class="px-3 py-2">電話</th>
                             <th class="px-3 py-2 w-32">操作</th>
@@ -78,6 +80,15 @@
                 <div>
                     <label class="field-label">客戶名稱</label>
                     <input type="text" class="field-input" data-key="name" required>
+                </div>
+                <div>
+                    <label class="field-label">工地名稱</label>
+                    <input type="text" class="field-input" data-key="site_name">
+                </div>
+                <div>
+                    <label class="field-label">區域</label>
+                    <input type="text" class="field-input" data-key="region" list="region-datalist">
+                    <datalist id="region-datalist"></datalist>
                 </div>
                 <div>
                     <label class="field-label">地址</label>

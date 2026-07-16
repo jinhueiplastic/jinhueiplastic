@@ -17,7 +17,7 @@ async function loadOrders() {
 
     const [{ data, error }, { data: customerData, error: customerError }] = await Promise.all([
         sb.from('orders')
-            .select('*, customers(name,phone,address), order_items(*)')
+            .select('*, customers(name,phone,address,site_name,region), order_items(*)')
             .order('created_at', { ascending: false })
             .limit(500),
         sb.from('customers').select('name,phone').order('name', { ascending: true }),
@@ -62,7 +62,10 @@ function renderResults(orders) {
                         ${o.customers && o.customers.phone ? '　' + escapeHtml(o.customers.phone) : ''}
                     </p>
                 </div>
-                <button data-id="${o.id}" class="pdf-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">下載 PDF</button>
+                <div class="flex gap-2">
+                    <button data-id="${o.id}" class="pdf-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">下載 PDF</button>
+                    <button data-id="${o.id}" class="delete-btn px-3 py-1.5 text-sm rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">刪除</button>
+                </div>
             </div>
             <p class="text-sm text-gray-600 mt-2">${itemsSummary || '（無商品明細）'}</p>
         </div>`;
@@ -72,6 +75,23 @@ function renderResults(orders) {
         btn.addEventListener('click', () => {
             const order = allOrders.find(o => String(o.id) === btn.dataset.id);
             generateOrderPdf(order, order.customers, order.order_items || []);
+        });
+    });
+
+    resultsContainer.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const order = allOrders.find(o => String(o.id) === btn.dataset.id);
+            if (!order) return;
+            if (!confirm(`確定要刪除訂單 ${order.order_no} 嗎？此動作無法復原。`)) return;
+
+            const { error } = await sb.from('orders').delete().eq('id', order.id);
+            if (error) {
+                alert('刪除失敗：' + error.message);
+                return;
+            }
+            allOrders = allOrders.filter(o => o.id !== order.id);
+            statusMsg.textContent = `共 ${allOrders.length} 筆訂單（最多顯示近 500 筆）`;
+            renderResults(allOrders);
         });
     });
 }

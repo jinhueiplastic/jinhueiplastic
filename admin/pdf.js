@@ -50,6 +50,11 @@ function buildInvoiceHtml(order, customer, items) {
             </tr>`;
     }).join('');
 
+    const siteLine = customer && customer.site_name
+        ? `<div>工地：${escapeHtml(customer.site_name)}</div>` : '';
+    const regionLine = customer && customer.region
+        ? `<div>區域：${escapeHtml(customer.region)}</div>` : '';
+
     container.innerHTML = `
         <h1 style="font-size:22px;font-weight:700;margin:0 0 4px;">錦輝塑膠業有限公司 訂購單</h1>
         <div style="display:flex;justify-content:space-between;font-size:13px;color:#374151;margin-bottom:16px;">
@@ -62,6 +67,8 @@ function buildInvoiceHtml(order, customer, items) {
             <div>名稱：${escapeHtml(customer && customer.name || '')}</div>
             <div>電話：${escapeHtml(customer && customer.phone || '')}</div>
             <div>地址：${escapeHtml(customer && customer.address || '')}</div>
+            ${siteLine}
+            ${regionLine}
         </div>
         <hr style="border:none;border-top:1px solid #d1d5db;margin:16px 0;">
         <h2 style="font-size:15px;font-weight:700;margin:0 0 8px;">商品明細</h2>
@@ -72,25 +79,24 @@ function buildInvoiceHtml(order, customer, items) {
     return container;
 }
 
-async function generateOrderPdf(order, customer, items) {
+// 把一張訂購單畫成圖片、切頁後畫進傳入的 jsPDF doc。isFirstOrderPage 是給「合併多張訂單成一份 PDF」用的：
+// 一份新建的 jsPDF 文件本身就自帶一張空白頁，只有第一張訂單的第一頁要沿用它，其餘都要先 addPage()。
+async function renderOrderPagesInto(doc, order, customer, items, isFirstOrderPage) {
     const container = buildInvoiceHtml(order, customer, items);
     document.body.appendChild(container);
 
     try {
         await waitForImages(container);
 
-        const scale = 2;
-        const canvas = await html2canvas(container, { scale, useCORS: true, backgroundColor: '#ffffff' });
+        const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
 
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
         const pdfWidthMm = doc.internal.pageSize.getWidth();
         const pdfHeightMm = doc.internal.pageSize.getHeight();
         const pxPerMm = canvas.width / pdfWidthMm;
         const pageHeightPx = Math.floor(pdfHeightMm * pxPerMm);
 
         let offsetY = 0;
-        let first = true;
+        let isFirstSlice = true;
         while (offsetY < canvas.height) {
             const sliceHeight = Math.min(pageHeightPx, canvas.height - offsetY);
             const pageCanvas = document.createElement('canvas');
@@ -100,14 +106,30 @@ async function generateOrderPdf(order, customer, items) {
                 canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight
             );
 
-            if (!first) doc.addPage();
+            if (!(isFirstOrderPage && isFirstSlice)) doc.addPage();
             doc.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfWidthMm, sliceHeight / pxPerMm);
-            first = false;
+            isFirstSlice = false;
             offsetY += sliceHeight;
         }
-
-        doc.save((order.order_no || 'order') + '.pdf');
     } finally {
         document.body.removeChild(container);
     }
+}
+
+async function generateOrderPdf(order, customer, items) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    await renderOrderPagesInto(doc, order, customer, items, true);
+    doc.save((order.order_no || 'order') + '.pdf');
+}
+
+// entries: [{ order, customer, items }, ...] —— 每張訂單各自分頁，全部合併存成同一份 PDF。
+async function generateCombinedOrdersPdf(entries, filename) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    for (let i = 0; i < entries.length; i++) {
+        const { order, customer, items } = entries[i];
+        await renderOrderPagesInto(doc, order, customer, items, i === 0);
+    }
+    doc.save(filename);
 }

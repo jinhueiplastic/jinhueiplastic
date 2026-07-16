@@ -23,23 +23,34 @@ async function loadCustomers() {
 
     if (error) {
         setStatus('');
-        tbody.innerHTML = `<tr><td colspan="4" class="px-3 py-6 text-center text-red-600">讀取失敗：${escapeHtml(error.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-red-600">讀取失敗：${escapeHtml(error.message)}</td></tr>`;
         return;
     }
 
     allCustomers = data || [];
     setStatus(`共 ${allCustomers.length} 位客戶`);
     renderTable(allCustomers);
+    renderRegionDatalist();
+}
+
+function renderRegionDatalist() {
+    const dl = document.getElementById('region-datalist');
+    if (!dl) return;
+    const regions = [...new Set(allCustomers.map(c => (c.region || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    dl.innerHTML = regions.map(r => `<option value="${escapeHtml(r)}">`).join('');
 }
 
 function renderTable(customers) {
     if (!customers.length) {
-        tbody.innerHTML = `<tr><td colspan="4" class="px-3 py-6 text-center text-gray-400">目前沒有客戶資料</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">目前沒有客戶資料</td></tr>`;
         return;
     }
     tbody.innerHTML = customers.map(c => `
         <tr>
             <td class="px-3 py-2">${escapeHtml(c.name || '')}</td>
+            <td class="px-3 py-2">${escapeHtml(c.site_name || '')}</td>
+            <td class="px-3 py-2">${escapeHtml(c.region || '')}</td>
             <td class="px-3 py-2">${escapeHtml(c.address || '')}</td>
             <td class="px-3 py-2">${escapeHtml(c.phone || '')}</td>
             <td class="px-3 py-2">
@@ -59,7 +70,7 @@ searchInput.addEventListener('input', () => {
         return;
     }
     renderTable(allCustomers.filter(c =>
-        [c.name, c.phone].some(v => String(v || '').toLowerCase().includes(q))
+        [c.name, c.phone, c.site_name, c.region].some(v => String(v || '').toLowerCase().includes(q))
     ));
 });
 
