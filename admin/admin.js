@@ -186,10 +186,15 @@ function buildFormFields(product) {
         const value = product ? (product[f.key] ?? '') : '';
         const escaped = escapeHtml(String(value));
         if (f.textarea) {
+            const isTableField = f.key === 'desc_zh' || f.key === 'desc_en';
             return `
                 <div class="sm:col-span-2">
-                    <label class="field-label">${f.label}</label>
-                    <textarea class="field-input" rows="3" data-key="${f.key}">${escaped}</textarea>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="field-label !mb-0">${f.label}</label>
+                        ${isTableField ? `<button type="button" class="table-tool-toggle text-xs text-blue-600 hover:underline" data-key="${f.key}">規格表格編輯工具</button>` : ''}
+                    </div>
+                    <textarea class="field-input" rows="4" data-key="${f.key}">${escaped}</textarea>
+                    ${isTableField ? `<div class="table-tool-panel hidden mt-2 border rounded-lg p-3 bg-gray-50" data-key="${f.key}"></div>` : ''}
                 </div>`;
         }
         if (f.key === 'image_url') {
@@ -215,6 +220,143 @@ function buildFormFields(product) {
             <input type="checkbox" id="form-is-active" ${product && product.is_active === false ? '' : 'checked'}>
             <label for="form-is-active" class="text-sm text-gray-600">上架顯示於官網</label>
         </div>`;
+
+    formFields.querySelectorAll('.table-tool-toggle').forEach(btn => {
+        btn.addEventListener('click', () => toggleTableTool(btn.dataset.key));
+    });
+}
+
+/* --- 規格表格編輯工具：把 desc_zh / desc_en 裡的 markdown 表格轉成可視化表格 --- */
+function parseFirstTable(text) {
+    const lines = String(text || '').split('\n');
+    let start = -1, end = -1;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('|') && line.includes('|')) {
+            if (start === -1) start = i;
+            end = i;
+        } else if (start !== -1) {
+            break;
+        }
+    }
+    if (start === -1) {
+        return { headers: ['規格'], rows: [['']], prefix: text || '', suffix: '' };
+    }
+    const cellsOf = line => line.trim().split('|').map(c => c.trim()).filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
+    const tableLines = lines.slice(start, end + 1);
+    const headers = cellsOf(tableLines[0]);
+    const dataLines = tableLines.slice(1).filter(l => !/^[|:\s-]+$/.test(l.trim()));
+    const rows = dataLines.map(cellsOf).filter(r => r.length);
+    return {
+        headers: headers.length ? headers : ['規格'],
+        rows: rows.length ? rows : [headers.map(() => '')],
+        prefix: lines.slice(0, start).join('\n'),
+        suffix: lines.slice(end + 1).join('\n'),
+    };
+}
+
+function buildTableMarkdown(headers, rows) {
+    const headerLine = '| ' + headers.map(h => h || '').join(' | ') + ' |';
+    const sepLine = '| ' + headers.map(() => ':---').join(' | ') + ' |';
+    const rowLines = rows.map(r => '| ' + headers.map((_, i) => (r[i] || '')).join(' | ') + ' |');
+    return [headerLine, sepLine, ...rowLines].join('\n');
+}
+
+function composeText(state) {
+    const table = buildTableMarkdown(state.headers, state.rows);
+    return [state.prefix, table, state.suffix].map(s => (s || '').trim()).filter(Boolean).join('\n\n');
+}
+
+function toggleTableTool(key) {
+    const panel = formFields.querySelector(`.table-tool-panel[data-key="${key}"]`);
+    const textarea = formFields.querySelector(`textarea[data-key="${key}"]`);
+    if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        panel.innerHTML = '';
+        return;
+    }
+    panel.classList.remove('hidden');
+    renderTableToolPanel(panel, textarea, parseFirstTable(textarea.value));
+}
+
+function renderTableToolPanel(panel, textarea, state) {
+    const headerCells = state.headers.map((h, ci) => `
+        <th class="border px-1 py-1 bg-white">
+            <div class="flex items-center gap-1">
+                <input type="text" class="field-input text-xs th-input" style="min-width:5rem" data-ci="${ci}" value="${escapeHtml(h)}">
+                <button type="button" class="col-del text-red-400 hover:text-red-600 text-xs shrink-0" data-ci="${ci}" title="刪除欄">×</button>
+            </div>
+        </th>`).join('');
+
+    const bodyRows = state.rows.map((row, ri) => `
+        <tr>
+            ${state.headers.map((_, ci) => `
+                <td class="border px-1 py-1 bg-white">
+                    <input type="text" class="field-input text-xs cell-input" style="min-width:5rem" data-ri="${ri}" data-ci="${ci}" value="${escapeHtml(row[ci] || '')}">
+                </td>`).join('')}
+            <td class="border px-1 py-1 text-center bg-white">
+                <button type="button" class="row-del text-red-400 hover:text-red-600 text-xs" data-ri="${ri}" title="刪除列">刪除</button>
+            </td>
+        </tr>`).join('');
+
+    panel.innerHTML = `
+        <div class="overflow-x-auto">
+            <table class="text-xs border-collapse">
+                <thead><tr>${headerCells}<th class="border px-1 py-1 bg-white"></th></tr></thead>
+                <tbody>${bodyRows}</tbody>
+            </table>
+        </div>
+        <div class="flex gap-2 mt-2">
+            <button type="button" class="add-row px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100">+ 新增列</button>
+            <button type="button" class="add-col px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100">+ 新增欄</button>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">上面的表格會自動同步到上方的說明欄位，儲存時會一併存入。</p>`;
+
+    const sync = () => { textarea.value = composeText(state); };
+
+    panel.querySelectorAll('.th-input').forEach(input => {
+        input.addEventListener('input', () => {
+            state.headers[Number(input.dataset.ci)] = input.value;
+            sync();
+        });
+    });
+    panel.querySelectorAll('.cell-input').forEach(input => {
+        input.addEventListener('input', () => {
+            state.rows[Number(input.dataset.ri)][Number(input.dataset.ci)] = input.value;
+            sync();
+        });
+    });
+    panel.querySelectorAll('.row-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.rows.splice(Number(btn.dataset.ri), 1);
+            if (!state.rows.length) state.rows.push(state.headers.map(() => ''));
+            sync();
+            renderTableToolPanel(panel, textarea, state);
+        });
+    });
+    panel.querySelectorAll('.col-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (state.headers.length <= 1) return;
+            const ci = Number(btn.dataset.ci);
+            state.headers.splice(ci, 1);
+            state.rows.forEach(r => r.splice(ci, 1));
+            sync();
+            renderTableToolPanel(panel, textarea, state);
+        });
+    });
+    panel.querySelector('.add-row').addEventListener('click', () => {
+        state.rows.push(state.headers.map(() => ''));
+        sync();
+        renderTableToolPanel(panel, textarea, state);
+    });
+    panel.querySelector('.add-col').addEventListener('click', () => {
+        state.headers.push('欄位' + (state.headers.length + 1));
+        state.rows.forEach(r => r.push(''));
+        sync();
+        renderTableToolPanel(panel, textarea, state);
+    });
+
+    sync();
 }
 
 function openEditModal(id) {
