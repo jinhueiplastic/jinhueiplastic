@@ -7,6 +7,7 @@ let categoryNameById = {};   // catId -> 中文分類顯示名稱
 let variantOptionsByErp = {}; // erp_code -> { spec: [{value,image_url}], bore: [...], color: [...] }
 let selectedVariant = { spec: '', bore: '', color: '' }; // 目前規格畫面上，用按鈕點選的值
 let comboImagesByErp = {}; // erp_code -> { 'spec||bore||color': image_url }，每個確切組合各自的商品照
+let selectedRegionFilter = new URLSearchParams(location.search).get('region') || null; // 依區域篩選客戶，null＝全部
 
 // 瀏覽狀態：categories（分類卡片）→ products（該分類/搜尋結果的商品卡片）→ variant（選規格數量）
 let browseMode = 'categories';
@@ -73,6 +74,7 @@ async function initPos() {
     categoryNameById = {};
     categoryCards.forEach(c => { categoryNameById[c.catId] = c.name; });
 
+    renderRegionTiles();
     renderCustomerOptions();
 
     cart = [];
@@ -82,9 +84,63 @@ async function initPos() {
     renderCart();
 }
 
+// 每個區域都有自己的網址（?region=xxx），方便直接分享/加書籤某個區域的下單畫面，
+// 瀏覽器上一頁/下一頁也能正確切換。
+function setRegionInUrl(region) {
+    const params = new URLSearchParams(location.search);
+    if (region) params.set('region', region); else params.delete('region');
+    const query = params.toString();
+    history.pushState({}, '', location.pathname + (query ? '?' + query : ''));
+}
+
+window.addEventListener('popstate', () => {
+    selectedRegionFilter = new URLSearchParams(location.search).get('region') || null;
+    renderRegionTiles();
+    renderCustomerOptions();
+});
+
+function renderRegionTiles() {
+    const container = document.getElementById('region-tiles');
+    const counts = new Map();
+    customers.forEach(c => {
+        const region = (c.region || '').trim() || '未分類';
+        counts.set(region, (counts.get(region) || 0) + 1);
+    });
+    const regions = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+
+    const allTile = `
+        <div class="region-tile${selectedRegionFilter ? '' : ' active'}" data-region="">
+            <div class="region-tile-name">全部客戶</div>
+            <div class="region-tile-count">${customers.length} 位</div>
+        </div>`;
+    const regionTiles = regions.map(([region, count]) => `
+        <div class="region-tile${selectedRegionFilter === region ? ' active' : ''}" data-region="${escapeHtml(region)}">
+            <div class="region-tile-name">${escapeHtml(region)}</div>
+            <div class="region-tile-count">${count} 位</div>
+        </div>`).join('');
+
+    container.innerHTML = allTile + regionTiles;
+
+    container.querySelectorAll('.region-tile').forEach(el => {
+        el.addEventListener('click', () => {
+            selectedRegionFilter = el.dataset.region || null;
+            setRegionInUrl(selectedRegionFilter);
+            renderRegionTiles();
+            renderCustomerOptions();
+            customerSelect.value = '';
+            customerInfo.textContent = '';
+        });
+    });
+}
+
 function renderCustomerOptions() {
+    const filtered = selectedRegionFilter
+        ? customers.filter(c => ((c.region || '').trim() || '未分類') === selectedRegionFilter)
+        : customers;
+    const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+
     customerSelect.innerHTML = '<option value="">請選擇客戶…</option>' +
-        customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        sorted.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 
     const regionList = document.getElementById('nc-region-datalist');
     const regions = [...new Set(customers.map(c => (c.region || '').trim()).filter(Boolean))]
@@ -118,6 +174,9 @@ document.getElementById('nc-save-btn').addEventListener('click', async () => {
 
     customers.push(data);
     customers.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    selectedRegionFilter = null; // 清掉篩選，確保新客戶（不管什麼區域）一定看得到
+    setRegionInUrl(null);
+    renderRegionTiles();
     renderCustomerOptions();
     customerSelect.value = data.id;
     customerSelect.dispatchEvent(new Event('change'));

@@ -134,3 +134,32 @@ table tbody tr:hover {
 .axis-chip button:hover {
     color: #dc2626;
 }
+
+.region-tile {
+    border: 2px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 10px 6px;
+    text-align: center;
+    cursor: pointer;
+    background: #fff;
+}
+
+.region-tile:hover {
+    border-color: #93c5fd;
+}
+
+.region-tile.active {
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+
+.region-tile .region-tile-name {
+    font-weight: 700;
+    font-size: 0.875rem;
+    color: #1f2937;
+}
+
+.region-tile .region-tile-count {
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
