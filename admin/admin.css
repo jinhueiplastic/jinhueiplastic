@@ -137,8 +137,8 @@ table tbody tr:hover {
 
 .region-tile {
     border: 2px solid #e5e7eb;
-    border-radius: 0.5rem;
-    padding: 10px 6px;
+    border-radius: 0.75rem;
+    padding: 24px 12px;
     text-align: center;
     cursor: pointer;
     background: #fff;
@@ -155,11 +155,41 @@ table tbody tr:hover {
 
 .region-tile .region-tile-name {
     font-weight: 700;
-    font-size: 0.875rem;
+    font-size: 1.25rem;
     color: #1f2937;
 }
 
-.region-tile .region-tile-count {
+.customer-search-results {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 20;
+}
+
+.customer-search-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.customer-search-item:last-child {
+    border-bottom: none;
+}
+
+.customer-search-item:hover {
+    background: #f9fafb;
+}
+
+.customer-search-empty {
+    padding: 8px 12px;
     font-size: 0.75rem;
     color: #9ca3af;
 }

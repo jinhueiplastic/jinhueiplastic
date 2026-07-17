@@ -15,7 +15,6 @@ let browseCategory = null; // 目前瀏覽的分類名稱；搜尋結果時為 n
 let browseItems = [];      // products 模式下要顯示的商品清單
 let browseProduct = null;  // variant 模式下選中的商品
 
-const customerSelect     = document.getElementById('customer-select');
 const newCustomerToggle  = document.getElementById('new-customer-toggle');
 const newCustomerPanel   = document.getElementById('new-customer-panel');
 const customerInfo       = document.getElementById('customer-info');
@@ -75,7 +74,7 @@ async function initPos() {
     categoryCards.forEach(c => { categoryNameById[c.catId] = c.name; });
 
     renderRegionTiles();
-    renderCustomerOptions();
+    renderRegionDatalist();
 
     cart = [];
     browseMode = 'categories';
@@ -96,27 +95,21 @@ function setRegionInUrl(region) {
 window.addEventListener('popstate', () => {
     selectedRegionFilter = new URLSearchParams(location.search).get('region') || null;
     renderRegionTiles();
-    renderCustomerOptions();
+    deselectCustomer();
 });
 
 function renderRegionTiles() {
     const container = document.getElementById('region-tiles');
-    const counts = new Map();
-    customers.forEach(c => {
-        const region = (c.region || '').trim() || '未分類';
-        counts.set(region, (counts.get(region) || 0) + 1);
-    });
-    const regions = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+    const regions = [...new Set(customers.map(c => (c.region || '').trim() || '未分類'))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
 
     const allTile = `
         <div class="region-tile${selectedRegionFilter ? '' : ' active'}" data-region="">
             <div class="region-tile-name">全部客戶</div>
-            <div class="region-tile-count">${customers.length} 位</div>
         </div>`;
-    const regionTiles = regions.map(([region, count]) => `
+    const regionTiles = regions.map(region => `
         <div class="region-tile${selectedRegionFilter === region ? ' active' : ''}" data-region="${escapeHtml(region)}">
             <div class="region-tile-name">${escapeHtml(region)}</div>
-            <div class="region-tile-count">${count} 位</div>
         </div>`).join('');
 
     container.innerHTML = allTile + regionTiles;
@@ -126,33 +119,82 @@ function renderRegionTiles() {
             selectedRegionFilter = el.dataset.region || null;
             setRegionInUrl(selectedRegionFilter);
             renderRegionTiles();
-            renderCustomerOptions();
-            customerSelect.value = '';
-            customerInfo.textContent = '';
+            deselectCustomer();
         });
     });
 }
 
-function renderCustomerOptions() {
-    const filtered = selectedRegionFilter
-        ? customers.filter(c => ((c.region || '').trim() || '未分類') === selectedRegionFilter)
-        : customers;
-    const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
-
-    customerSelect.innerHTML = '<option value="">請選擇客戶…</option>' +
-        sorted.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-
+function renderRegionDatalist() {
     const regionList = document.getElementById('nc-region-datalist');
     const regions = [...new Set(customers.map(c => (c.region || '').trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
     regionList.innerHTML = regions.map(r => `<option value="${escapeHtml(r)}">`).join('');
 }
 
-customerSelect.addEventListener('change', () => {
-    const c = customers.find(x => String(x.id) === customerSelect.value);
+// ===== 客戶搜尋（即時打字篩選，取代原本的下拉選單） =====
+let selectedCustomerId = '';
+const customerSearchInput   = document.getElementById('customer-search-input');
+const customerSearchResults = document.getElementById('customer-search-results');
+
+function customersInCurrentRegion() {
+    return selectedRegionFilter
+        ? customers.filter(c => ((c.region || '').trim() || '未分類') === selectedRegionFilter)
+        : customers;
+}
+
+function renderCustomerSearchResults(query) {
+    const q = query.trim().toLowerCase();
+    const pool = customersInCurrentRegion();
+    const matches = q
+        ? pool.filter(c => [c.name, c.phone, c.site_name].some(v => String(v || '').toLowerCase().includes(q)))
+        : pool;
+    const sorted = [...matches].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).slice(0, 30);
+
+    if (!sorted.length) {
+        customerSearchResults.innerHTML = '<div class="customer-search-empty">沒有符合的客戶</div>';
+    } else {
+        customerSearchResults.innerHTML = sorted.map(c => `
+            <div class="customer-search-item" data-id="${c.id}">
+                <div class="font-medium">${escapeHtml(c.name)}</div>
+                <div class="text-xs text-gray-400">${escapeHtml(c.phone || '')}${c.region ? '　' + escapeHtml(c.region) : ''}</div>
+            </div>`).join('');
+        customerSearchResults.querySelectorAll('.customer-search-item').forEach(el => {
+            // mousedown（而不是 click）才能搶在 input 的 blur 事件之前生效
+            el.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectCustomer(el.dataset.id);
+            });
+        });
+    }
+    customerSearchResults.classList.remove('hidden');
+}
+
+function selectCustomer(id) {
+    selectedCustomerId = id;
+    const c = customers.find(x => String(x.id) === String(id));
+    customerSearchInput.value = c ? c.name : '';
     customerInfo.textContent = c
         ? `工地：${c.site_name || '（無）'}　區域：${c.region || '（無）'}　地址：${c.address || '（無）'}　電話：${c.phone || '（無）'}`
         : '';
+    customerSearchResults.classList.add('hidden');
+}
+
+function deselectCustomer() {
+    selectedCustomerId = '';
+    customerSearchInput.value = '';
+    customerInfo.textContent = '';
+    customerSearchResults.classList.add('hidden');
+}
+
+customerSearchInput.addEventListener('input', () => {
+    selectedCustomerId = ''; // 還在打字，代表還沒真正選定
+    renderCustomerSearchResults(customerSearchInput.value);
+});
+customerSearchInput.addEventListener('focus', () => {
+    renderCustomerSearchResults(customerSearchInput.value);
+});
+customerSearchInput.addEventListener('blur', () => {
+    setTimeout(() => customerSearchResults.classList.add('hidden'), 100);
 });
 
 newCustomerToggle.addEventListener('click', () => {
@@ -177,9 +219,8 @@ document.getElementById('nc-save-btn').addEventListener('click', async () => {
     selectedRegionFilter = null; // 清掉篩選，確保新客戶（不管什麼區域）一定看得到
     setRegionInUrl(null);
     renderRegionTiles();
-    renderCustomerOptions();
-    customerSelect.value = data.id;
-    customerSelect.dispatchEvent(new Event('change'));
+    renderRegionDatalist();
+    selectCustomer(data.id);
     newCustomerPanel.classList.add('hidden');
     ['nc-name', 'nc-site-name', 'nc-region', 'nc-address', 'nc-phone'].forEach(id => { document.getElementById(id).value = ''; });
 });
@@ -535,7 +576,7 @@ function renderCart() {
 saveOrderBtn.addEventListener('click', async () => {
     resultBanner.classList.add('hidden');
 
-    const customerId = customerSelect.value;
+    const customerId = selectedCustomerId;
     if (!customerId) { alert('請先選擇客戶'); return; }
     if (!cart.length) { alert('請至少加入一項商品'); return; }
 
@@ -580,8 +621,7 @@ saveOrderBtn.addEventListener('click', async () => {
             browseMode = 'categories';
             searchInput.value = '';
             renderBrowseArea();
-            customerSelect.value = '';
-            customerInfo.textContent = '';
+            deselectCustomer();
         });
     } catch (e) {
         alert('儲存失敗：' + e.message);
