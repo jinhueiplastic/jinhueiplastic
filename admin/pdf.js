@@ -139,27 +139,37 @@ function estimateRunSheetEntryHeight(entry) {
     return 50 /* 客戶/工地 + 電話 兩行 */ + itemCount * 44 /* 每個品項：圖片+名稱+規格 一行、數量一行 */ + 16 /* 分隔線 */;
 }
 
-// 每一欄用「剩下的訂單／剩下的欄數」動態算目標高度（不是一開始就把總高度硬性除以 3），
-// 這樣不管訂單筆數多少、每筆大小差多少，前面的欄位分配比較不會被單一筆特別大的訂單打亂，
-// 後面幾欄還是能拿到接近平均的份量。每一欄至少會有一筆，不會有欄位是空的（除非訂單總數比欄數少）。
-function distributeEntriesIntoColumns(entries, columnCount) {
+// A4 一頁在這個排版裡的實際可用高度（跟 buildRunSheetHtml 的 794px 容器寬度、28px 內距、
+// 標題的估計高度對應），用來當作每一欄真正能裝多少內容的容量，而不是拿總高度硬性除以 3。
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+const RUN_SHEET_CONTAINER_WIDTH_PX = 794; // 對應 A4_WIDTH_MM
+const RUN_SHEET_PADDING_PX = 28; // 上下各一份
+const RUN_SHEET_TITLE_HEIGHT_PX = 44;
+
+function runSheetColumnCapacityPx(hasTitle) {
+    const pxPerMm = RUN_SHEET_CONTAINER_WIDTH_PX / A4_WIDTH_MM;
+    const pageHeightPx = A4_HEIGHT_MM * pxPerMm;
+    return pageHeightPx - RUN_SHEET_PADDING_PX * 2 - (hasTitle ? RUN_SHEET_TITLE_HEIGHT_PX : 0);
+}
+
+// 由上至下把第一欄「真正填滿」（用一頁實際能放的高度當容量）才換下一欄，不是不管內容多少
+// 都硬性分成三等份——訂單筆數少、或者一欄裝得下的話，後面的欄位就會是空的。
+function distributeEntriesIntoColumns(entries, columnCount, columnCapacityPx) {
     const heights = entries.map(estimateRunSheetEntryHeight);
     const columns = Array.from({ length: columnCount }, () => []);
 
-    let idx = 0;
-    for (let col = 0; col < columnCount && idx < entries.length; col++) {
-        const remainingCols = columnCount - col;
-        const remainingHeight = heights.slice(idx).reduce((a, b) => a + b, 0);
-        const target = remainingHeight / remainingCols;
-
-        let colHeight = 0;
-        while (idx < entries.length) {
-            if (col < columnCount - 1 && colHeight > 0 && colHeight >= target) break;
-            columns[col].push(entries[idx]);
-            colHeight += heights[idx];
-            idx++;
+    let col = 0;
+    let colHeight = 0;
+    entries.forEach((entry, i) => {
+        const h = heights[i];
+        if (col < columnCount - 1 && colHeight > 0 && colHeight + h > columnCapacityPx) {
+            col++;
+            colHeight = 0;
         }
-    }
+        columns[col].push(entry);
+        colHeight += h;
+    });
     return columns;
 }
 
@@ -198,7 +208,7 @@ function buildRunSheetHtml(entries, title) {
         + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
         + 'font-size:14px;font-weight:700;line-height:1.5;';
 
-    const columns = distributeEntriesIntoColumns(entries, 3);
+    const columns = distributeEntriesIntoColumns(entries, 3, runSheetColumnCapacityPx(Boolean(title)));
     const columnsHtml = columns.map(col => `
         <div style="flex:1;min-width:0;">${col.map(runSheetEntryHtml).join('')}</div>
     `).join('');
