@@ -16,11 +16,18 @@ async function loadRegions() {
 }
 
 // 跟 POS 下單頁一樣的區域按鈕（.region-tile），選好之後直接套用篩選。
+// selectedRegion 用 null 代表「還沒選」，空字串 '' 代表「全部」按鈕（跟還沒選是兩回事）。
 function renderRegionTiles() {
-    regionTilesEl.innerHTML = allRegions.map(region => `
+    const allTile = `
+        <div class="region-tile${selectedRegion === '' ? ' active' : ''}" data-region="">
+            <div class="region-tile-name">全部</div>
+        </div>`;
+    const regionTiles = allRegions.map(region => `
         <div class="region-tile${selectedRegion === region ? ' active' : ''}" data-region="${escapeHtml(region)}">
             <div class="region-tile-name">${escapeHtml(region)}</div>
         </div>`).join('');
+
+    regionTilesEl.innerHTML = allTile + regionTiles;
 
     regionTilesEl.querySelectorAll('.region-tile').forEach(el => {
         el.addEventListener('click', () => {
@@ -88,11 +95,7 @@ function fillTodayAsMinguo(yyyId, mmId, ddId) {
 }
 
 function applyFilter() {
-    const region = selectedRegion;
-    const dateFrom = minguoFieldsToIsoDate('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
-    const dateTo = minguoFieldsToIsoDate('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
-
-    if (!region) {
+    if (selectedRegion === null) {
         matchedOrders = [];
         statusMsg.textContent = '請先選擇區域';
         generateBtn.disabled = true;
@@ -100,16 +103,21 @@ function applyFilter() {
         return;
     }
 
+    const region = selectedRegion; // '' 代表全部，不篩選區域
+    const dateFrom = minguoFieldsToIsoDate('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
+    const dateTo = minguoFieldsToIsoDate('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
+
     matchedOrders = allOrders.filter(o => {
         const c = o.customers;
-        if (!c || (c.region || '').trim() !== region) return false;
+        if (region && (!c || (c.region || '').trim() !== region)) return false;
         const orderDate = o.created_at ? o.created_at.slice(0, 10) : '';
         if (dateFrom && orderDate < dateFrom) return false;
         if (dateTo && orderDate > dateTo) return false;
         return true;
     });
 
-    statusMsg.textContent = `${region}：共 ${matchedOrders.length} 筆訂單`;
+    const label = region || '全部區域';
+    statusMsg.textContent = `${label}：共 ${matchedOrders.length} 筆訂單`;
     generateBtn.disabled = matchedOrders.length === 0;
     renderResults(matchedOrders);
 }
@@ -128,7 +136,8 @@ generateBtn.addEventListener('click', async () => {
             items: o.order_items || [],
         }));
         const today = new Date().toISOString().slice(0, 10);
-        await generateCombinedOrdersPdf(entries, `區域出貨單-${selectedRegion}-${today}.pdf`);
+        const label = selectedRegion || '全部區域';
+        await generateCombinedOrdersPdf(entries, `區域出貨單-${label}-${today}.pdf`);
     } catch (e) {
         alert('產生 PDF 失敗：' + e.message);
     } finally {
