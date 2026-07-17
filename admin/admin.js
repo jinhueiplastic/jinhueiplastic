@@ -838,15 +838,21 @@ async function saveVariantChanges() {
     }
 }
 
+let leavingConfirmed = false; // 點導覽列時已經跳過一次自訂確認了，避免瀏覽器 beforeunload 再跳第二次
+
 document.querySelectorAll('.admin-nav-link').forEach(link => {
     link.addEventListener('click', (e) => {
-        if (modalDirty && !confirm('您有尚未儲存的修改，確定要離開嗎？')) {
-            e.preventDefault();
+        if (modalDirty) {
+            if (confirm('您有尚未儲存的修改，確定要離開嗎？')) {
+                leavingConfirmed = true;
+            } else {
+                e.preventDefault();
+            }
         }
     });
 });
 window.addEventListener('beforeunload', (e) => {
-    if (modalDirty) {
+    if (modalDirty && !leavingConfirmed) {
         e.preventDefault();
         e.returnValue = '';
     }

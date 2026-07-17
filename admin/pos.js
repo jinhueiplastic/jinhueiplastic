@@ -86,19 +86,26 @@ async function initPos() {
 
 // 購物車裡還有東西時，離開這頁（點導覽列、關分頁、重新整理、打網址列）都先提醒一下，
 // 避免手滑放棄一張還沒儲存的訂單。
+let leavingConfirmed = false; // 點導覽列時已經跳過一次自訂確認了，避免瀏覽器 beforeunload 再跳第二次
+
 function setupLeaveGuards() {
     document.querySelectorAll('.admin-nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
-            if (cart.length > 0 && !confirm('目前還有已選購但尚未儲存的商品，離開這頁會放棄這張訂單，確定要離開嗎？')) {
-                e.preventDefault();
+            if (cart.length > 0) {
+                if (confirm('目前還有已選購但尚未儲存的商品，離開這頁會放棄這張訂單，確定要離開嗎？')) {
+                    leavingConfirmed = true;
+                } else {
+                    e.preventDefault();
+                }
             }
         });
     });
 
     // 關分頁/重新整理/直接改網址這幾種瀏覽器沒辦法讓我們自訂文字，
     // 只會跳出瀏覽器自己那句制式提示，但至少會攔下來讓使用者確認一次。
+    // 如果是點導覽列且已經確認過（leavingConfirmed），這裡就不用再問一次。
     window.addEventListener('beforeunload', (e) => {
-        if (cart.length > 0) {
+        if (cart.length > 0 && !leavingConfirmed) {
             e.preventDefault();
             e.returnValue = '';
         }
