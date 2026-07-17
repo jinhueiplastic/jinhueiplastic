@@ -816,6 +816,83 @@ document.querySelectorAll('.add-axis-btn').forEach(btn => {
     });
 });
 
+// 「中文說明」欄位裡的規格表格（規格表格編輯工具那個表格）是另一份資料，
+// 跟這裡的 POS 選項（pos_item_variants）完全分開存放，所以不會自動同步。
+// 這個匯入功能是照「POS 下單」頁同一套判斷規則（表頭含「孔／徑」＝孔徑、含「色」＝顏色、其他＝規格），
+// 把表格裡已經有的值當作候選匯入成本地暫存的軸選項，一樣要按主表單「儲存」才會真正寫入。
+function parseAllVariantTables(text) {
+    const lines = String(text || '').split('\n');
+    const tables = [];
+    const cellsOf = line => line.trim().split('|').map(c => c.trim()).filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i].trim();
+        if (line.startsWith('|') && line.includes('|')) {
+            const start = i;
+            let end = i;
+            while (end + 1 < lines.length && lines[end + 1].trim().startsWith('|')) end++;
+            const blockLines = lines.slice(start, end + 1);
+            const headers = cellsOf(blockLines[0]);
+            const dataLines = blockLines.slice(1).filter(l => !/^[|:\s-]+$/.test(l.trim()));
+            tables.push({ headers, rows: dataLines.map(cellsOf) });
+            i = end + 1;
+        } else {
+            i++;
+        }
+    }
+    return tables;
+}
+
+function classifyOptionsFromDesc(text) {
+    const result = { spec: [], bore: [], color: [] };
+    parseAllVariantTables(text).forEach(t => {
+        const headerText = t.headers.join('');
+        const values = [...new Set(t.rows.map(r => r[0]).filter(Boolean))];
+        if (!values.length) return;
+        if (/孔|徑/.test(headerText)) result.bore.push(...values);
+        else if (/色/.test(headerText)) result.color.push(...values);
+        else result.spec.push(...values);
+    });
+    return result;
+}
+
+document.getElementById('import-variant-from-desc-btn').addEventListener('click', () => {
+    if (!currentVariantErp) { alert('請先儲存商品，才能匯入規格選項。'); return; }
+
+    const descTextarea = formFields.querySelector('textarea[data-key="desc_zh"]');
+    const classified = classifyOptionsFromDesc(descTextarea ? descTextarea.value : '');
+
+    let addedCount = 0;
+    ['spec', 'bore', 'color'].forEach(type => {
+        const { axisOptions } = categorizeVariantRows(localVariantRows);
+        const existing = new Set(axisOptions[type].map(r => r.spec || r.bore || r.color));
+        const values = [...new Set(classified[type].flatMap(v => splitBulkValues(v)))];
+
+        values.filter(v => !existing.has(v)).forEach(v => {
+            localVariantRows.push({
+                tempId: ++variantTempCounter,
+                id: null,
+                erp_code: currentVariantErp,
+                spec: type === 'spec' ? v : '',
+                bore: type === 'bore' ? v : '',
+                color: type === 'color' ? v : '',
+                image_url: null,
+                sort_order: 0,
+            });
+            addedCount++;
+        });
+    });
+
+    if (!addedCount) {
+        alert('說明表格裡沒有找到新的規格/孔徑/顏色值（或都已經是現有選項了）。');
+        return;
+    }
+
+    modalDirty = true;
+    renderVariantSection();
+    alert(`已匯入 ${addedCount} 個選項，記得按最下面「儲存」才會真正生效。`);
+});
+
 // 主表單按下「儲存」時才真正把本地暫存的規格選項／組合照片異動寫回 Supabase。
 async function saveVariantChanges() {
     if (deletedVariantIds.length) {
