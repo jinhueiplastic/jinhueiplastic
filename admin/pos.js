@@ -373,30 +373,26 @@ function renderProductGridHtml(items) {
 const VARIANT_LABELS = { spec: '規格', bore: '孔徑', color: '顏色' };
 
 // 規格/孔徑/顏色選項統一只看 pos_item_variants（跟「修改 POS 商品」編輯頁同一份資料）：
-// 有選項就畫成可以直接點的按鈕；完全沒有的話才退回純打字（不再從商品說明表格生建議清單，
-// 那是另一份資料，兩邊本來就不該各自顯示不同的東西）。
+// 有選項的話畫成可以直接點的按鈕，下面一律都留一個打字輸入框，可以輸入清單以外的值
+// （選了按鈕又打字，以打字的為準；打字後按鈕會自動取消選取，避免兩邊同時生效搞不清楚）。
 function variantFieldHtml(type, product) {
     const options = (variantOptionsByErp[product.erp_code] && variantOptionsByErp[product.erp_code][type]) || [];
     const label = VARIANT_LABELS[type];
 
-    if (options.length) {
-        return `
-            <div>
-                <label class="field-label">${label}</label>
-                <div class="flex flex-wrap gap-2">
-                    ${options.map(o => `
-                        <button type="button" class="variant-tile" data-type="${type}" data-value="${escapeHtml(o.value)}">
-                            ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
-                            <span>${escapeHtml(o.value)}</span>
-                        </button>`).join('')}
-                </div>
-            </div>`;
-    }
+    const tilesHtml = options.length ? `
+        <div class="flex flex-wrap gap-2 mb-2">
+            ${options.map(o => `
+                <button type="button" class="variant-tile" data-type="${type}" data-value="${escapeHtml(o.value)}">
+                    ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
+                    <span>${escapeHtml(o.value)}</span>
+                </button>`).join('')}
+        </div>` : '';
 
     return `
         <div>
             <label class="field-label">${label}</label>
-            <input type="text" id="variant-${type}-text" class="field-input" placeholder="尚無選項，可直接輸入">
+            ${tilesHtml}
+            <input type="text" id="variant-${type}-text" class="field-input" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
         </div>`;
 }
 
@@ -545,7 +541,16 @@ function wireVariantPicker(p) {
 
     ['spec', 'bore', 'color'].forEach(type => {
         const textEl = document.getElementById(`variant-${type}-text`);
-        if (textEl) textEl.addEventListener('input', () => updateVariantPreviewImage(p));
+        if (textEl) {
+            textEl.addEventListener('input', () => {
+                // 打字的話以打字為準，把按鈕選取取消，避免兩邊同時生效搞不清楚是哪個。
+                if (textEl.value.trim() && selectedVariant[type]) {
+                    selectedVariant[type] = '';
+                    document.querySelectorAll(`.variant-tile[data-type="${type}"]`).forEach(b => b.classList.remove('selected'));
+                }
+                updateVariantPreviewImage(p);
+            });
+        }
     });
 
     document.querySelectorAll('.variant-tile').forEach(btn => {
@@ -556,6 +561,9 @@ function wireVariantPicker(p) {
             document.querySelectorAll(`.variant-tile[data-type="${type}"]`).forEach(b => {
                 b.classList.toggle('selected', b.dataset.value === selectedVariant[type]);
             });
+            // 點按鈕的話清掉打字框，避免畫面上同時顯示兩個不同的值。
+            const textEl = document.getElementById(`variant-${type}-text`);
+            if (textEl) textEl.value = '';
             updateVariantPreviewImage(p);
         });
     });
