@@ -136,25 +136,30 @@ async function generateOrderPdf(order, customer, items) {
 function estimateRunSheetEntryHeight(entry) {
     const items = entry.items || [];
     const itemCount = Math.max(items.length, 1);
-    return 40 /* 客戶/工地 + 電話 兩行 */ + itemCount * 34 /* 每個品項：圖片+名稱+規格 一行、數量一行 */ + 14 /* 分隔線 */;
+    return 50 /* 客戶/工地 + 電話 兩行 */ + itemCount * 44 /* 每個品項：圖片+名稱+規格 一行、數量一行 */ + 16 /* 分隔線 */;
 }
 
+// 每一欄用「剩下的訂單／剩下的欄數」動態算目標高度（不是一開始就把總高度硬性除以 3），
+// 這樣不管訂單筆數多少、每筆大小差多少，前面的欄位分配比較不會被單一筆特別大的訂單打亂，
+// 後面幾欄還是能拿到接近平均的份量。每一欄至少會有一筆，不會有欄位是空的（除非訂單總數比欄數少）。
 function distributeEntriesIntoColumns(entries, columnCount) {
     const heights = entries.map(estimateRunSheetEntryHeight);
-    const totalHeight = heights.reduce((a, b) => a + b, 0);
-    const target = totalHeight / columnCount;
-
     const columns = Array.from({ length: columnCount }, () => []);
-    let colIndex = 0;
-    let colHeight = 0;
-    entries.forEach((entry, i) => {
-        if (colIndex < columnCount - 1 && colHeight >= target) {
-            colIndex++;
-            colHeight = 0;
+
+    let idx = 0;
+    for (let col = 0; col < columnCount && idx < entries.length; col++) {
+        const remainingCols = columnCount - col;
+        const remainingHeight = heights.slice(idx).reduce((a, b) => a + b, 0);
+        const target = remainingHeight / remainingCols;
+
+        let colHeight = 0;
+        while (idx < entries.length) {
+            if (col < columnCount - 1 && colHeight > 0 && colHeight >= target) break;
+            columns[col].push(entries[idx]);
+            colHeight += heights[idx];
+            idx++;
         }
-        columns[colIndex].push(entry);
-        colHeight += heights[i];
-    });
+    }
     return columns;
 }
 
@@ -169,21 +174,21 @@ function runSheetEntryHtml(entry) {
             ? ('/api/image-proxy?url=' + encodeURIComponent(item.product_image_url))
             : '';
         return `
-            <div style="display:flex;align-items:center;gap:4px;margin-top:3px;">
+            <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-weight:700;">
                 ${imgSrc
-                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:20px;height:20px;object-fit:cover;border-radius:3px;flex-shrink:0;">`
-                    : `<div style="width:20px;height:20px;background:#f3f4f6;border-radius:3px;flex-shrink:0;"></div>`}
+                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:24px;height:24px;object-fit:cover;border-radius:3px;flex-shrink:0;">`
+                    : `<div style="width:24px;height:24px;background:#f3f4f6;border-radius:3px;flex-shrink:0;"></div>`}
                 <div style="flex:1;min-width:0;overflow-wrap:break-word;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}${variant ? '　' + escapeHtml(variant) : ''}</div>
             </div>
-            <div style="padding-left:24px;color:#374151;">數量：${escapeHtml(String(item.quantity))}</div>`;
+            <div style="padding-left:29px;font-weight:700;">數量：${escapeHtml(String(item.quantity))}</div>`;
     }).join('');
 
     return `
-        <div style="margin-bottom:8px;">
-            <div style="font-weight:700;">${escapeHtml(nameLine || '（未知客戶）')}</div>
+        <div style="margin-bottom:10px;font-weight:700;">
+            <div>${escapeHtml(nameLine || '（未知客戶）')}</div>
             <div>${escapeHtml(c.phone || '')}</div>
             ${itemsHtml}
-            <div style="border-top:1px dashed #9ca3af;margin-top:6px;"></div>
+            <div style="border-top:2px dashed #6b7280;margin-top:7px;"></div>
         </div>`;
 }
 
@@ -191,7 +196,7 @@ function buildRunSheetHtml(entries, title) {
     const container = document.createElement('div');
     container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:28px;'
         + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
-        + 'font-size:11px;line-height:1.5;';
+        + 'font-size:14px;font-weight:700;line-height:1.5;';
 
     const columns = distributeEntriesIntoColumns(entries, 3);
     const columnsHtml = columns.map(col => `
@@ -199,7 +204,7 @@ function buildRunSheetHtml(entries, title) {
     `).join('');
 
     container.innerHTML = `
-        ${title ? `<h1 style="font-size:16px;font-weight:700;margin:0 0 10px;">${escapeHtml(title)}</h1>` : ''}
+        ${title ? `<h1 style="font-size:22px;font-weight:700;margin:0 0 12px;">${escapeHtml(title)}</h1>` : ''}
         <div style="display:flex;gap:14px;align-items:flex-start;">${columnsHtml}</div>
     `;
     return container;
