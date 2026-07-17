@@ -634,23 +634,71 @@ function renderVariantSection() {
             const rawValue = r.spec || r.bore || r.color;
             const splitCount = splitBulkValues(rawValue).length;
             return `
-            <span class="axis-chip">
-                ${escapeHtml(rawValue)}
-                ${splitCount > 1 ? `<button type="button" data-temp-id="${r.tempId}" class="axis-chip-split" title="分割成 ${splitCount} 個選項">⇥</button>` : ''}
-                <button type="button" data-temp-id="${r.tempId}" class="axis-chip-del">×</button>
-            </span>`;
+            <div class="flex items-center gap-3 border rounded-lg p-2" data-temp-id="${r.tempId}">
+                <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
+                <div class="flex-1 text-sm">${escapeHtml(rawValue)}</div>
+                <span class="axis-upload-status text-xs text-gray-400"></span>
+                <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
+                    上傳圖片
+                    <input type="file" accept="image/*" class="hidden axis-upload-input">
+                </label>
+                ${r.image_url ? `<button type="button" class="axis-image-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
+                ${splitCount > 1 ? `<button type="button" class="axis-chip-split px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="分割成 ${splitCount} 個選項">⇥ 分割</button>` : ''}
+                <button type="button" class="axis-chip-del px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap" title="刪除選項">刪除</button>
+            </div>`;
         }).join('');
 
         chipsEl.querySelectorAll('.axis-chip-del').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (!confirm('確定要刪除這個選項嗎？')) return;
-                removeVariantRow(Number(btn.dataset.tempId));
+                removeVariantRow(Number(btn.closest('[data-temp-id]').dataset.tempId));
             });
         });
 
         chipsEl.querySelectorAll('.axis-chip-split').forEach(btn => {
             btn.addEventListener('click', () => {
-                splitVariantRow(type, Number(btn.dataset.tempId));
+                splitVariantRow(type, Number(btn.closest('[data-temp-id]').dataset.tempId));
+            });
+        });
+
+        chipsEl.querySelectorAll('.axis-image-remove-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
+                if (!confirm('確定要移除這個選項的圖片嗎？')) return;
+                const row = localVariantRows.find(r => r.tempId === tempId);
+                if (!row) return;
+                row.image_url = null;
+                modalDirty = true;
+                renderVariantSection();
+            });
+        });
+
+        chipsEl.querySelectorAll('.axis-upload-input').forEach(input => {
+            input.addEventListener('change', async () => {
+                const file = input.files[0];
+                if (!file) return;
+
+                const rowEl = input.closest('[data-temp-id]');
+                const tempId = Number(rowEl.dataset.tempId);
+                const row = localVariantRows.find(r => r.tempId === tempId);
+                if (!row) return;
+
+                const thumbImg = rowEl.querySelector('.axis-option-thumb');
+                const statusEl = rowEl.querySelector('.axis-upload-status');
+                statusEl.textContent = '上傳中…';
+                try {
+                    const url = await uploadImageToCloudinary(file);
+                    row.image_url = url;
+                    modalDirty = true;
+                    thumbImg.src = url;
+                    statusEl.textContent = '';
+                    renderVariantSection();
+                } catch (e) {
+                    statusEl.textContent = '';
+                    alert('上傳失敗：' + e.message);
+                } finally {
+                    input.value = '';
+                }
             });
         });
     });

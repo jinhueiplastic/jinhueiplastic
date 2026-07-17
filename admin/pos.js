@@ -478,8 +478,25 @@ function findComboImage(erp, spec, bore, color) {
     return (comboImagesByErp[erp] && comboImagesByErp[erp][key]) || '';
 }
 
+// 有確切組合（2 種以上軸）的實際照片就優先用那張；只選了一種軸的話，
+// 退回用那個選項自己的照片（規格/孔徑/顏色選項本身也各自能上傳照片）；都沒有才用商品的一般照片。
 function currentComboImage(p) {
-    return findComboImage(p.erp_code, currentVariantValue('spec'), currentVariantValue('bore'), currentVariantValue('color')) || thumbOf(p);
+    const spec = currentVariantValue('spec');
+    const bore = currentVariantValue('bore');
+    const color = currentVariantValue('color');
+
+    const comboImage = findComboImage(p.erp_code, spec, bore, color);
+    if (comboImage) return comboImage;
+
+    const filled = [spec, bore, color].filter(Boolean);
+    if (filled.length === 1) {
+        const type = spec ? 'spec' : (bore ? 'bore' : 'color');
+        const options = (variantOptionsByErp[p.erp_code] && variantOptionsByErp[p.erp_code][type]) || [];
+        const match = options.find(o => o.value === filled[0]);
+        if (match && match.image_url) return match.image_url;
+    }
+
+    return thumbOf(p);
 }
 
 function updateVariantPreviewImage(p) {

@@ -115,30 +115,6 @@ table tbody tr:hover {
     text-align: center;
 }
 
-.axis-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 9999px;
-    background: #eff6ff;
-    color: #1e40af;
-    font-size: 0.75rem;
-}
-
-.axis-chip button {
-    color: #93c5fd;
-    line-height: 1;
-}
-
-.axis-chip button:hover {
-    color: #dc2626;
-}
-
-.axis-chip-split:hover {
-    color: #2563eb;
-}
-
 .region-tile {
     border: 2px solid #e5e7eb;
     border-radius: 0.75rem;

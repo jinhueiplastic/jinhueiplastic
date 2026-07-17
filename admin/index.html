@@ -94,7 +94,7 @@
                                 <input type="text" id="axis-spec-input" class="field-input" placeholder="1/2/3">
                                 <button type="button" data-type="spec" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
                             </div>
-                            <div id="axis-spec-chips" class="flex flex-wrap gap-1 mt-1"></div>
+                            <div id="axis-spec-chips" class="space-y-1 mt-1"></div>
                         </div>
                         <div>
                             <label class="field-label">孔徑（用 / 分隔，例如 1"/2"/3"）</label>
@@ -102,7 +102,7 @@
                                 <input type="text" id="axis-bore-input" class="field-input" placeholder="1&quot;/2&quot;/3&quot;">
                                 <button type="button" data-type="bore" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
                             </div>
-                            <div id="axis-bore-chips" class="flex flex-wrap gap-1 mt-1"></div>
+                            <div id="axis-bore-chips" class="space-y-1 mt-1"></div>
                         </div>
                         <div>
                             <label class="field-label">顏色（用 / 分隔，例如 黑/白）</label>
@@ -110,11 +110,13 @@
                                 <input type="text" id="axis-color-input" class="field-input" placeholder="黑/白">
                                 <button type="button" data-type="color" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
                             </div>
-                            <div id="axis-color-chips" class="flex flex-wrap gap-1 mt-1"></div>
+                            <div id="axis-color-chips" class="space-y-1 mt-1"></div>
                         </div>
                     </div>
 
-                    <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">組合照片（至少兩種軸都有選項才會列出來）</h4>
+                    <p class="text-xs text-gray-400 mt-1">每個規格/孔徑/顏色選項可以各自上傳圖片（上面每一列右邊的「上傳圖片」）。</p>
+
+                    <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">組合照片（同一個確切組合有自己的實際照片時才需要，至少要兩種軸都有選項才會列出來）</h4>
                     <div id="variant-combo-list" class="space-y-2"></div>
                 </div>
 
