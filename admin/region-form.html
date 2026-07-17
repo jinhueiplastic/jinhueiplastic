@@ -57,12 +57,24 @@
                     <select id="region-select" class="field-input"></select>
                 </div>
                 <div>
-                    <label class="field-label">起</label>
-                    <input type="date" id="q-date-from" class="field-input">
+                    <label class="field-label">起（民國年/月/日）</label>
+                    <div class="flex gap-1 items-center">
+                        <input type="number" id="q-date-from-yyy" class="field-input" style="width:4.5rem" placeholder="YYY" min="1">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-from-mm" class="field-input" style="width:3.5rem" placeholder="MM" min="1" max="12">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-from-dd" class="field-input" style="width:3.5rem" placeholder="DD" min="1" max="31">
+                    </div>
                 </div>
                 <div>
-                    <label class="field-label">迄</label>
-                    <input type="date" id="q-date-to" class="field-input">
+                    <label class="field-label">迄（民國年/月/日）</label>
+                    <div class="flex gap-1 items-center">
+                        <input type="number" id="q-date-to-yyy" class="field-input" style="width:4.5rem" placeholder="YYY" min="1">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-to-mm" class="field-input" style="width:3.5rem" placeholder="MM" min="1" max="12">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-to-dd" class="field-input" style="width:3.5rem" placeholder="DD" min="1" max="31">
+                    </div>
                 </div>
                 <button type="button" id="search-btn" class="px-4 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">
                     查詢

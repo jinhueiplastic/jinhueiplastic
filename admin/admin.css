@@ -193,3 +193,23 @@ table tbody tr:hover {
     font-size: 0.75rem;
     color: #9ca3af;
 }
+
+.region-filter-btn {
+    padding: 6px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 9999px;
+    font-size: 0.8125rem;
+    background: #fff;
+    color: #374151;
+    cursor: pointer;
+}
+
+.region-filter-btn:hover {
+    border-color: #93c5fd;
+}
+
+.region-filter-btn.active {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+}

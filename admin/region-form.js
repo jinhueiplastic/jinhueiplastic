@@ -54,10 +54,27 @@ function renderResults(orders) {
     }).join('');
 }
 
+// 民國年/月/日轉西元 'YYYY-MM-DD'，任一欄空白或不是數字就回傳 null（代表這個界限不設限）。
+function minguoFieldsToIsoDate(yyyId, mmId, ddId) {
+    const yyy = Number(document.getElementById(yyyId).value);
+    const mm  = Number(document.getElementById(mmId).value);
+    const dd  = Number(document.getElementById(ddId).value);
+    if (!yyy || !mm || !dd) return null;
+    const gregorianYear = yyy + 1911;
+    return `${gregorianYear}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+function fillTodayAsMinguo(yyyId, mmId, ddId) {
+    const today = new Date();
+    document.getElementById(yyyId).value = today.getFullYear() - 1911;
+    document.getElementById(mmId).value = today.getMonth() + 1;
+    document.getElementById(ddId).value = today.getDate();
+}
+
 function applyFilter() {
     const region = regionSelect.value;
-    const dateFrom = document.getElementById('q-date-from').value;
-    const dateTo = document.getElementById('q-date-to').value;
+    const dateFrom = minguoFieldsToIsoDate('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
+    const dateTo = minguoFieldsToIsoDate('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
 
     if (!region) {
         matchedOrders = [];
@@ -106,6 +123,9 @@ generateBtn.addEventListener('click', async () => {
 });
 
 async function initRegionForm() {
+    fillTodayAsMinguo('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
+    fillTodayAsMinguo('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
+
     statusMsg.textContent = '載入中…';
     await Promise.all([loadRegions(), loadOrders()]);
     statusMsg.textContent = '請先選擇區域';

@@ -1,4 +1,6 @@
 let allOrders = [];
+let allCustomersForFilter = [];
+let selectedRegionFilter = null; // null = 全部
 
 const statusMsg         = document.getElementById('status-msg');
 const resultsContainer  = document.getElementById('results-container');
@@ -12,6 +14,32 @@ function renderCustomerDatalist(customers) {
     dl.innerHTML = byName + byPhone;
 }
 
+function renderRegionFilterTiles() {
+    const container = document.getElementById('region-filter-tiles');
+    if (!container) return;
+    const regions = [...new Set(allCustomersForFilter.map(c => (c.region || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+    const allBtn = `
+        <button type="button" class="region-filter-btn${selectedRegionFilter ? '' : ' active'}" data-region="">
+            全部
+        </button>`;
+    const regionBtns = regions.map(r => `
+        <button type="button" class="region-filter-btn${selectedRegionFilter === r ? ' active' : ''}" data-region="${escapeHtml(r)}">
+            ${escapeHtml(r)}
+        </button>`).join('');
+
+    container.innerHTML = allBtn + regionBtns;
+
+    container.querySelectorAll('.region-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectedRegionFilter = btn.dataset.region || null;
+            renderRegionFilterTiles();
+            applyFilters();
+        });
+    });
+}
+
 async function loadOrders() {
     statusMsg.textContent = '載入訂單中…';
 
@@ -20,7 +48,7 @@ async function loadOrders() {
             .select('*, customers(name,phone,address,site_name,region), order_items(*)')
             .order('created_at', { ascending: false })
             .limit(500),
-        sb.from('customers').select('name,phone').order('name', { ascending: true }),
+        sb.from('customers').select('name,phone,region').order('name', { ascending: true }),
     ]);
 
     if (error) {
@@ -30,7 +58,9 @@ async function loadOrders() {
     }
     if (customerError) console.error(customerError);
 
-    renderCustomerDatalist(customerData || []);
+    allCustomersForFilter = customerData || [];
+    renderCustomerDatalist(allCustomersForFilter);
+    renderRegionFilterTiles();
 
     allOrders = data || [];
     statusMsg.textContent = `共 ${allOrders.length} 筆訂單（最多顯示近 500 筆）`;
@@ -96,7 +126,7 @@ function renderResults(orders) {
     });
 }
 
-document.getElementById('search-btn').addEventListener('click', () => {
+function applyFilters() {
     const orderNo   = document.getElementById('q-order-no').value.trim().toLowerCase();
     const customerQ = document.getElementById('q-customer').value.trim().toLowerCase();
     const productQ  = document.getElementById('q-product').value.trim().toLowerCase();
@@ -105,6 +135,10 @@ document.getElementById('search-btn').addEventListener('click', () => {
 
     const filtered = allOrders.filter(o => {
         if (orderNo && !String(o.order_no || '').toLowerCase().includes(orderNo)) return false;
+
+        if (selectedRegionFilter && (o.customers && o.customers.region || '').trim() !== selectedRegionFilter) {
+            return false;
+        }
 
         if (customerQ) {
             const name = String(o.customers && o.customers.name || '').toLowerCase();
@@ -129,12 +163,16 @@ document.getElementById('search-btn').addEventListener('click', () => {
     });
 
     renderResults(filtered);
-});
+}
+
+document.getElementById('search-btn').addEventListener('click', applyFilters);
 
 document.getElementById('reset-btn').addEventListener('click', () => {
     ['q-order-no', 'q-customer', 'q-product', 'q-date-from', 'q-date-to'].forEach(id => {
         document.getElementById(id).value = '';
     });
+    selectedRegionFilter = null;
+    renderRegionFilterTiles();
     renderResults(allOrders);
 });
 
