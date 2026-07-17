@@ -1,18 +1,34 @@
 let allOrders = [];
 let matchedOrders = [];
+let allRegions = [];
+let selectedRegion = null;
 
 const statusMsg        = document.getElementById('status-msg');
 const resultsContainer = document.getElementById('results-container');
-const regionSelect     = document.getElementById('region-select');
+const regionTilesEl    = document.getElementById('region-tiles');
 const generateBtn      = document.getElementById('generate-btn');
 
 async function loadRegions() {
     const { data, error } = await sb.from('customers').select('region');
     if (error) { console.error(error); return; }
-    const regions = [...new Set((data || []).map(c => (c.region || '').trim()).filter(Boolean))]
+    allRegions = [...new Set((data || []).map(c => (c.region || '').trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-    regionSelect.innerHTML = '<option value="">請選擇區域…</option>' +
-        regions.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+}
+
+// 跟 POS 下單頁一樣的區域按鈕（.region-tile），選好之後直接套用篩選。
+function renderRegionTiles() {
+    regionTilesEl.innerHTML = allRegions.map(region => `
+        <div class="region-tile${selectedRegion === region ? ' active' : ''}" data-region="${escapeHtml(region)}">
+            <div class="region-tile-name">${escapeHtml(region)}</div>
+        </div>`).join('');
+
+    regionTilesEl.querySelectorAll('.region-tile').forEach(el => {
+        el.addEventListener('click', () => {
+            selectedRegion = el.dataset.region;
+            renderRegionTiles();
+            applyFilter();
+        });
+    });
 }
 
 async function loadOrders() {
@@ -72,7 +88,7 @@ function fillTodayAsMinguo(yyyId, mmId, ddId) {
 }
 
 function applyFilter() {
-    const region = regionSelect.value;
+    const region = selectedRegion;
     const dateFrom = minguoFieldsToIsoDate('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
     const dateTo = minguoFieldsToIsoDate('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
 
@@ -99,7 +115,6 @@ function applyFilter() {
 }
 
 document.getElementById('search-btn').addEventListener('click', applyFilter);
-regionSelect.addEventListener('change', applyFilter);
 
 generateBtn.addEventListener('click', async () => {
     if (!matchedOrders.length) return;
@@ -113,7 +128,7 @@ generateBtn.addEventListener('click', async () => {
             items: o.order_items || [],
         }));
         const today = new Date().toISOString().slice(0, 10);
-        await generateCombinedOrdersPdf(entries, `區域出貨單-${regionSelect.value}-${today}.pdf`);
+        await generateCombinedOrdersPdf(entries, `區域出貨單-${selectedRegion}-${today}.pdf`);
     } catch (e) {
         alert('產生 PDF 失敗：' + e.message);
     } finally {
@@ -128,6 +143,7 @@ async function initRegionForm() {
 
     statusMsg.textContent = '載入中…';
     await Promise.all([loadRegions(), loadOrders()]);
+    renderRegionTiles();
     statusMsg.textContent = '請先選擇區域';
 }
 

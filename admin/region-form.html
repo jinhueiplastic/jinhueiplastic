@@ -51,11 +51,10 @@
             <h2 class="text-lg font-bold mb-4">區域表單</h2>
             <p class="text-sm text-gray-500 mb-4">選一個區域，把該區域（可加上日期區間）底下所有客戶的訂單合併成一份 PDF 出單。</p>
 
-            <div class="bg-white border rounded-lg p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                <div>
-                    <label class="field-label">區域</label>
-                    <select id="region-select" class="field-input"></select>
-                </div>
+            <label class="field-label">區域</label>
+            <div id="region-tiles" class="grid grid-cols-3 gap-4 mb-4"></div>
+
+            <div class="bg-white border rounded-lg p-4 mb-4 flex flex-wrap items-end gap-x-6 gap-y-3">
                 <div>
                     <label class="field-label">起（民國年/月/日）</label>
                     <div class="flex gap-1 items-center">
