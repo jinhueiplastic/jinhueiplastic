@@ -17,7 +17,6 @@ let browseProduct = null;  // variant 模式下選中的商品
 
 const newCustomerToggle  = document.getElementById('new-customer-toggle');
 const newCustomerPanel   = document.getElementById('new-customer-panel');
-const customerInfo       = document.getElementById('customer-info');
 const searchInput        = document.getElementById('product-search-input');
 const homeBtn            = document.getElementById('browse-home-btn');
 const backBtn            = document.getElementById('browse-back-btn');
@@ -189,9 +188,6 @@ function selectCustomer(id) {
     selectedCustomerId = id;
     const c = customers.find(x => String(x.id) === String(id));
     customerSearchInput.value = c ? c.name : '';
-    customerInfo.textContent = c
-        ? `工地：${c.site_name || '（無）'}　區域：${c.region || '（無）'}　地址：${c.address || '（無）'}　電話：${c.phone || '（無）'}`
-        : '';
     customerSearchResults.classList.add('hidden');
     renderCartCustomerInfo(c);
 }
@@ -199,7 +195,6 @@ function selectCustomer(id) {
 function deselectCustomer() {
     selectedCustomerId = '';
     customerSearchInput.value = '';
-    customerInfo.textContent = '';
     customerSearchResults.classList.add('hidden');
     renderCartCustomerInfo(null);
 }

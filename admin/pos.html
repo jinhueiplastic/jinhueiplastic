@@ -47,11 +47,9 @@
             <nav id="admin-nav" class="admin-nav"></nav>
         </header>
 
-        <main class="container mx-auto px-4 py-6 max-w-7xl">
-            <h2 class="text-lg font-bold mb-4">POS 下單</h2>
-
+        <main class="container mx-auto px-4 py-6">
             <div class="md:grid md:grid-cols-[300px_1fr] md:gap-6 items-start">
-                <div class="order-2 md:order-1 md:sticky md:top-20">
+                <div class="order-2 md:order-1 md:sticky md:top-28">
                     <div id="cart-customer-info" class="bg-white border rounded-lg p-3 mb-3 hidden"></div>
                     <h3 class="font-bold text-sm text-gray-600 mb-2">已選購商品</h3>
                     <div id="cart-container" class="mb-6 md:max-h-[calc(100vh-8rem)] md:overflow-y-auto md:pr-1"></div>
@@ -82,7 +80,6 @@
                             <div><label class="field-label">電話</label><input type="text" id="nc-phone" class="field-input"></div>
                             <button type="button" id="nc-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 md:col-span-5 w-fit">新增並選用</button>
                         </div>
-                        <div id="customer-info" class="text-sm text-gray-500 mt-3"></div>
                     </div>
 
                     <h3 class="font-bold text-sm text-gray-600 mb-2">選購商品</h3>
