@@ -47,57 +47,63 @@
             <nav id="admin-nav" class="admin-nav"></nav>
         </header>
 
-        <main class="container mx-auto px-4 py-6 max-w-6xl">
+        <main class="container mx-auto px-4 py-6 max-w-7xl">
             <h2 class="text-lg font-bold mb-4">POS 下單</h2>
 
-            <div class="bg-white border rounded-lg p-4 mb-4">
-                <label class="field-label">依區域篩選客戶</label>
-                <div id="region-tiles" class="grid grid-cols-3 gap-4 mb-4"></div>
+            <div class="md:grid md:grid-cols-[300px_1fr] md:gap-6 items-start">
+                <div class="order-2 md:order-1 md:sticky md:top-20">
+                    <h3 class="font-bold text-sm text-gray-600 mb-2">已選購商品</h3>
+                    <div id="cart-container" class="mb-6 md:max-h-[calc(100vh-8rem)] md:overflow-y-auto md:pr-1"></div>
+                </div>
 
-                <div class="flex items-end gap-3 flex-wrap">
-                    <div class="flex-1 min-w-[200px] relative">
-                        <label class="field-label">客戶</label>
-                        <input type="text" id="customer-search-input" class="field-input" placeholder="輸入客戶名稱／電話搜尋…" autocomplete="off">
-                        <div id="customer-search-results" class="customer-search-results hidden"></div>
+                <div class="order-1 md:order-2">
+                    <div class="bg-white border rounded-lg p-4 mb-4">
+                        <label class="field-label">依區域篩選客戶</label>
+                        <div id="region-tiles" class="grid grid-cols-3 gap-4 mb-4"></div>
+
+                        <div class="flex items-end gap-3 flex-wrap">
+                            <div class="flex-1 min-w-[200px] relative">
+                                <label class="field-label">客戶</label>
+                                <input type="text" id="customer-search-input" class="field-input" placeholder="輸入客戶名稱／電話搜尋…" autocomplete="off">
+                                <div id="customer-search-results" class="customer-search-results hidden"></div>
+                            </div>
+                            <button type="button" id="new-customer-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100">+ 新增客戶</button>
+                        </div>
+                        <div id="new-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                            <div><label class="field-label">客戶名稱</label><input type="text" id="nc-name" class="field-input"></div>
+                            <div><label class="field-label">工地名稱</label><input type="text" id="nc-site-name" class="field-input"></div>
+                            <div>
+                                <label class="field-label">區域</label>
+                                <input type="text" id="nc-region" class="field-input" list="nc-region-datalist">
+                                <datalist id="nc-region-datalist"></datalist>
+                            </div>
+                            <div><label class="field-label">地址</label><input type="text" id="nc-address" class="field-input"></div>
+                            <div><label class="field-label">電話</label><input type="text" id="nc-phone" class="field-input"></div>
+                            <button type="button" id="nc-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 md:col-span-5 w-fit">新增並選用</button>
+                        </div>
+                        <div id="customer-info" class="text-sm text-gray-500 mt-3"></div>
                     </div>
-                    <button type="button" id="new-customer-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100">+ 新增客戶</button>
-                </div>
-                <div id="new-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-                    <div><label class="field-label">客戶名稱</label><input type="text" id="nc-name" class="field-input"></div>
-                    <div><label class="field-label">工地名稱</label><input type="text" id="nc-site-name" class="field-input"></div>
-                    <div>
-                        <label class="field-label">區域</label>
-                        <input type="text" id="nc-region" class="field-input" list="nc-region-datalist">
-                        <datalist id="nc-region-datalist"></datalist>
+
+                    <h3 class="font-bold text-sm text-gray-600 mb-2">選購商品</h3>
+                    <div class="bg-white border rounded-lg p-4 mb-6">
+                        <div class="flex items-center gap-2 mb-3">
+                            <input type="text" id="product-search-input" class="field-input flex-1" placeholder="搜尋商品貨號或名稱…">
+                            <button type="button" id="browse-home-btn" class="hidden px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">主分類</button>
+                            <button type="button" id="browse-back-btn" class="hidden px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">← 返回</button>
+                        </div>
+                        <p id="browse-breadcrumb" class="text-sm text-gray-500 mb-3 hidden"></p>
+                        <div id="browse-area"></div>
                     </div>
-                    <div><label class="field-label">地址</label><input type="text" id="nc-address" class="field-input"></div>
-                    <div><label class="field-label">電話</label><input type="text" id="nc-phone" class="field-input"></div>
-                    <button type="button" id="nc-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 md:col-span-5 w-fit">新增並選用</button>
+
+                    <div class="flex justify-end">
+                        <button type="button" id="save-order-btn" class="px-6 py-2.5 rounded bg-blue-600 text-white font-medium hover:bg-blue-700">
+                            儲存訂單並出單
+                        </button>
+                    </div>
+
+                    <div id="result-banner" class="hidden mt-4 bg-green-50 border border-green-200 text-green-800 rounded-lg p-4"></div>
                 </div>
-                <div id="customer-info" class="text-sm text-gray-500 mt-3"></div>
             </div>
-
-            <h3 class="font-bold text-sm text-gray-600 mb-2">選購商品</h3>
-            <div class="bg-white border rounded-lg p-4 mb-6">
-                <div class="flex items-center gap-2 mb-3">
-                    <input type="text" id="product-search-input" class="field-input flex-1" placeholder="搜尋商品貨號或名稱…">
-                    <button type="button" id="browse-home-btn" class="hidden px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">主分類</button>
-                    <button type="button" id="browse-back-btn" class="hidden px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">← 返回</button>
-                </div>
-                <p id="browse-breadcrumb" class="text-sm text-gray-500 mb-3 hidden"></p>
-                <div id="browse-area"></div>
-            </div>
-
-            <h3 class="font-bold text-sm text-gray-600 mb-2">已選購商品</h3>
-            <div id="cart-container" class="mb-6"></div>
-
-            <div class="flex justify-end">
-                <button type="button" id="save-order-btn" class="px-6 py-2.5 rounded bg-blue-600 text-white font-medium hover:bg-blue-700">
-                    儲存訂單並出單
-                </button>
-            </div>
-
-            <div id="result-banner" class="hidden mt-4 bg-green-50 border border-green-200 text-green-800 rounded-lg p-4"></div>
         </main>
     </div>
 
