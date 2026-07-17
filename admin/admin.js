@@ -19,6 +19,8 @@ const PRODUCT_FIELDS = [
 
 let allProducts = [];
 let editingId = null;
+let modalDirty = false; // 表單或規格選項有沒有還沒儲存的修改
+let selectedCategoryFilter = null; // null = 全部
 
 const statusMsg   = document.getElementById('status-msg');
 const tbody       = document.getElementById('product-tbody');
@@ -29,6 +31,10 @@ const modalTitle    = document.getElementById('modal-title');
 const formFields    = document.getElementById('form-fields');
 const productForm   = document.getElementById('product-form');
 const formError      = document.getElementById('form-error');
+
+// 表單裡任何欄位（包含動態產生的商品欄位、規格表格編輯工具的儲存格）有異動就標記為未儲存。
+productForm.addEventListener('input', () => { modalDirty = true; });
+productForm.addEventListener('change', () => { modalDirty = true; });
 
 function setStatus(msg) {
     statusMsg.textContent = msg;
@@ -51,7 +57,49 @@ async function loadProducts() {
 
     allProducts = data || [];
     setStatus(`共 ${allProducts.length} 筆商品`);
-    renderTable(allProducts);
+    renderCategoryFilterTiles();
+    applyFilters();
+}
+
+function renderCategoryFilterTiles() {
+    const container = document.getElementById('category-filter-tiles');
+    if (!container) return;
+    const categories = [...new Set(allProducts.map(p => (p.category_name_zh || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+    const allBtn = `
+        <button type="button" class="category-filter-btn${selectedCategoryFilter ? '' : ' active'}" data-cat="">
+            全部
+        </button>`;
+    const catBtns = categories.map(c => `
+        <button type="button" class="category-filter-btn${selectedCategoryFilter === c ? ' active' : ''}" data-cat="${escapeHtml(c)}">
+            ${escapeHtml(c)}
+        </button>`).join('');
+
+    container.innerHTML = allBtn + catBtns;
+
+    container.querySelectorAll('.category-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectedCategoryFilter = btn.dataset.cat || null;
+            renderCategoryFilterTiles();
+            applyFilters();
+        });
+    });
+}
+
+function applyFilters() {
+    const q = searchInput.value.trim().toLowerCase();
+    let filtered = allProducts;
+    if (selectedCategoryFilter) {
+        filtered = filtered.filter(p => (p.category_name_zh || '').trim() === selectedCategoryFilter);
+    }
+    if (q) {
+        filtered = filtered.filter(p => {
+            return [p.category_name_zh, p.erp_code, p.catalog_code, p.name_zh, p.name_en]
+                .some(v => String(v || '').toLowerCase().includes(q));
+        });
+    }
+    renderTable(filtered);
 }
 
 function groupByCategory(products) {
@@ -118,18 +166,7 @@ async function toggleActive(id, isActive) {
     if (p) p.is_active = isActive;
 }
 
-searchInput.addEventListener('input', () => {
-    const q = searchInput.value.trim().toLowerCase();
-    if (!q) {
-        renderTable(allProducts);
-        return;
-    }
-    const filtered = allProducts.filter(p => {
-        return [p.category_name_zh, p.erp_code, p.catalog_code, p.name_zh, p.name_en]
-            .some(v => String(v || '').toLowerCase().includes(q));
-    });
-    renderTable(filtered);
-});
+searchInput.addEventListener('input', applyFilters);
 
 let descTableStates = {};
 
@@ -461,6 +498,7 @@ function openEditModal(id) {
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    modalDirty = false;
 }
 
 document.getElementById('new-product-btn').addEventListener('click', () => {
@@ -471,11 +509,14 @@ document.getElementById('new-product-btn').addEventListener('click', () => {
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    modalDirty = false;
 });
 
 function closeModal() {
+    if (modalDirty && !confirm('您有尚未儲存的修改，確定要離開嗎？')) return;
     modal.classList.add('hidden');
     modal.classList.remove('flex');
+    modalDirty = false;
 }
 document.getElementById('modal-close-btn').addEventListener('click', closeModal);
 document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
@@ -503,18 +544,33 @@ productForm.addEventListener('submit', async (e) => {
         return;
     }
 
+    try {
+        await saveVariantChanges();
+    } catch (variantError) {
+        formError.textContent = '規格選項儲存失敗：' + variantError.message;
+        formError.classList.remove('hidden');
+        return;
+    }
+
+    modalDirty = false;
+
     closeModal();
     loadProducts();
 });
 
-/* --- POS 規格／孔徑／顏色選項（pos_item_variants），在編輯商品時直接管理 ---
-   流程：先分別幫規格/孔徑/顏色各自新增選項（斜線分隔一次加多個），
-   下面會自動列出所有組合，每個組合各自有一個「上傳圖片」按鈕。 */
+/* --- POS 規格／孔徑／顏色選項（pos_item_variants），在編輯商品時於本地暫存，按主表單「儲存」才寫入 ---
+   流程：先分別幫規格/孔徑/顏色各自新增選項（用 / 、 , ， 分隔一次加多個），
+   下面會自動列出所有組合，每個組合各自有一個「上傳圖片」按鈕。
+   所有新增/刪除/上傳都只改本地的 localVariantRows，實際寫入 Supabase 由 saveVariantChanges() 負責。 */
 let currentVariantErp = null;
-let currentAxisOptions = { spec: [], bore: [], color: [] };
+let variantTempCounter = 0;
+let localVariantRows = [];
+let deletedVariantIds = [];
 
 function splitBulkValues(text) {
-    return text.split('/').map(v => v.trim()).filter(Boolean);
+    return text.split(/[/、,，]/)
+        .map(v => v.trim().replace(/^[「『（(]+|[」』）)]+$/g, '').trim())
+        .filter(Boolean);
 }
 
 // 只填一欄的列＝定義一個軸選項；填兩欄以上的列＝那個確切組合的實際照片
@@ -535,9 +591,11 @@ function categorizeVariantRows(rows) {
 
 async function loadVariantSection(product) {
     const section = document.getElementById('variant-section');
+    deletedVariantIds = [];
 
     if (!product || !product.erp_code) {
         currentVariantErp = null;
+        localVariantRows = [];
         section.classList.add('opacity-50', 'pointer-events-none');
         ['spec', 'bore', 'color'].forEach(type => {
             document.getElementById(`axis-${type}-chips`).innerHTML = '';
@@ -563,32 +621,39 @@ async function loadVariantSection(product) {
         return;
     }
 
-    renderVariantSection(data || []);
+    localVariantRows = (data || []).map(r => ({ ...r, tempId: ++variantTempCounter }));
+    renderVariantSection();
 }
 
-function renderVariantSection(rows) {
-    const { axisOptions, comboByKey } = categorizeVariantRows(rows);
-    currentAxisOptions = axisOptions;
+function renderVariantSection() {
+    const { axisOptions, comboByKey } = categorizeVariantRows(localVariantRows);
 
     ['spec', 'bore', 'color'].forEach(type => {
         const chipsEl = document.getElementById(`axis-${type}-chips`);
         chipsEl.innerHTML = axisOptions[type].map(r => `
             <span class="axis-chip">
                 ${escapeHtml(r.spec || r.bore || r.color)}
-                <button type="button" data-id="${r.id}" class="axis-chip-del">×</button>
+                <button type="button" data-temp-id="${r.tempId}" class="axis-chip-del">×</button>
             </span>`).join('');
 
         chipsEl.querySelectorAll('.axis-chip-del').forEach(btn => {
-            btn.addEventListener('click', async () => {
+            btn.addEventListener('click', () => {
                 if (!confirm('確定要刪除這個選項嗎？')) return;
-                const { error } = await sb.from('pos_item_variants').delete().eq('id', btn.dataset.id);
-                if (error) { alert('刪除失敗：' + error.message); return; }
-                loadVariantSection({ erp_code: currentVariantErp });
+                removeVariantRow(Number(btn.dataset.tempId));
             });
         });
     });
 
     renderComboList(axisOptions, comboByKey);
+}
+
+function removeVariantRow(tempId) {
+    const row = localVariantRows.find(r => r.tempId === tempId);
+    if (!row) return;
+    if (row.id) deletedVariantIds.push(row.id);
+    localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
+    modalDirty = true;
+    renderVariantSection();
 }
 
 function renderComboList(axisOptions, comboByKey) {
@@ -614,7 +679,7 @@ function renderComboList(axisOptions, comboByKey) {
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2"
                  data-spec="${escapeHtml(combo.spec)}" data-bore="${escapeHtml(combo.bore)}" data-color="${escapeHtml(combo.color)}"
-                 data-existing-id="${existing ? existing.id : ''}">
+                 data-temp-id="${existing ? existing.tempId : ''}">
                 <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm">${escapeHtml(label)}</div>
                 <span class="combo-upload-status text-xs text-gray-400"></span>
@@ -627,14 +692,11 @@ function renderComboList(axisOptions, comboByKey) {
     }).join('');
 
     container.querySelectorAll('.combo-remove-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const row = btn.closest('[data-existing-id]');
-            const id = row.dataset.existingId;
-            if (!id || !confirm('確定要移除這張組合照片嗎？')) return;
-
-            const { error } = await sb.from('pos_item_variants').delete().eq('id', id);
-            if (error) { alert('移除失敗：' + error.message); return; }
-            loadVariantSection({ erp_code: currentVariantErp });
+        btn.addEventListener('click', () => {
+            const row = btn.closest('[data-temp-id]');
+            const tempId = Number(row.dataset.tempId);
+            if (!tempId || !confirm('確定要移除這張組合照片嗎？')) return;
+            removeVariantRow(tempId);
         });
     });
 
@@ -650,16 +712,26 @@ function renderComboList(axisOptions, comboByKey) {
             statusEl.textContent = '上傳中…';
             try {
                 const url = await uploadImageToCloudinary(file);
-                const { error } = await sb.from('pos_item_variants').upsert({
-                    erp_code: currentVariantErp,
-                    spec: row.dataset.spec,
-                    bore: row.dataset.bore,
-                    color: row.dataset.color,
-                    image_url: url,
-                }, { onConflict: 'erp_code,spec,bore,color' });
-                if (error) throw error;
+                const existingTempId = Number(row.dataset.tempId) || null;
+                const existingRow = existingTempId ? localVariantRows.find(r => r.tempId === existingTempId) : null;
+                if (existingRow) {
+                    existingRow.image_url = url;
+                } else {
+                    localVariantRows.push({
+                        tempId: ++variantTempCounter,
+                        id: null,
+                        erp_code: currentVariantErp,
+                        spec: row.dataset.spec,
+                        bore: row.dataset.bore,
+                        color: row.dataset.color,
+                        image_url: url,
+                        sort_order: 0,
+                    });
+                }
+                modalDirty = true;
                 thumbImg.src = url;
                 statusEl.textContent = '';
+                renderVariantSection();
             } catch (e) {
                 statusEl.textContent = '';
                 alert('上傳失敗：' + e.message);
@@ -671,30 +743,71 @@ function renderComboList(axisOptions, comboByKey) {
 }
 
 document.querySelectorAll('.add-axis-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
         if (!currentVariantErp) return;
         const type = btn.dataset.type;
         const input = document.getElementById(`axis-${type}-input`);
         const values = splitBulkValues(input.value);
         if (!values.length) return;
 
-        const existing = new Set(currentAxisOptions[type].map(r => r.spec || r.bore || r.color));
+        const { axisOptions } = categorizeVariantRows(localVariantRows);
+        const existing = new Set(axisOptions[type].map(r => r.spec || r.bore || r.color));
         const newValues = values.filter(v => !existing.has(v));
         if (!newValues.length) { input.value = ''; return; }
 
-        const rows = newValues.map(v => ({
-            erp_code: currentVariantErp,
-            spec: type === 'spec' ? v : '',
-            bore: type === 'bore' ? v : '',
-            color: type === 'color' ? v : '',
-        }));
+        newValues.forEach(v => {
+            localVariantRows.push({
+                tempId: ++variantTempCounter,
+                id: null,
+                erp_code: currentVariantErp,
+                spec: type === 'spec' ? v : '',
+                bore: type === 'bore' ? v : '',
+                color: type === 'color' ? v : '',
+                image_url: null,
+                sort_order: 0,
+            });
+        });
 
-        const { error } = await sb.from('pos_item_variants').insert(rows);
-        if (error) { alert('新增失敗：' + error.message); return; }
-
+        modalDirty = true;
         input.value = '';
-        loadVariantSection({ erp_code: currentVariantErp });
+        renderVariantSection();
     });
+});
+
+// 主表單按下「儲存」時才真正把本地暫存的規格選項／組合照片異動寫回 Supabase。
+async function saveVariantChanges() {
+    if (deletedVariantIds.length) {
+        const { error } = await sb.from('pos_item_variants').delete().in('id', deletedVariantIds);
+        if (error) throw error;
+        deletedVariantIds = [];
+    }
+
+    if (localVariantRows.length) {
+        const rows = localVariantRows.map(r => ({
+            erp_code: r.erp_code,
+            spec: r.spec || '',
+            bore: r.bore || '',
+            color: r.color || '',
+            image_url: r.image_url || null,
+            sort_order: r.sort_order || 0,
+        }));
+        const { error } = await sb.from('pos_item_variants').upsert(rows, { onConflict: 'erp_code,spec,bore,color' });
+        if (error) throw error;
+    }
+}
+
+document.querySelectorAll('.admin-nav-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+        if (modalDirty && !confirm('您有尚未儲存的修改，確定要離開嗎？')) {
+            e.preventDefault();
+        }
+    });
+});
+window.addEventListener('beforeunload', (e) => {
+    if (modalDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
 });
 
 initAdminAuth('products', loadProducts);
