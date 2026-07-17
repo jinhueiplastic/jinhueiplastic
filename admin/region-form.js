@@ -137,7 +137,7 @@ generateBtn.addEventListener('click', async () => {
         }));
         const today = new Date().toISOString().slice(0, 10);
         const label = selectedRegion || '全部區域';
-        await generateCombinedOrdersPdf(entries, `區域出貨單-${label}-${today}.pdf`);
+        await generateCombinedOrdersPdf(entries, `區域出貨單-${label}-${today}.pdf`, `${label}出貨清單－${today}`);
     } catch (e) {
         alert('產生 PDF 失敗：' + e.message);
     } finally {

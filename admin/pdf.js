@@ -79,10 +79,10 @@ function buildInvoiceHtml(order, customer, items) {
     return container;
 }
 
-// 把一張訂購單畫成圖片、切頁後畫進傳入的 jsPDF doc。isFirstOrderPage 是給「合併多張訂單成一份 PDF」用的：
-// 一份新建的 jsPDF 文件本身就自帶一張空白頁，只有第一張訂單的第一頁要沿用它，其餘都要先 addPage()。
-async function renderOrderPagesInto(doc, order, customer, items, isFirstOrderPage) {
-    const container = buildInvoiceHtml(order, customer, items);
+// 把一個畫好的 HTML 容器（container 本身要先 append 到 document.body 以外）畫成圖片、
+// 切頁後畫進傳入的 jsPDF doc。isFirstPage：一份新建的 jsPDF 文件本身就自帶一張空白頁，
+// 只有整份 PDF 的第一個內容區塊的第一頁要沿用它，其餘都要先 addPage()。
+async function renderHtmlPagesInto(doc, container, isFirstPage) {
     document.body.appendChild(container);
 
     try {
@@ -106,7 +106,7 @@ async function renderOrderPagesInto(doc, order, customer, items, isFirstOrderPag
                 canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight
             );
 
-            if (!(isFirstOrderPage && isFirstSlice)) doc.addPage();
+            if (!(isFirstPage && isFirstSlice)) doc.addPage();
             doc.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfWidthMm, sliceHeight / pxPerMm);
             isFirstSlice = false;
             offsetY += sliceHeight;
@@ -116,6 +116,10 @@ async function renderOrderPagesInto(doc, order, customer, items, isFirstOrderPag
     }
 }
 
+async function renderOrderPagesInto(doc, order, customer, items, isFirstOrderPage) {
+    await renderHtmlPagesInto(doc, buildInvoiceHtml(order, customer, items), isFirstOrderPage);
+}
+
 async function generateOrderPdf(order, customer, items) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -123,13 +127,88 @@ async function generateOrderPdf(order, customer, items) {
     doc.save((order.order_no || 'order') + '.pdf');
 }
 
-// entries: [{ order, customer, items }, ...] —— 每張訂單各自分頁，全部合併存成同一份 PDF。
-async function generateCombinedOrdersPdf(entries, filename) {
+/* --- 區域表單「產生合併 PDF」：出貨清單格式，直式 A4 分 3 欄，欄與欄之間不用對齊，
+   每筆訂單（客戶＋工地／電話／商品圖片＋名稱＋規格／數量）印完才分隔線換下一筆。
+   用「目前欄的高度是否已經到平均值」來決定何時換下一欄，讓 3 欄高度大致平均，
+   而不是照筆數硬性平分（一筆商品越多，佔的高度自然越多）。 --- */
+
+// 粗略估計一筆訂單印出來大概要佔多少高度（單位跟 CSS px 差不多，只用來比較欄與欄之間的相對高度，不用很精準）。
+function estimateRunSheetEntryHeight(entry) {
+    const items = entry.items || [];
+    const itemCount = Math.max(items.length, 1);
+    return 40 /* 客戶/工地 + 電話 兩行 */ + itemCount * 34 /* 每個品項：圖片+名稱+規格 一行、數量一行 */ + 14 /* 分隔線 */;
+}
+
+function distributeEntriesIntoColumns(entries, columnCount) {
+    const heights = entries.map(estimateRunSheetEntryHeight);
+    const totalHeight = heights.reduce((a, b) => a + b, 0);
+    const target = totalHeight / columnCount;
+
+    const columns = Array.from({ length: columnCount }, () => []);
+    let colIndex = 0;
+    let colHeight = 0;
+    entries.forEach((entry, i) => {
+        if (colIndex < columnCount - 1 && colHeight >= target) {
+            colIndex++;
+            colHeight = 0;
+        }
+        columns[colIndex].push(entry);
+        colHeight += heights[i];
+    });
+    return columns;
+}
+
+function runSheetEntryHtml(entry) {
+    const c = entry.customer || {};
+    const items = entry.items || [];
+    const nameLine = [c.name, c.site_name].filter(Boolean).join('-');
+
+    const itemsHtml = items.map(item => {
+        const variant = [item.spec, item.bore, item.color].filter(Boolean).join('/');
+        const imgSrc = item.product_image_url
+            ? ('/api/image-proxy?url=' + encodeURIComponent(item.product_image_url))
+            : '';
+        return `
+            <div style="display:flex;align-items:center;gap:4px;margin-top:3px;">
+                ${imgSrc
+                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:20px;height:20px;object-fit:cover;border-radius:3px;flex-shrink:0;">`
+                    : `<div style="width:20px;height:20px;background:#f3f4f6;border-radius:3px;flex-shrink:0;"></div>`}
+                <div style="flex:1;min-width:0;overflow-wrap:break-word;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}${variant ? '　' + escapeHtml(variant) : ''}</div>
+            </div>
+            <div style="padding-left:24px;color:#374151;">數量：${escapeHtml(String(item.quantity))}</div>`;
+    }).join('');
+
+    return `
+        <div style="margin-bottom:8px;">
+            <div style="font-weight:700;">${escapeHtml(nameLine || '（未知客戶）')}</div>
+            <div>${escapeHtml(c.phone || '')}</div>
+            ${itemsHtml}
+            <div style="border-top:1px dashed #9ca3af;margin-top:6px;"></div>
+        </div>`;
+}
+
+function buildRunSheetHtml(entries, title) {
+    const container = document.createElement('div');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:28px;'
+        + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
+        + 'font-size:11px;line-height:1.5;';
+
+    const columns = distributeEntriesIntoColumns(entries, 3);
+    const columnsHtml = columns.map(col => `
+        <div style="flex:1;min-width:0;">${col.map(runSheetEntryHtml).join('')}</div>
+    `).join('');
+
+    container.innerHTML = `
+        ${title ? `<h1 style="font-size:16px;font-weight:700;margin:0 0 10px;">${escapeHtml(title)}</h1>` : ''}
+        <div style="display:flex;gap:14px;align-items:flex-start;">${columnsHtml}</div>
+    `;
+    return container;
+}
+
+// entries: [{ order, customer, items }, ...] —— 全部訂單排成一份出貨清單，合併成同一份 PDF。
+async function generateCombinedOrdersPdf(entries, filename, title) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    for (let i = 0; i < entries.length; i++) {
-        const { order, customer, items } = entries[i];
-        await renderOrderPagesInto(doc, order, customer, items, i === 0);
-    }
+    await renderHtmlPagesInto(doc, buildRunSheetHtml(entries, title), true);
     doc.save(filename);
 }
