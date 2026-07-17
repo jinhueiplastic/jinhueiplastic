@@ -556,8 +556,8 @@ function renderCart() {
             <div class="flex items-center gap-3 bg-white border rounded-lg p-3 mb-2">
                 <img src="${escapeHtml(item.image_url)}" alt="" class="product-thumb" style="width:48px;height:48px;flex-shrink:0;">
                 <div class="flex-1 min-w-0">
-                    <p class="font-bold text-sm truncate">${escapeHtml(item.name_zh || item.erp || '')}</p>
-                    <p class="text-xs text-gray-500">${variant ? escapeHtml(variant) + '　' : ''}數量：${item.qty}</p>
+                    <p class="cart-item-name truncate">${escapeHtml(item.name_zh || item.erp || '')}</p>
+                    <p class="cart-item-meta">${variant ? escapeHtml(variant) + '　' : ''}數量：${item.qty}</p>
                 </div>
                 <button type="button" data-row-id="${item.rowId}" class="cart-del-btn text-red-400 hover:text-red-600 text-sm shrink-0">刪除</button>
             </div>`;

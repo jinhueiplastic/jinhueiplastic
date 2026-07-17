@@ -213,3 +213,14 @@ table tbody tr:hover {
     background: #2563eb;
     color: #fff;
 }
+
+.cart-item-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.cart-item-meta {
+    font-size: 14px;
+    color: #6b7280;
+}
