@@ -673,9 +673,12 @@ saveOrderBtn.addEventListener('click', async () => {
         cart = [];
         renderCart();
 
-        await learnNewVariantOptions(itemsPayload);
-
         const customer = customers.find(c => String(c.id) === String(customerId));
+
+        // 出單後清空客戶，方便接著幫同一區域的下一位客戶下單；區域篩選（selectedRegionFilter）不受影響。
+        deselectCustomer();
+
+        await learnNewVariantOptions(itemsPayload);
         resultBanner.classList.remove('hidden');
         resultBanner.innerHTML = `
             ✅ 訂單已儲存，訂單編號：<strong>${escapeHtml(order.order_no)}</strong>
