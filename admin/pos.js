@@ -703,4 +703,12 @@ saveOrderBtn.addEventListener('click', async () => {
     }
 });
 
+// 快捷鍵：Shift+Enter＝按一下「儲存訂單並出單」（頁面上沒有多行輸入框，不會跟打字衝突）。
+document.addEventListener('keydown', (e) => {
+    if (e.shiftKey && e.key === 'Enter' && !saveOrderBtn.disabled) {
+        e.preventDefault();
+        saveOrderBtn.click();
+    }
+});
+
 initAdminAuth('pos', initPos);
