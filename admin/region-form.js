@@ -66,12 +66,14 @@ function renderResults(orders) {
         const c = o.customers || {};
         return `
         <div class="bg-white border rounded-lg p-4 mb-3">
-            <p class="font-bold text-blue-700">${escapeHtml(o.order_no || '')}</p>
+            <div class="flex items-center gap-2 mb-1">
+                ${c.region ? `<span class="region-badge">${escapeHtml(c.region)}</span>` : ''}
+                <p class="font-bold text-blue-700">${escapeHtml(o.order_no || '')}</p>
+            </div>
             <p class="text-sm text-gray-500">${new Date(o.created_at).toLocaleString('zh-TW')}</p>
             <p class="text-sm text-gray-700 mt-1">
                 客戶：${escapeHtml(c.name || '（未知）')}${c.phone ? '　' + escapeHtml(c.phone) : ''}
                 ${c.site_name ? '　工地：' + escapeHtml(c.site_name) : ''}
-                ${c.region ? '　區域：' + escapeHtml(c.region) : ''}
             </p>
             <p class="text-sm text-gray-600 mt-2">${summary || '（無商品明細）'}</p>
         </div>`;
