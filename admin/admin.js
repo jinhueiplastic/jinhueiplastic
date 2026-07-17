@@ -580,6 +580,7 @@ function renderVariantSection(rows) {
 
         chipsEl.querySelectorAll('.axis-chip-del').forEach(btn => {
             btn.addEventListener('click', async () => {
+                if (!confirm('確定要刪除這個選項嗎？')) return;
                 const { error } = await sb.from('pos_item_variants').delete().eq('id', btn.dataset.id);
                 if (error) { alert('刪除失敗：' + error.message); return; }
                 loadVariantSection({ erp_code: currentVariantErp });
