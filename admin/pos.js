@@ -372,7 +372,9 @@ function renderProductGridHtml(items) {
 
 const VARIANT_LABELS = { spec: '規格', bore: '孔徑', color: '顏色' };
 
-// 有圖片式選項（pos_item_variants）就畫成可以直接點的按鈕；沒有的話退回打字＋建議清單。
+// 規格/孔徑/顏色選項統一只看 pos_item_variants（跟「修改 POS 商品」編輯頁同一份資料）：
+// 有選項就畫成可以直接點的按鈕；完全沒有的話才退回純打字（不再從商品說明表格生建議清單，
+// 那是另一份資料，兩邊本來就不該各自顯示不同的東西）。
 function variantFieldHtml(type, product) {
     const options = (variantOptionsByErp[product.erp_code] && variantOptionsByErp[product.erp_code][type]) || [];
     const label = VARIANT_LABELS[type];
@@ -394,8 +396,7 @@ function variantFieldHtml(type, product) {
     return `
         <div>
             <label class="field-label">${label}</label>
-            <input type="text" id="variant-${type}-text" class="field-input" list="variant-${type}-list" placeholder="如有可選，或自行輸入">
-            <datalist id="variant-${type}-list"></datalist>
+            <input type="text" id="variant-${type}-text" class="field-input" placeholder="尚無選項，可直接輸入">
         </div>`;
 }
 
@@ -467,44 +468,6 @@ function renderBrowseArea() {
         browseArea.innerHTML = renderVariantPickerHtml(browseProduct);
         wireVariantPicker(browseProduct);
     }
-}
-
-// 解析商品說明欄位裡「所有」的 markdown 表格（不只第一個），
-// 依表格標題關鍵字分類成規格/孔徑/顏色的建議選項。
-function parseAllTables(text) {
-    const lines = String(text || '').split('\n');
-    const tables = [];
-    const cellsOf = line => line.trim().split('|').map(c => c.trim()).filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
-    let i = 0;
-    while (i < lines.length) {
-        const line = lines[i].trim();
-        if (line.startsWith('|') && line.includes('|')) {
-            const start = i;
-            let end = i;
-            while (end + 1 < lines.length && lines[end + 1].trim().startsWith('|')) end++;
-            const blockLines = lines.slice(start, end + 1);
-            const headers = cellsOf(blockLines[0]);
-            const dataLines = blockLines.slice(1).filter(l => !/^[|:\s-]+$/.test(l.trim()));
-            tables.push({ headers, rows: dataLines.map(cellsOf) });
-            i = end + 1;
-        } else {
-            i++;
-        }
-    }
-    return tables;
-}
-
-function classifyOptions(text) {
-    const result = { spec: [], bore: [], color: [] };
-    parseAllTables(text).forEach(t => {
-        const headerText = t.headers.join('');
-        const values = [...new Set(t.rows.map(r => r[0]).filter(Boolean))];
-        if (!values.length) return;
-        if (/孔|徑/.test(headerText)) result.bore.push(...values);
-        else if (/色/.test(headerText)) result.color.push(...values);
-        else result.spec.push(...values);
-    });
-    return result;
 }
 
 function currentVariantValue(type) {
@@ -580,11 +543,7 @@ function resetVariantPicker() {
 function wireVariantPicker(p) {
     selectedVariant = { spec: '', bore: '', color: '' };
 
-    // 沒有圖片式選項的類型，退回打字＋建議清單（建議清單沿用 desc_zh 裡解析出來的表格）。
-    const suggested = classifyOptions(p.desc_zh);
     ['spec', 'bore', 'color'].forEach(type => {
-        const list = document.getElementById(`variant-${type}-list`);
-        if (list) list.innerHTML = suggested[type].map(v => `<option value="${escapeHtml(v)}">`).join('');
         const textEl = document.getElementById(`variant-${type}-text`);
         if (textEl) textEl.addEventListener('input', () => updateVariantPreviewImage(p));
     });
