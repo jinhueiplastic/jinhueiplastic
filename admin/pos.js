@@ -141,7 +141,7 @@ function renderRegionTiles() {
             <div class="region-tile-name">${escapeHtml(region)}</div>
         </div>`).join('');
 
-    container.innerHTML = allTile + regionTiles;
+    container.innerHTML = regionTiles + allTile;
 
     container.querySelectorAll('.region-tile').forEach(el => {
         el.addEventListener('click', () => {
