@@ -169,6 +169,22 @@ function renderCustomerSearchResults(query) {
     customerSearchResults.classList.remove('hidden');
 }
 
+function renderCartCustomerInfo(c) {
+    const el = document.getElementById('cart-customer-info');
+    if (!c) {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+        return;
+    }
+    el.classList.remove('hidden');
+    el.innerHTML = `
+        <p class="text-sm text-gray-700">客戶：${escapeHtml(c.name || '')}　工地：${escapeHtml(c.site_name || '（無）')}</p>
+        <p class="text-lg font-bold text-gray-900 mt-1">區域：${escapeHtml(c.region || '（無）')}</p>
+        <p class="text-xs text-gray-500 mt-1">地址：${escapeHtml(c.address || '（無）')}</p>
+        <p class="text-xs text-gray-500">電話：${escapeHtml(c.phone || '（無）')}</p>
+    `;
+}
+
 function selectCustomer(id) {
     selectedCustomerId = id;
     const c = customers.find(x => String(x.id) === String(id));
@@ -177,6 +193,7 @@ function selectCustomer(id) {
         ? `工地：${c.site_name || '（無）'}　區域：${c.region || '（無）'}　地址：${c.address || '（無）'}　電話：${c.phone || '（無）'}`
         : '';
     customerSearchResults.classList.add('hidden');
+    renderCartCustomerInfo(c);
 }
 
 function deselectCustomer() {
@@ -184,6 +201,7 @@ function deselectCustomer() {
     customerSearchInput.value = '';
     customerInfo.textContent = '';
     customerSearchResults.classList.add('hidden');
+    renderCartCustomerInfo(null);
 }
 
 customerSearchInput.addEventListener('input', () => {
