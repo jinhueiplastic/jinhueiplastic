@@ -630,16 +630,27 @@ function renderVariantSection() {
 
     ['spec', 'bore', 'color'].forEach(type => {
         const chipsEl = document.getElementById(`axis-${type}-chips`);
-        chipsEl.innerHTML = axisOptions[type].map(r => `
+        chipsEl.innerHTML = axisOptions[type].map(r => {
+            const rawValue = r.spec || r.bore || r.color;
+            const splitCount = splitBulkValues(rawValue).length;
+            return `
             <span class="axis-chip">
-                ${escapeHtml(r.spec || r.bore || r.color)}
+                ${escapeHtml(rawValue)}
+                ${splitCount > 1 ? `<button type="button" data-temp-id="${r.tempId}" class="axis-chip-split" title="分割成 ${splitCount} 個選項">⇥</button>` : ''}
                 <button type="button" data-temp-id="${r.tempId}" class="axis-chip-del">×</button>
-            </span>`).join('');
+            </span>`;
+        }).join('');
 
         chipsEl.querySelectorAll('.axis-chip-del').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (!confirm('確定要刪除這個選項嗎？')) return;
                 removeVariantRow(Number(btn.dataset.tempId));
+            });
+        });
+
+        chipsEl.querySelectorAll('.axis-chip-split').forEach(btn => {
+            btn.addEventListener('click', () => {
+                splitVariantRow(type, Number(btn.dataset.tempId));
             });
         });
     });
@@ -652,6 +663,37 @@ function removeVariantRow(tempId) {
     if (!row) return;
     if (row.id) deletedVariantIds.push(row.id);
     localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
+    modalDirty = true;
+    renderVariantSection();
+}
+
+// 把舊資料裡「一個選項其實塞了好幾個值」（例如 4"、5"、6" 存成一筆）拆成好幾個獨立選項。
+function splitVariantRow(type, tempId) {
+    const row = localVariantRows.find(r => r.tempId === tempId);
+    if (!row) return;
+    const rawValue = row.spec || row.bore || row.color;
+    const values = splitBulkValues(rawValue);
+    if (values.length < 2) return;
+    if (!confirm(`要把「${rawValue}」分割成 ${values.length} 個選項嗎？`)) return;
+
+    if (row.id) deletedVariantIds.push(row.id);
+    localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
+
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    const existing = new Set(axisOptions[type].map(r => r.spec || r.bore || r.color));
+    values.filter(v => !existing.has(v)).forEach(v => {
+        localVariantRows.push({
+            tempId: ++variantTempCounter,
+            id: null,
+            erp_code: currentVariantErp,
+            spec: type === 'spec' ? v : '',
+            bore: type === 'bore' ? v : '',
+            color: type === 'color' ? v : '',
+            image_url: null,
+            sort_order: 0,
+        });
+    });
+
     modalDirty = true;
     renderVariantSection();
 }

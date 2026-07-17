@@ -135,6 +135,10 @@ table tbody tr:hover {
     color: #dc2626;
 }
 
+.axis-chip-split:hover {
+    color: #2563eb;
+}
+
 .region-tile {
     border: 2px solid #e5e7eb;
     border-radius: 0.75rem;
