@@ -71,6 +71,7 @@ function renderResults(orders) {
             <p class="text-sm text-gray-700 mt-1">
                 客戶：${escapeHtml(c.name || '（未知）')}${c.phone ? '　' + escapeHtml(c.phone) : ''}
                 ${c.site_name ? '　工地：' + escapeHtml(c.site_name) : ''}
+                ${c.region ? '　區域：' + escapeHtml(c.region) : ''}
             </p>
             <p class="text-sm text-gray-600 mt-2">${summary || '（無商品明細）'}</p>
         </div>`;
