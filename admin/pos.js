@@ -80,6 +80,29 @@ async function initPos() {
     browseCategory = null;
     renderBrowseArea();
     renderCart();
+
+    setupLeaveGuards();
+}
+
+// 購物車裡還有東西時，離開這頁（點導覽列、關分頁、重新整理、打網址列）都先提醒一下，
+// 避免手滑放棄一張還沒儲存的訂單。
+function setupLeaveGuards() {
+    document.querySelectorAll('.admin-nav-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            if (cart.length > 0 && !confirm('目前還有已選購但尚未儲存的商品，離開這頁會放棄這張訂單，確定要離開嗎？')) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // 關分頁/重新整理/直接改網址這幾種瀏覽器沒辦法讓我們自訂文字，
+    // 只會跳出瀏覽器自己那句制式提示，但至少會攔下來讓使用者確認一次。
+    window.addEventListener('beforeunload', (e) => {
+        if (cart.length > 0) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
 }
 
 // 每個區域都有自己的網址（?region=xxx），方便直接分享/加書籤某個區域的下單畫面，
@@ -498,6 +521,44 @@ function updateVariantPreviewImage(p) {
     if (img) img.src = currentComboImage(p);
 }
 
+// 訂單存檔後，把這次用到、但還沒被登記過的規格/孔徑/顏色值自動存成新的可點選項目
+// （沒有圖片，之後可以去「修改 POS 商品」補上圖片）。已經是既有選項或組合照片一部分的值不會重複新增。
+async function learnNewVariantOptions(itemsPayload) {
+    const newRows = [];
+
+    itemsPayload.forEach(item => {
+        const erp = item.product_erp_code;
+        if (!erp) return;
+        ['spec', 'bore', 'color'].forEach(type => {
+            const value = String(item[type] || '').trim();
+            if (!value) return;
+
+            const known = (variantOptionsByErp[erp] && variantOptionsByErp[erp][type]) || [];
+            if (known.some(o => o.value === value)) return;
+            if (newRows.some(r => r.erp_code === erp && r[type] === value)) return;
+
+            const row = { erp_code: erp, spec: '', bore: '', color: '' };
+            row[type] = value;
+            newRows.push(row);
+        });
+    });
+
+    if (!newRows.length) return;
+
+    const { error } = await sb.from('pos_item_variants').insert(newRows);
+    if (error) {
+        console.error('自動學習規格選項失敗：', error);
+        return;
+    }
+
+    newRows.forEach(row => {
+        const type = row.spec ? 'spec' : (row.bore ? 'bore' : 'color');
+        const value = row.spec || row.bore || row.color;
+        if (!variantOptionsByErp[row.erp_code]) variantOptionsByErp[row.erp_code] = { spec: [], bore: [], color: [] };
+        variantOptionsByErp[row.erp_code][type].push({ value, image_url: '' });
+    });
+}
+
 function resetVariantPicker() {
     selectedVariant = { spec: '', bore: '', color: '' };
     document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
@@ -617,6 +678,12 @@ saveOrderBtn.addEventListener('click', async () => {
         const { error: itemsErr } = await sb.from('order_items').insert(itemsPayload);
         if (itemsErr) throw itemsErr;
 
+        // 訂單已經真的存進資料庫了，此時清空購物車，離開頁面的提醒才不會誤判成「還有未儲存的東西」。
+        cart = [];
+        renderCart();
+
+        await learnNewVariantOptions(itemsPayload);
+
         const customer = customers.find(c => String(c.id) === String(customerId));
         resultBanner.classList.remove('hidden');
         resultBanner.innerHTML = `
@@ -629,8 +696,6 @@ saveOrderBtn.addEventListener('click', async () => {
         });
         document.getElementById('new-order-btn').addEventListener('click', () => {
             resultBanner.classList.add('hidden');
-            cart = [];
-            renderCart();
             browseMode = 'categories';
             searchInput.value = '';
             renderBrowseArea();

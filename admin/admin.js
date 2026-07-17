@@ -612,7 +612,8 @@ function renderComboList(axisOptions, comboByKey) {
         const label = [combo.spec, combo.bore, combo.color].filter(Boolean).join(', ');
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2"
-                 data-spec="${escapeHtml(combo.spec)}" data-bore="${escapeHtml(combo.bore)}" data-color="${escapeHtml(combo.color)}">
+                 data-spec="${escapeHtml(combo.spec)}" data-bore="${escapeHtml(combo.bore)}" data-color="${escapeHtml(combo.color)}"
+                 data-existing-id="${existing ? existing.id : ''}">
                 <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm">${escapeHtml(label)}</div>
                 <span class="combo-upload-status text-xs text-gray-400"></span>
@@ -620,8 +621,21 @@ function renderComboList(axisOptions, comboByKey) {
                     上傳圖片
                     <input type="file" accept="image/*" class="hidden combo-upload-input">
                 </label>
+                ${existing ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
             </div>`;
     }).join('');
+
+    container.querySelectorAll('.combo-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const row = btn.closest('[data-existing-id]');
+            const id = row.dataset.existingId;
+            if (!id || !confirm('確定要移除這張組合照片嗎？')) return;
+
+            const { error } = await sb.from('pos_item_variants').delete().eq('id', id);
+            if (error) { alert('移除失敗：' + error.message); return; }
+            loadVariantSection({ erp_code: currentVariantErp });
+        });
+    });
 
     container.querySelectorAll('.combo-upload-input').forEach(input => {
         input.addEventListener('change', async () => {
