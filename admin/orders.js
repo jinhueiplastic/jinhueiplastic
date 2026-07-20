@@ -86,7 +86,7 @@ function renderResults(orders) {
             <div class="flex justify-between items-start flex-wrap gap-2">
                 <div>
                     <p class="font-bold text-blue-700">${escapeHtml(o.order_no || '')}</p>
-                    <p class="text-sm text-gray-500">${new Date(o.created_at).toLocaleString('zh-TW')}${o.created_by_email ? '　建立者：' + escapeHtml(o.created_by_email) : ''}</p>
+                    <p class="text-sm text-gray-500">${new Date(o.created_at).toLocaleString('zh-TW')}${(o.created_by_name || o.created_by_email) ? '　建立者：' + escapeHtml(o.created_by_name || o.created_by_email) : ''}</p>
                     <p class="text-sm text-gray-700 mt-1">
                         客戶：${escapeHtml(o.customers && o.customers.name || '（未知）')}
                         ${o.customers && o.customers.phone ? '　' + escapeHtml(o.customers.phone) : ''}

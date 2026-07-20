@@ -3,8 +3,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// 目前登入的後台帳號 email，登入後由 initAdminAuth 填入；給需要記錄「誰建立的」的地方用（例如訂單）。
+// 目前登入的後台帳號 email／顯示名稱，登入後由 initAdminAuth 填入；
+// 給需要記錄「誰建立的」的地方用（例如訂單）。顯示名稱存在 Supabase Auth 的
+// user_metadata 裡（每個帳號自己設定），沒設定過的話就先用 email 頂著。
 let currentUserEmail = '';
+let currentUserDisplayName = '';
 
 const ADMIN_PAGES = [
     { key: 'pos',       href: '/admin/pos.html',         label: 'POS 下單' },
@@ -30,6 +33,7 @@ function initAdminAuth(pageKey, onReady) {
     const loginError  = document.getElementById('login-error');
     const userEmailEl = document.getElementById('user-email');
     const logoutBtn   = document.getElementById('logout-btn');
+    const editNameBtn = document.getElementById('edit-display-name-btn');
 
     renderAdminNav(pageKey);
 
@@ -37,8 +41,26 @@ function initAdminAuth(pageKey, onReady) {
         loginView.classList.add('hidden');
         appView.classList.remove('hidden');
         currentUserEmail = session.user.email || '';
-        if (userEmailEl) userEmailEl.textContent = currentUserEmail;
+        currentUserDisplayName = (session.user.user_metadata && session.user.user_metadata.display_name) || currentUserEmail;
+        if (userEmailEl) userEmailEl.textContent = currentUserDisplayName;
         onReady();
+    }
+
+    if (editNameBtn) {
+        editNameBtn.addEventListener('click', async () => {
+            const newName = prompt('設定你的顯示名稱（會取代訂單記錄、頁面右上角顯示的 email）：', currentUserDisplayName);
+            if (newName === null) return;
+            const trimmed = newName.trim();
+            if (!trimmed) return;
+
+            const { error } = await sb.auth.updateUser({ data: { display_name: trimmed } });
+            if (error) {
+                alert('設定失敗：' + error.message);
+                return;
+            }
+            currentUserDisplayName = trimmed;
+            if (userEmailEl) userEmailEl.textContent = currentUserDisplayName;
+        });
     }
 
     if (loginForm) {

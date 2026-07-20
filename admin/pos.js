@@ -651,7 +651,7 @@ saveOrderBtn.addEventListener('click', async () => {
     try {
         const { data: order, error: orderErr } = await sb
             .from('orders')
-            .insert({ customer_id: customerId, created_by_email: currentUserEmail })
+            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName })
             .select()
             .single();
         if (orderErr) throw orderErr;
