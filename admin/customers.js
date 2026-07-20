@@ -23,7 +23,7 @@ async function loadCustomers() {
 
     if (error) {
         setStatus('');
-        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-red-600">讀取失敗：${escapeHtml(error.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-6 text-center text-red-600">讀取失敗：${escapeHtml(error.message)}</td></tr>`;
         return;
     }
 
@@ -43,7 +43,7 @@ function renderRegionDatalist() {
 
 function renderTable(customers) {
     if (!customers.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">目前沒有客戶資料</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-6 text-center text-gray-400">目前沒有客戶資料</td></tr>`;
         return;
     }
     tbody.innerHTML = customers.map(c => `
@@ -52,6 +52,7 @@ function renderTable(customers) {
             <td class="px-3 py-2">${escapeHtml(c.site_name || '')}</td>
             <td class="px-3 py-2">${escapeHtml(c.region || '')}</td>
             <td class="px-3 py-2">${escapeHtml(c.address || '')}</td>
+            <td class="px-3 py-2">${escapeHtml(c.contact_person || '')}</td>
             <td class="px-3 py-2">${escapeHtml(c.phone || '')}</td>
             <td class="px-3 py-2">
                 <button data-id="${c.id}" class="edit-btn text-blue-600 hover:underline text-sm">編輯</button>
@@ -70,7 +71,7 @@ searchInput.addEventListener('input', () => {
         return;
     }
     renderTable(allCustomers.filter(c =>
-        [c.name, c.phone, c.site_name, c.region].some(v => String(v || '').toLowerCase().includes(q))
+        [c.name, c.phone, c.site_name, c.region, c.contact_person].some(v => String(v || '').toLowerCase().includes(q))
     ));
 });
 
