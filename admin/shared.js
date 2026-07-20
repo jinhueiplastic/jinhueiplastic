@@ -3,6 +3,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// 目前登入的後台帳號 email，登入後由 initAdminAuth 填入；給需要記錄「誰建立的」的地方用（例如訂單）。
+let currentUserEmail = '';
+
 const ADMIN_PAGES = [
     { key: 'pos',       href: '/admin/pos.html',         label: 'POS 下單' },
     { key: 'orders',    href: '/admin/orders.html',      label: '查詢訂單' },
@@ -33,7 +36,8 @@ function initAdminAuth(pageKey, onReady) {
     function onLoggedIn(session) {
         loginView.classList.add('hidden');
         appView.classList.remove('hidden');
-        if (userEmailEl) userEmailEl.textContent = session.user.email || '';
+        currentUserEmail = session.user.email || '';
+        if (userEmailEl) userEmailEl.textContent = currentUserEmail;
         onReady();
     }
 
