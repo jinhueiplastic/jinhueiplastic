@@ -41,7 +41,7 @@ function renderRegionTiles() {
 async function loadOrders() {
     const { data, error } = await sb
         .from('orders')
-        .select('*, customers(name,phone,address,site_name,region), order_items(*)')
+        .select('*, customers(name,phone,address,site_name,region,contact_person), order_items(*)')
         .order('created_at', { ascending: false })
         .limit(1000);
     if (error) {
@@ -72,9 +72,9 @@ function renderResults(orders) {
             </div>
             <p class="text-sm text-gray-500">${new Date(o.created_at).toLocaleString('zh-TW')}</p>
             <p class="text-sm text-gray-700 mt-1">
-                客戶：${escapeHtml(c.name || '（未知）')}${c.phone ? '　' + escapeHtml(c.phone) : ''}
-                ${c.site_name ? '　工地：' + escapeHtml(c.site_name) : ''}
+                客戶：${escapeHtml(c.name || '（未知）')}${c.phone ? '　' + escapeHtml(c.phone) : ''}${c.contact_person ? '（' + escapeHtml(c.contact_person) + '）' : ''}
             </p>
+            ${c.site_name ? `<p class="text-sm text-gray-700">　工地：${escapeHtml(c.site_name)}</p>` : ''}
             <p class="text-sm text-gray-600 mt-2">${summary || '（無商品明細）'}</p>
         </div>`;
     }).join('');

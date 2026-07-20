@@ -216,10 +216,12 @@ function runSheetEntryHtml(entry) {
             <div style="font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}</div>`;
     }).join('');
 
+    const phoneLine = `${c.phone || ''}${c.contact_person ? '（' + c.contact_person + '）' : ''}`;
+
     return `
         <div style="margin-bottom:14px;font-weight:700;">
             <div>${escapeHtml(nameLine || '（未知客戶）')}</div>
-            <div>${escapeHtml(c.phone || '')}</div>
+            <div>${escapeHtml(phoneLine)}</div>
             ${itemsHtml}
             <div style="border-top:2px dashed #6b7280;margin-top:10px;"></div>
         </div>`;
