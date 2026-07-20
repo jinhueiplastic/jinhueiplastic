@@ -136,7 +136,7 @@ async function generateOrderPdf(order, customer, items) {
 function estimateRunSheetEntryHeight(entry) {
     const items = entry.items || [];
     const itemCount = Math.max(items.length, 1);
-    return 50 /* 客戶/工地 + 電話 兩行 */ + itemCount * 44 /* 每個品項：圖片+名稱+規格 一行、數量一行 */ + 16 /* 分隔線 */;
+    return 60 /* 客戶/工地 + 電話 兩行 */ + itemCount * 100 /* 每個品項：大圖片+名稱+規格 一行、數量一行 */ + 20 /* 分隔線 */;
 }
 
 // A4 一頁在這個排版裡的實際可用高度（跟 buildRunSheetHtml 的 794px 容器寬度、28px 內距、
@@ -145,7 +145,7 @@ const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const RUN_SHEET_CONTAINER_WIDTH_PX = 794; // 對應 A4_WIDTH_MM
 const RUN_SHEET_PADDING_PX = 28; // 上下各一份
-const RUN_SHEET_TITLE_HEIGHT_PX = 44;
+const RUN_SHEET_TITLE_HEIGHT_PX = 56;
 
 function runSheetColumnCapacityPx(hasTitle) {
     const pxPerMm = RUN_SHEET_CONTAINER_WIDTH_PX / A4_WIDTH_MM;
@@ -184,21 +184,21 @@ function runSheetEntryHtml(entry) {
             ? ('/api/image-proxy?url=' + encodeURIComponent(item.product_image_url))
             : '';
         return `
-            <div style="display:flex;align-items:center;gap:5px;margin-top:4px;font-weight:700;">
+            <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-weight:700;">
                 ${imgSrc
-                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:24px;height:24px;object-fit:cover;border-radius:3px;flex-shrink:0;">`
-                    : `<div style="width:24px;height:24px;background:#f3f4f6;border-radius:3px;flex-shrink:0;"></div>`}
+                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:64px;height:64px;object-fit:cover;border-radius:4px;flex-shrink:0;">`
+                    : `<div style="width:64px;height:64px;background:#f3f4f6;border-radius:4px;flex-shrink:0;"></div>`}
                 <div style="flex:1;min-width:0;overflow-wrap:break-word;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}${variant ? '　' + escapeHtml(variant) : ''}</div>
             </div>
-            <div style="padding-left:29px;font-weight:700;">數量：${escapeHtml(String(item.quantity))}</div>`;
+            <div style="padding-left:72px;font-weight:700;">數量：${escapeHtml(String(item.quantity))}</div>`;
     }).join('');
 
     return `
-        <div style="margin-bottom:10px;font-weight:700;">
+        <div style="margin-bottom:14px;font-weight:700;">
             <div>${escapeHtml(nameLine || '（未知客戶）')}</div>
             <div>${escapeHtml(c.phone || '')}</div>
             ${itemsHtml}
-            <div style="border-top:2px dashed #6b7280;margin-top:7px;"></div>
+            <div style="border-top:2px dashed #6b7280;margin-top:10px;"></div>
         </div>`;
 }
 
@@ -206,7 +206,7 @@ function buildRunSheetHtml(entries, title) {
     const container = document.createElement('div');
     container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:28px;'
         + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
-        + 'font-size:14px;font-weight:700;line-height:1.5;';
+        + 'font-size:17px;font-weight:700;line-height:1.5;';
 
     const columns = distributeEntriesIntoColumns(entries, 3, runSheetColumnCapacityPx(Boolean(title)));
     const columnsHtml = columns.map(col => `
@@ -214,7 +214,7 @@ function buildRunSheetHtml(entries, title) {
     `).join('');
 
     container.innerHTML = `
-        ${title ? `<h1 style="font-size:22px;font-weight:700;margin:0 0 12px;">${escapeHtml(title)}</h1>` : ''}
+        ${title ? `<h1 style="font-size:26px;font-weight:700;margin:0 0 14px;">${escapeHtml(title)}</h1>` : ''}
         <div style="display:flex;gap:14px;align-items:flex-start;">${columnsHtml}</div>
     `;
     return container;
