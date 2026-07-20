@@ -45,7 +45,7 @@ async function loadOrders() {
 
     const [{ data, error }, { data: customerData, error: customerError }] = await Promise.all([
         sb.from('orders')
-            .select('*, customers(name,phone,address,site_name,region), order_items(*)')
+            .select('*, customers(name,phone,address,site_name,region,contact_person), order_items(*)')
             .order('created_at', { ascending: false })
             .limit(500),
         sb.from('customers').select('name,phone,region').order('name', { ascending: true }),
@@ -88,9 +88,9 @@ function renderResults(orders) {
                     <p class="font-bold text-blue-700">${escapeHtml(o.order_no || '')}</p>
                     <p class="text-sm text-gray-500">${new Date(o.created_at).toLocaleString('zh-TW')}${(o.created_by_name || o.created_by_email) ? '　建立者：' + escapeHtml(o.created_by_name || o.created_by_email) : ''}</p>
                     <p class="text-sm text-gray-700 mt-1">
-                        客戶：${escapeHtml(o.customers && o.customers.name || '（未知）')}
-                        ${o.customers && o.customers.phone ? '　' + escapeHtml(o.customers.phone) : ''}
+                        客戶：${escapeHtml(o.customers && o.customers.name || '（未知）')}${o.customers && o.customers.phone ? '　' + escapeHtml(o.customers.phone) : ''}${o.customers && o.customers.contact_person ? '（' + escapeHtml(o.customers.contact_person) + '）' : ''}
                     </p>
+                    ${o.customers && o.customers.site_name ? `<p class="text-sm text-gray-700">　工地：${escapeHtml(o.customers.site_name)}</p>` : ''}
                 </div>
                 <div class="flex gap-2">
                     <button data-id="${o.id}" class="pdf-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">下載 PDF</button>

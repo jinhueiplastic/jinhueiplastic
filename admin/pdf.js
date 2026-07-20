@@ -54,6 +54,8 @@ function buildInvoiceHtml(order, customer, items) {
         ? `<div>工地：${escapeHtml(customer.site_name)}</div>` : '';
     const regionLine = customer && customer.region
         ? `<div>區域：${escapeHtml(customer.region)}</div>` : '';
+    const contactLine = customer && customer.contact_person
+        ? `<div>聯絡人：${escapeHtml(customer.contact_person)}</div>` : '';
 
     container.innerHTML = `
         <h1 style="font-size:22px;font-weight:700;margin:0 0 4px;">錦輝塑膠業有限公司 訂購單</h1>
@@ -66,6 +68,7 @@ function buildInvoiceHtml(order, customer, items) {
         <div style="font-size:13px;line-height:1.8;color:#374151;">
             <div>名稱：${escapeHtml(customer && customer.name || '')}</div>
             <div>電話：${escapeHtml(customer && customer.phone || '')}</div>
+            ${contactLine}
             <div>地址：${escapeHtml(customer && customer.address || '')}</div>
             ${siteLine}
             ${regionLine}
