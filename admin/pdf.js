@@ -132,20 +132,14 @@ async function generateOrderPdf(order, customer, items) {
    用「目前欄的高度是否已經到平均值」來決定何時換下一欄，讓 3 欄高度大致平均，
    而不是照筆數硬性平分（一筆商品越多，佔的高度自然越多）。 --- */
 
-// 粗略估計一筆訂單印出來大概要佔多少高度（單位跟 CSS px 差不多，只用來比較欄與欄之間的相對高度，不用很精準）。
-function estimateRunSheetEntryHeight(entry) {
-    const items = entry.items || [];
-    const itemCount = Math.max(items.length, 1);
-    return 60 /* 客戶/工地 + 電話 兩行 */ + itemCount * 100 /* 每個品項：大圖片+名稱+規格 一行、數量一行 */ + 20 /* 分隔線 */;
-}
-
 // A4 一頁在這個排版裡的實際可用高度（跟 buildRunSheetHtml 的 794px 容器寬度、28px 內距、
-// 標題的估計高度對應），用來當作每一欄真正能裝多少內容的容量，而不是拿總高度硬性除以 3。
+// 標題高度對應），用來當作每一欄真正能裝多少內容的容量，而不是拿總高度硬性除以 3。
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const RUN_SHEET_CONTAINER_WIDTH_PX = 794; // 對應 A4_WIDTH_MM
 const RUN_SHEET_PADDING_PX = 28; // 上下各一份
-const RUN_SHEET_TITLE_HEIGHT_PX = 56;
+const RUN_SHEET_TITLE_HEIGHT_PX = 64;
+const RUN_SHEET_COLUMN_GAP_PX = 14;
 
 function runSheetColumnCapacityPx(hasTitle) {
     const pxPerMm = RUN_SHEET_CONTAINER_WIDTH_PX / A4_WIDTH_MM;
@@ -153,10 +147,32 @@ function runSheetColumnCapacityPx(hasTitle) {
     return pageHeightPx - RUN_SHEET_PADDING_PX * 2 - (hasTitle ? RUN_SHEET_TITLE_HEIGHT_PX : 0);
 }
 
+function runSheetColumnWidthPx(columnCount) {
+    const contentWidth = RUN_SHEET_CONTAINER_WIDTH_PX - RUN_SHEET_PADDING_PX * 2;
+    return (contentWidth - RUN_SHEET_COLUMN_GAP_PX * (columnCount - 1)) / columnCount;
+}
+
+// 每一筆訂單印出來實際佔多高，直接把它畫到跟真正欄位一樣寬的隱藏容器裡量出來，
+// 不用去猜字會換幾行——字級、圖片大小以後再調也不用跟著重新估算。
+function measureRunSheetEntryHeights(entries, columnCount) {
+    const measurer = document.createElement('div');
+    measurer.style.cssText = `position:fixed;left:-9999px;top:0;width:${runSheetColumnWidthPx(columnCount)}px;`
+        + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
+        + 'font-size:17px;font-weight:700;line-height:1.5;';
+    document.body.appendChild(measurer);
+
+    const heights = entries.map(entry => {
+        measurer.innerHTML = runSheetEntryHtml(entry);
+        return measurer.getBoundingClientRect().height;
+    });
+
+    document.body.removeChild(measurer);
+    return heights;
+}
+
 // 由上至下把第一欄「真正填滿」（用一頁實際能放的高度當容量）才換下一欄，不是不管內容多少
 // 都硬性分成三等份——訂單筆數少、或者一欄裝得下的話，後面的欄位就會是空的。
-function distributeEntriesIntoColumns(entries, columnCount, columnCapacityPx) {
-    const heights = entries.map(estimateRunSheetEntryHeight);
+function distributeEntriesIntoColumns(entries, heights, columnCount, columnCapacityPx) {
     const columns = Array.from({ length: columnCount }, () => []);
 
     let col = 0;
@@ -184,13 +200,13 @@ function runSheetEntryHtml(entry) {
             ? ('/api/image-proxy?url=' + encodeURIComponent(item.product_image_url))
             : '';
         return `
-            <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-weight:700;">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;font-weight:700;">
                 ${imgSrc
-                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:64px;height:64px;object-fit:cover;border-radius:4px;flex-shrink:0;">`
-                    : `<div style="width:64px;height:64px;background:#f3f4f6;border-radius:4px;flex-shrink:0;"></div>`}
-                <div style="flex:1;min-width:0;overflow-wrap:break-word;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}${variant ? '　' + escapeHtml(variant) : ''}</div>
+                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:120px;height:120px;object-fit:cover;border-radius:4px;flex-shrink:0;">`
+                    : `<div style="width:120px;height:120px;background:#f3f4f6;border-radius:4px;flex-shrink:0;"></div>`}
+                <div style="flex:1;min-width:0;overflow-wrap:break-word;font-size:26px;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}${variant ? '　' + escapeHtml(variant) : ''}</div>
             </div>
-            <div style="padding-left:72px;font-weight:700;">數量：${escapeHtml(String(item.quantity))}</div>`;
+            <div style="padding-left:130px;font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}</div>`;
     }).join('');
 
     return `
@@ -208,14 +224,16 @@ function buildRunSheetHtml(entries, title) {
         + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
         + 'font-size:17px;font-weight:700;line-height:1.5;';
 
-    const columns = distributeEntriesIntoColumns(entries, 3, runSheetColumnCapacityPx(Boolean(title)));
+    const columnCount = 3;
+    const heights = measureRunSheetEntryHeights(entries, columnCount);
+    const columns = distributeEntriesIntoColumns(entries, heights, columnCount, runSheetColumnCapacityPx(Boolean(title)));
     const columnsHtml = columns.map(col => `
         <div style="flex:1;min-width:0;">${col.map(runSheetEntryHtml).join('')}</div>
     `).join('');
 
     container.innerHTML = `
-        ${title ? `<h1 style="font-size:26px;font-weight:700;margin:0 0 14px;">${escapeHtml(title)}</h1>` : ''}
-        <div style="display:flex;gap:14px;align-items:flex-start;">${columnsHtml}</div>
+        ${title ? `<h1 style="font-size:30px;font-weight:700;margin:0 0 16px;">${escapeHtml(title)}</h1>` : ''}
+        <div style="display:flex;gap:${RUN_SHEET_COLUMN_GAP_PX}px;align-items:flex-start;">${columnsHtml}</div>
     `;
     return container;
 }
