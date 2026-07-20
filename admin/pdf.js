@@ -172,21 +172,27 @@ function measureRunSheetEntryHeights(entries, columnCount) {
 
 // 由上至下把第一欄「真正填滿」（用一頁實際能放的高度當容量）才換下一欄，不是不管內容多少
 // 都硬性分成三等份——訂單筆數少、或者一欄裝得下的話，後面的欄位就會是空的。
-function distributeEntriesIntoColumns(entries, heights, columnCount, columnCapacityPx) {
-    const columns = Array.from({ length: columnCount }, () => []);
+// 每一欄（包含最後一欄）都要守容量上限，一頁的三欄都裝滿了還有剩，就换下一頁重新從第一欄開始，
+// 不會發生「前兩欄留白、全部塞到最後一欄」讓內容爆版的狀況。
+function distributeEntriesIntoPages(entries, heights, columnCount, columnCapacityPx) {
+    const pages = [];
+    let idx = 0;
 
-    let col = 0;
-    let colHeight = 0;
-    entries.forEach((entry, i) => {
-        const h = heights[i];
-        if (col < columnCount - 1 && colHeight > 0 && colHeight + h > columnCapacityPx) {
-            col++;
-            colHeight = 0;
+    while (idx < entries.length) {
+        const page = Array.from({ length: columnCount }, () => []);
+        for (let col = 0; col < columnCount && idx < entries.length; col++) {
+            let colHeight = 0;
+            while (idx < entries.length) {
+                const h = heights[idx];
+                if (colHeight > 0 && colHeight + h > columnCapacityPx) break;
+                page[col].push(entries[idx]);
+                colHeight += h;
+                idx++;
+            }
         }
-        columns[col].push(entry);
-        colHeight += h;
-    });
-    return columns;
+        pages.push(page);
+    }
+    return pages;
 }
 
 function runSheetEntryHtml(entry) {
@@ -200,13 +206,14 @@ function runSheetEntryHtml(entry) {
             ? ('/api/image-proxy?url=' + encodeURIComponent(item.product_image_url))
             : '';
         return `
-            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;font-weight:700;">
+            <div style="text-align:center;margin-top:10px;">
                 ${imgSrc
-                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:120px;height:120px;object-fit:cover;border-radius:4px;flex-shrink:0;">`
-                    : `<div style="width:120px;height:120px;background:#f3f4f6;border-radius:4px;flex-shrink:0;"></div>`}
-                <div style="flex:1;min-width:0;overflow-wrap:break-word;font-size:26px;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}${variant ? '　' + escapeHtml(variant) : ''}</div>
+                    ? `<img src="${imgSrc}" crossorigin="anonymous" style="width:150px;height:150px;object-fit:cover;border-radius:4px;">`
+                    : `<div style="width:150px;height:150px;background:#f3f4f6;border-radius:4px;display:inline-block;"></div>`}
             </div>
-            <div style="padding-left:130px;font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}</div>`;
+            <div style="font-weight:700;font-size:26px;overflow-wrap:break-word;margin-top:4px;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}</div>
+            ${variant ? `<div style="font-weight:700;font-size:26px;">${escapeHtml(variant)}</div>` : ''}
+            <div style="font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}</div>`;
     }).join('');
 
     return `
@@ -218,16 +225,13 @@ function runSheetEntryHtml(entry) {
         </div>`;
 }
 
-function buildRunSheetHtml(entries, title) {
+function buildRunSheetPageHtml(pageColumns, title) {
     const container = document.createElement('div');
     container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:28px;'
         + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
         + 'font-size:17px;font-weight:700;line-height:1.5;';
 
-    const columnCount = 3;
-    const heights = measureRunSheetEntryHeights(entries, columnCount);
-    const columns = distributeEntriesIntoColumns(entries, heights, columnCount, runSheetColumnCapacityPx(Boolean(title)));
-    const columnsHtml = columns.map(col => `
+    const columnsHtml = pageColumns.map(col => `
         <div style="flex:1;min-width:0;">${col.map(runSheetEntryHtml).join('')}</div>
     `).join('');
 
@@ -238,10 +242,19 @@ function buildRunSheetHtml(entries, title) {
     return container;
 }
 
-// entries: [{ order, customer, items }, ...] —— 全部訂單排成一份出貨清單，合併成同一份 PDF。
+// entries: [{ order, customer, items }, ...] —— 全部訂單排成出貨清單，合併成同一份 PDF。
+// 一頁的三欄都裝滿的話會自動另開一頁（一樣是三欄），每頁都印標題，不會有某一欄爆版爆到頁面外的狀況。
 async function generateCombinedOrdersPdf(entries, filename, title) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    await renderHtmlPagesInto(doc, buildRunSheetHtml(entries, title), true);
+
+    const columnCount = 3;
+    const heights = measureRunSheetEntryHeights(entries, columnCount);
+    const pages = distributeEntriesIntoPages(entries, heights, columnCount, runSheetColumnCapacityPx(Boolean(title)));
+
+    for (let i = 0; i < pages.length; i++) {
+        await renderHtmlPagesInto(doc, buildRunSheetPageHtml(pages[i], title), i === 0);
+    }
+
     doc.save(filename);
 }
