@@ -45,6 +45,8 @@ table tbody tr:hover {
     max-width: 1280px;
     margin: 0 auto;
     border-top: 1px solid #f3f4f6;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .admin-nav-link {
@@ -53,6 +55,8 @@ table tbody tr:hover {
     font-size: 0.875rem;
     color: #6b7280;
     border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .admin-nav-link:hover {
