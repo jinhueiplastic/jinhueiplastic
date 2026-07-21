@@ -416,19 +416,12 @@ function renderVariantPickerHtml(p) {
                     ${variantFieldHtml('spec', p)}
                     ${variantFieldHtml('bore', p)}
                     ${variantFieldHtml('color', p)}
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="flex flex-wrap items-end gap-2">
                         <div>
                             <label class="field-label">數量</label>
-                            <input type="number" id="variant-qty" class="field-input" min="1" value="1">
+                            <input type="number" id="variant-qty" class="field-input" style="width:4.5rem;" min="1" value="1">
                         </div>
-                        <div>
-                            <label class="field-label">單位</label>
-                            <div id="unit-tiles" class="flex flex-wrap gap-2"></div>
-                        </div>
-                    </div>
-                    <div class="flex gap-2">
-                        <input type="text" id="unit-new-input" class="field-input" placeholder="輸入新單位，例如：箱">
-                        <button type="button" id="unit-add-btn" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                        <div id="unit-tiles" class="flex flex-wrap items-center gap-2"></div>
                     </div>
                 </div>
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
@@ -587,18 +580,28 @@ function resetVariantPicker() {
     if (qtyEl) qtyEl.value = 1;
 
     selectedUnit = '';
-    const unitNewInput = document.getElementById('unit-new-input');
-    if (unitNewInput) unitNewInput.value = '';
+    unitAddMode = false;
     renderUnitTiles();
 }
+
+// 單位按鈕排在同一列，最後面接一個「輸入新單位＋」按鈕；按下去才變成一個小輸入框，
+// 打完按 Enter 或點掉就送出、變回按鈕（新單位也會馬上存進 pos_units，之後就有按鈕可以點）。
+let unitAddMode = false;
 
 function renderUnitTiles() {
     const container = document.getElementById('unit-tiles');
     if (!container) return;
-    container.innerHTML = allUnits.map(u => `
+
+    const unitBtnsHtml = allUnits.map(u => `
         <button type="button" class="category-filter-btn unit-btn${selectedUnit === u ? ' active' : ''}" data-unit="${escapeHtml(u)}">
             ${escapeHtml(u)}
         </button>`).join('');
+
+    const addHtml = unitAddMode
+        ? `<input type="text" id="unit-new-input" class="field-input" style="width:4.5rem;" placeholder="新單位">`
+        : `<button type="button" id="unit-add-toggle-btn" class="category-filter-btn">輸入新單位＋</button>`;
+
+    container.innerHTML = unitBtnsHtml + addHtml;
 
     container.querySelectorAll('.unit-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -606,37 +609,43 @@ function renderUnitTiles() {
             renderUnitTiles();
         });
     });
+
+    if (unitAddMode) {
+        const input = document.getElementById('unit-new-input');
+        input.focus();
+        input.addEventListener('blur', () => commitNewUnit(input.value));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { unitAddMode = false; renderUnitTiles(); }
+        });
+    } else {
+        document.getElementById('unit-add-toggle-btn').addEventListener('click', () => {
+            unitAddMode = true;
+            renderUnitTiles();
+        });
+    }
 }
 
-async function addNewUnit() {
-    const input = document.getElementById('unit-new-input');
-    const value = input.value.trim();
-    if (!value) return;
+async function commitNewUnit(rawValue) {
+    const value = rawValue.trim();
+    unitAddMode = false;
+    if (!value) { renderUnitTiles(); return; }
 
     if (!allUnits.includes(value)) {
         const { error } = await sb.from('pos_units').insert({ name: value, sort_order: allUnits.length });
-        if (error) { alert('新增單位失敗：' + error.message); return; }
+        if (error) { alert('新增單位失敗：' + error.message); renderUnitTiles(); return; }
         allUnits.push(value);
     }
 
     selectedUnit = value;
-    input.value = '';
     renderUnitTiles();
 }
 
 function wireVariantPicker(p) {
     selectedVariant = { spec: '', bore: '', color: '' };
     selectedUnit = '';
+    unitAddMode = false;
     renderUnitTiles();
-
-    const unitAddBtn = document.getElementById('unit-add-btn');
-    if (unitAddBtn) unitAddBtn.addEventListener('click', addNewUnit);
-    const unitNewInput = document.getElementById('unit-new-input');
-    if (unitNewInput) {
-        unitNewInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); addNewUnit(); }
-        });
-    }
 
     ['spec', 'bore', 'color'].forEach(type => {
         const textEl = document.getElementById(`variant-${type}-text`);
