@@ -61,30 +61,48 @@ async function loadProducts() {
     applyFilters();
 }
 
+// 桌面版用按鈕，手機版（畫面比較窄，這頁又常常在手機上用）改用下拉選單，
+// 不用一次把所有分類的按鈕都塞在畫面上。兩邊共用同一個 selectedCategoryFilter 狀態。
 function renderCategoryFilterTiles() {
     const container = document.getElementById('category-filter-tiles');
-    if (!container) return;
+    const select = document.getElementById('category-filter-select');
+    if (!container && !select) return;
+
     const categories = [...new Set(allProducts.map(p => (p.category_name_zh || '').trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
 
-    const allBtn = `
-        <button type="button" class="category-filter-btn${selectedCategoryFilter ? '' : ' active'}" data-cat="">
-            全部
-        </button>`;
-    const catBtns = categories.map(c => `
-        <button type="button" class="category-filter-btn${selectedCategoryFilter === c ? ' active' : ''}" data-cat="${escapeHtml(c)}">
-            ${escapeHtml(c)}
-        </button>`).join('');
+    if (container) {
+        const allBtn = `
+            <button type="button" class="category-filter-btn${selectedCategoryFilter ? '' : ' active'}" data-cat="">
+                全部
+            </button>`;
+        const catBtns = categories.map(c => `
+            <button type="button" class="category-filter-btn${selectedCategoryFilter === c ? ' active' : ''}" data-cat="${escapeHtml(c)}">
+                ${escapeHtml(c)}
+            </button>`).join('');
 
-    container.innerHTML = allBtn + catBtns;
+        container.innerHTML = allBtn + catBtns;
 
-    container.querySelectorAll('.category-filter-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            selectedCategoryFilter = btn.dataset.cat || null;
+        container.querySelectorAll('.category-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedCategoryFilter = btn.dataset.cat || null;
+                renderCategoryFilterTiles();
+                applyFilters();
+            });
+        });
+    }
+
+    if (select) {
+        select.innerHTML = '<option value="">全部分類</option>' +
+            categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+        select.value = selectedCategoryFilter || '';
+
+        select.onchange = () => {
+            selectedCategoryFilter = select.value || null;
             renderCategoryFilterTiles();
             applyFilters();
-        });
-    });
+        };
+    }
 }
 
 function applyFilters() {
