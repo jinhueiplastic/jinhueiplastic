@@ -2,6 +2,14 @@ body {
     font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
 }
 
+/* 手機瀏覽器（主要是 iOS Safari）點到文字小於 16px 的輸入框會自動放大畫面，
+   打完字還要自己手動縮回來很煩。輸入框、下拉選單一律至少 16px 就不會觸發。 */
+@media (max-width: 640px) {
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+}
+
 table td, table th {
     border-bottom: 1px solid #eee;
     vertical-align: top;
@@ -40,12 +48,13 @@ table tbody tr:hover {
 
 .admin-nav {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem 1.5rem;
+    gap: 1.5rem;
     padding: 0 1rem;
     max-width: 1280px;
     margin: 0 auto;
     border-top: 1px solid #f3f4f6;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .admin-nav-link {
@@ -54,6 +63,8 @@ table tbody tr:hover {
     font-size: 0.875rem;
     color: #6b7280;
     border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .admin-nav-link:hover {
