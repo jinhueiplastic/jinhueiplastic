@@ -403,18 +403,6 @@ function variantFieldHtml(type, product) {
 
 // 單位是全店共用的一份清單（跟規格/孔徑/顏色不一樣，不是綁在個別商品上），
 // 按鈕選或直接打新的都可以，新增的會馬上存進 pos_units，之後就一直有這個按鈕可以點。
-function unitFieldHtml() {
-    return `
-        <div>
-            <label class="field-label">單位</label>
-            <div id="unit-tiles" class="flex flex-wrap gap-2 mb-2"></div>
-            <div class="flex gap-2">
-                <input type="text" id="unit-new-input" class="field-input" placeholder="輸入新單位，例如：箱">
-                <button type="button" id="unit-add-btn" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
-            </div>
-        </div>`;
-}
-
 function renderVariantPickerHtml(p) {
     return `
         <div class="flex gap-4 flex-col sm:flex-row">
@@ -428,11 +416,20 @@ function renderVariantPickerHtml(p) {
                     ${variantFieldHtml('spec', p)}
                     ${variantFieldHtml('bore', p)}
                     ${variantFieldHtml('color', p)}
-                    <div class="w-32">
-                        <label class="field-label">數量</label>
-                        <input type="number" id="variant-qty" class="field-input" min="1" value="1">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="field-label">數量</label>
+                            <input type="number" id="variant-qty" class="field-input" min="1" value="1">
+                        </div>
+                        <div>
+                            <label class="field-label">單位</label>
+                            <div id="unit-tiles" class="flex flex-wrap gap-2"></div>
+                        </div>
                     </div>
-                    ${unitFieldHtml()}
+                    <div class="flex gap-2">
+                        <input type="text" id="unit-new-input" class="field-input" placeholder="輸入新單位，例如：箱">
+                        <button type="button" id="unit-add-btn" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                    </div>
                 </div>
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
                     加入已選購商品
