@@ -215,12 +215,12 @@ function buildFormFields(product) {
                     <label class="field-label">${f.label}</label>
                     <div class="flex items-start gap-3">
                         <img id="image-preview" src="${escapeHtml(previewSrc)}" alt=""
-                             class="product-thumb" style="width:64px;height:64px;">
-                        <div class="flex-1 space-y-2">
+                             class="product-thumb" style="width:64px;height:64px;flex-shrink:0;">
+                        <div class="flex-1 min-w-0 space-y-2">
                             <input type="text" id="image-url-input" class="field-input" data-key="${f.key}" value="${escaped}"
                                    oninput="document.getElementById('image-preview').src = this.value.split(',')[0].trim()">
-                            <div class="flex items-center gap-2">
-                                <input type="file" id="image-upload-input" accept="image/*" class="text-xs">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <input type="file" id="image-upload-input" accept="image/*" class="text-xs min-w-0">
                                 <span id="image-upload-status" class="text-xs text-gray-400"></span>
                             </div>
                         </div>
