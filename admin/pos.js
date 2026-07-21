@@ -80,6 +80,7 @@ async function initPos() {
     browseCategory = null;
     renderBrowseArea();
     renderCart();
+    renderCartCustomerInfo(null);
 
     setupLeaveGuards();
 }
@@ -200,12 +201,11 @@ function renderCustomerSearchResults(query) {
 
 function renderCartCustomerInfo(c) {
     const el = document.getElementById('cart-customer-info');
+    el.classList.remove('hidden');
     if (!c) {
-        el.classList.add('hidden');
-        el.innerHTML = '';
+        el.innerHTML = `<p class="text-sm text-gray-400">尚未選擇客戶</p>`;
         return;
     }
-    el.classList.remove('hidden');
     el.innerHTML = `
         <p class="text-sm text-gray-700">客戶：${escapeHtml(c.name || '')}　工地：${escapeHtml(c.site_name || '（無）')}</p>
         <p class="text-lg font-bold text-gray-900 mt-1">區域：${escapeHtml(c.region || '（無）')}</p>
