@@ -163,6 +163,26 @@ table tbody tr:hover {
     background: #eff6ff;
 }
 
+.unit-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: #eff6ff;
+    color: #1e40af;
+    font-size: 0.75rem;
+}
+
+.unit-chip button {
+    color: #93c5fd;
+    line-height: 1;
+}
+
+.unit-chip button:hover {
+    color: #dc2626;
+}
+
 .region-badge {
     display: inline-block;
     padding: 2px 12px;

@@ -39,8 +39,12 @@ const formFieldsBottom = document.getElementById('form-fields-bottom');
 const formFields = productForm;
 
 // 表單裡任何欄位（包含動態產生的商品欄位、規格表格編輯工具的儲存格）有異動就標記為未儲存。
-productForm.addEventListener('input', () => { modalDirty = true; });
-productForm.addEventListener('change', () => { modalDirty = true; });
+// 「訂單單位」是全店共用、新增刪除立即生效的，不算這個商品表單的異動，排除在外。
+function isDirtyTrackedEvent(e) {
+    return !e.target.closest('#unit-section');
+}
+productForm.addEventListener('input', (e) => { if (isDirtyTrackedEvent(e)) modalDirty = true; });
+productForm.addEventListener('change', (e) => { if (isDirtyTrackedEvent(e)) modalDirty = true; });
 
 function setStatus(msg) {
     statusMsg.textContent = msg;
@@ -996,4 +1000,65 @@ window.addEventListener('beforeunload', (e) => {
     }
 });
 
-initAdminAuth('products', loadProducts);
+/* --- 訂單單位（pos_units）：POS 下單「數量」旁邊可以選的單位，全店共用，不是綁在個別商品上，
+   所以放在編輯視窗裡管理，但新增／刪除是立即生效，不用等按「儲存」。 --- */
+let allUnitsAdmin = [];
+
+async function loadUnits() {
+    const { data, error } = await sb.from('pos_units').select('*').order('sort_order', { ascending: true });
+    if (error) {
+        document.getElementById('admin-unit-chips').innerHTML =
+            `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
+        return;
+    }
+    allUnitsAdmin = data || [];
+    renderUnitChips();
+}
+
+function renderUnitChips() {
+    const container = document.getElementById('admin-unit-chips');
+    if (!container) return;
+
+    if (!allUnitsAdmin.length) {
+        container.innerHTML = '<p class="text-xs text-gray-400">還沒有任何單位。</p>';
+        return;
+    }
+
+    container.innerHTML = allUnitsAdmin.map(u => `
+        <span class="unit-chip">
+            ${escapeHtml(u.name)}
+            <button type="button" data-id="${u.id}" class="unit-chip-del">×</button>
+        </span>`).join('');
+
+    container.querySelectorAll('.unit-chip-del').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('確定要刪除這個單位嗎？')) return;
+            const { error } = await sb.from('pos_units').delete().eq('id', btn.dataset.id);
+            if (error) { alert('刪除失敗：' + error.message); return; }
+            loadUnits();
+        });
+    });
+}
+
+document.getElementById('admin-unit-add-btn').addEventListener('click', async () => {
+    const input = document.getElementById('admin-unit-new-input');
+    const value = input.value.trim();
+    if (!value) return;
+    if (allUnitsAdmin.some(u => u.name === value)) { input.value = ''; return; }
+
+    const { error } = await sb.from('pos_units').insert({ name: value, sort_order: allUnitsAdmin.length });
+    if (error) { alert('新增失敗：' + error.message); return; }
+
+    input.value = '';
+    loadUnits();
+});
+
+document.getElementById('admin-unit-new-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('admin-unit-add-btn').click(); }
+});
+
+async function initProductsPage() {
+    await Promise.all([loadProducts(), loadUnits()]);
+}
+
+initAdminAuth('products', initProductsPage);
