@@ -28,9 +28,15 @@ const searchInput = document.getElementById('search-input');
 
 const modal        = document.getElementById('edit-modal');
 const modalTitle    = document.getElementById('modal-title');
-const formFields    = document.getElementById('form-fields');
 const productForm   = document.getElementById('product-form');
 const formError      = document.getElementById('form-error');
+
+// 商品欄位分成上下兩塊（form-fields-top／form-fields-bottom），中間夾著 POS 規格／孔徑／顏色選項，
+// 順序才會是：分類～名稱 → 圖片 → POS 規格／孔徑／顏色選項 → 中文說明…等其餘欄位。
+// 查詢欄位（.querySelector 之類）沿用 formFields 這個名字，但範圍擴大到整個表單，兩塊都找得到。
+const formFieldsTop    = document.getElementById('form-fields-top');
+const formFieldsBottom = document.getElementById('form-fields-bottom');
+const formFields = productForm;
 
 // 表單裡任何欄位（包含動態產生的商品欄位、規格表格編輯工具的儲存格）有異動就標記為未儲存。
 productForm.addEventListener('input', () => { modalDirty = true; });
@@ -193,7 +199,13 @@ function buildFormFields(product) {
         desc_zh: parseFirstTable(product ? (product.desc_zh || '') : ''),
         desc_en: parseFirstTable(product ? (product.desc_en || '') : ''),
     };
-    formFields.innerHTML = PRODUCT_FIELDS.map(f => {
+
+    // 分類～名稱→圖片放上半部；中文說明…等其餘欄位放下半部，中間插入 POS 規格／孔徑／顏色選項（靜態 HTML）。
+    const splitIndex = PRODUCT_FIELDS.findIndex(f => f.key === 'desc_zh');
+    const topFields = PRODUCT_FIELDS.slice(0, splitIndex);
+    const bottomFields = PRODUCT_FIELDS.slice(splitIndex);
+
+    const renderField = (f) => {
         const value = product ? (product[f.key] ?? '') : '';
         const escaped = escapeHtml(String(value));
         if (f.textarea) {
@@ -234,7 +246,10 @@ function buildFormFields(product) {
                 ${fieldDisplayHtml(f.key, escaped)}
                 <input type="text" class="field-input hidden" data-key="${f.key}" value="${escaped}">
             </div>`;
-    }).join('') + `
+    };
+
+    formFieldsTop.innerHTML = topFields.map(renderField).join('');
+    formFieldsBottom.innerHTML = bottomFields.map(renderField).join('') + `
         <div class="sm:col-span-2 flex items-center gap-2 pt-1">
             <input type="checkbox" id="form-is-active" ${product && product.is_active === false ? '' : 'checked'}>
             <label for="form-is-active" class="text-sm text-gray-600">上架顯示於官網</label>
