@@ -61,7 +61,7 @@ function renderResults(orders) {
         const summary = items.map(it => {
             const variant = [it.spec, it.bore, it.color].filter(Boolean).join('/');
             const name = it.product_name_zh || it.product_erp_code || '';
-            return `${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''} x${it.quantity}`;
+            return `${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''} x${it.quantity}${it.unit ? escapeHtml(it.unit) : ''}`;
         }).join('、');
         const c = o.customers || {};
         return `

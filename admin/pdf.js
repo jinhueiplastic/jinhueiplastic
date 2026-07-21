@@ -45,7 +45,7 @@ function buildInvoiceHtml(order, customer, items) {
                     ${variant ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${escapeHtml(variant)}</div>` : ''}
                 </td>
                 <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-size:14px;white-space:nowrap;vertical-align:top;">
-                    數量：${escapeHtml(String(item.quantity))}
+                    數量：${escapeHtml(String(item.quantity))}${item.unit ? escapeHtml(item.unit) : ''}
                 </td>
             </tr>`;
     }).join('');
@@ -216,7 +216,7 @@ function runSheetEntryHtml(entry) {
             </div>
             <div style="font-weight:700;font-size:26px;overflow-wrap:break-word;margin-top:4px;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}</div>
             ${variant ? `<div style="font-weight:700;font-size:26px;">${escapeHtml(variant)}</div>` : ''}
-            <div style="font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}</div>`;
+            <div style="font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}${item.unit ? escapeHtml(item.unit) : ''}</div>`;
     }).join('');
 
     const phoneLine = `${c.phone || ''}${c.contact_person ? '（' + c.contact_person + '）' : ''}`;

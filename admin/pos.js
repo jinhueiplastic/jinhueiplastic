@@ -7,6 +7,8 @@ let categoryNameById = {};   // catId -> 中文分類顯示名稱
 let variantOptionsByErp = {}; // erp_code -> { spec: [{value,image_url}], bore: [...], color: [...] }
 let selectedVariant = { spec: '', bore: '', color: '' }; // 目前規格畫面上，用按鈕點選的值
 let comboImagesByErp = {}; // erp_code -> { 'spec||bore||color': image_url }，每個確切組合各自的商品照
+let allUnits = []; // 全店共用的單位選項清單（個/支/包/箱…），不是綁在個別商品上
+let selectedUnit = ''; // 目前規格畫面上，用按鈕點選的單位
 let selectedRegionFilter = new URLSearchParams(location.search).get('region') || null; // 依區域篩選客戶，null＝全部
 
 // 瀏覽狀態：categories（分類卡片）→ products（該分類/搜尋結果的商品卡片）→ variant（選規格數量）
@@ -29,18 +31,21 @@ const saveOrderBtn       = document.getElementById('save-order-btn');
 async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }] = await Promise.all([
         sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
         sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }),
+        sb.from('pos_units').select('*').order('sort_order', { ascending: true }),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
     if (catErr) console.error(catErr);
     if (vErr) console.error(vErr);
+    if (uErr) console.error(uErr);
     products = productData || [];
     customers = customerData || [];
+    allUnits = (unitData || []).map(u => u.name);
 
     // pos_item_variants 一列可能是「單一選項按鈕」（規格/孔徑/顏色只填一欄）
     // 或「確切組合的實際照片」（填兩欄以上），兩種都從同一份資料算出來。
@@ -396,6 +401,20 @@ function variantFieldHtml(type, product) {
         </div>`;
 }
 
+// 單位是全店共用的一份清單（跟規格/孔徑/顏色不一樣，不是綁在個別商品上），
+// 按鈕選或直接打新的都可以，新增的會馬上存進 pos_units，之後就一直有這個按鈕可以點。
+function unitFieldHtml() {
+    return `
+        <div>
+            <label class="field-label">單位</label>
+            <div id="unit-tiles" class="flex flex-wrap gap-2 mb-2"></div>
+            <div class="flex gap-2">
+                <input type="text" id="unit-new-input" class="field-input" placeholder="輸入新單位，例如：箱">
+                <button type="button" id="unit-add-btn" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+            </div>
+        </div>`;
+}
+
 function renderVariantPickerHtml(p) {
     return `
         <div class="flex gap-4 flex-col sm:flex-row">
@@ -413,6 +432,7 @@ function renderVariantPickerHtml(p) {
                         <label class="field-label">數量</label>
                         <input type="number" id="variant-qty" class="field-input" min="1" value="1">
                     </div>
+                    ${unitFieldHtml()}
                 </div>
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
                     加入已選購商品
@@ -542,6 +562,23 @@ async function learnNewVariantOptions(itemsPayload) {
     });
 }
 
+// 保險機制：如果打了新單位但忘記按「新增」就直接加入購物車出單，訂單存檔後還是把它學起來，
+// 下次就有按鈕可以點（正常走「新增」按鈕的話這裡不會找到新東西，因為已經存過了）。
+async function learnNewUnits(itemsPayload) {
+    const newUnits = [...new Set(
+        itemsPayload.map(item => String(item.unit || '').trim()).filter(v => v && !allUnits.includes(v))
+    )];
+    if (!newUnits.length) return;
+
+    const rows = newUnits.map((name, i) => ({ name, sort_order: allUnits.length + i }));
+    const { error } = await sb.from('pos_units').insert(rows);
+    if (error) {
+        console.error('自動學習單位失敗：', error);
+        return;
+    }
+    allUnits.push(...newUnits);
+}
+
 function resetVariantPicker() {
     selectedVariant = { spec: '', bore: '', color: '' };
     document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
@@ -551,10 +588,58 @@ function resetVariantPicker() {
     });
     const qtyEl = document.getElementById('variant-qty');
     if (qtyEl) qtyEl.value = 1;
+
+    selectedUnit = '';
+    const unitNewInput = document.getElementById('unit-new-input');
+    if (unitNewInput) unitNewInput.value = '';
+    renderUnitTiles();
+}
+
+function renderUnitTiles() {
+    const container = document.getElementById('unit-tiles');
+    if (!container) return;
+    container.innerHTML = allUnits.map(u => `
+        <button type="button" class="category-filter-btn unit-btn${selectedUnit === u ? ' active' : ''}" data-unit="${escapeHtml(u)}">
+            ${escapeHtml(u)}
+        </button>`).join('');
+
+    container.querySelectorAll('.unit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectedUnit = (selectedUnit === btn.dataset.unit) ? '' : btn.dataset.unit; // 再點一次取消選取
+            renderUnitTiles();
+        });
+    });
+}
+
+async function addNewUnit() {
+    const input = document.getElementById('unit-new-input');
+    const value = input.value.trim();
+    if (!value) return;
+
+    if (!allUnits.includes(value)) {
+        const { error } = await sb.from('pos_units').insert({ name: value, sort_order: allUnits.length });
+        if (error) { alert('新增單位失敗：' + error.message); return; }
+        allUnits.push(value);
+    }
+
+    selectedUnit = value;
+    input.value = '';
+    renderUnitTiles();
 }
 
 function wireVariantPicker(p) {
     selectedVariant = { spec: '', bore: '', color: '' };
+    selectedUnit = '';
+    renderUnitTiles();
+
+    const unitAddBtn = document.getElementById('unit-add-btn');
+    if (unitAddBtn) unitAddBtn.addEventListener('click', addNewUnit);
+    const unitNewInput = document.getElementById('unit-new-input');
+    if (unitNewInput) {
+        unitNewInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); addNewUnit(); }
+        });
+    }
 
     ['spec', 'bore', 'color'].forEach(type => {
         const textEl = document.getElementById(`variant-${type}-text`);
@@ -589,6 +674,8 @@ function wireVariantPicker(p) {
 
     document.getElementById('add-to-cart-btn').addEventListener('click', () => {
         const qty = Number(document.getElementById('variant-qty').value) || 1;
+        const unitNewInput = document.getElementById('unit-new-input');
+        const unit = selectedUnit || (unitNewInput ? unitNewInput.value.trim() : '');
         cart.push({
             rowId: ++cartCounter,
             erp: p.erp_code,
@@ -597,6 +684,7 @@ function wireVariantPicker(p) {
             spec: currentVariantValue('spec'),
             bore: currentVariantValue('bore'),
             color: currentVariantValue('color'),
+            unit,
             qty,
         });
         renderCart();
@@ -622,7 +710,7 @@ function renderCart() {
                 <img src="${escapeHtml(item.image_url)}" alt="" class="product-thumb" style="width:48px;height:48px;flex-shrink:0;">
                 <div class="flex-1 min-w-0">
                     <p class="cart-item-name">${escapeHtml(item.name_zh || item.erp || '')}</p>
-                    <p class="cart-item-meta">${variant ? escapeHtml(variant) + '　' : ''}數量：${item.qty}</p>
+                    <p class="cart-item-meta">${variant ? escapeHtml(variant) + '　' : ''}數量：${item.qty}${item.unit ? escapeHtml(item.unit) : ''}</p>
                 </div>
                 <button type="button" data-row-id="${item.rowId}" class="cart-del-btn text-red-400 hover:text-red-600 text-sm shrink-0">刪除</button>
             </div>`;
@@ -664,10 +752,13 @@ saveOrderBtn.addEventListener('click', async () => {
             spec: item.spec,
             bore: item.bore,
             color: item.color,
+            unit: item.unit,
             quantity: item.qty,
         }));
         const { error: itemsErr } = await sb.from('order_items').insert(itemsPayload);
         if (itemsErr) throw itemsErr;
+
+        await learnNewUnits(itemsPayload);
 
         // 訂單已經真的存進資料庫了，此時清空購物車，離開頁面的提醒才不會誤判成「還有未儲存的東西」。
         cart = [];
