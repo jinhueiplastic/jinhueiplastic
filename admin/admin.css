@@ -40,6 +40,23 @@ table tbody tr:hover {
     outline-offset: 1px;
 }
 
+/* 編輯商品的欄位平常顯示純文字，點一下才變成輸入框（field-input 本身），減少手機版一次擠一堆輸入框。 */
+.field-display-text {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    min-height: 1.9rem;
+    cursor: text;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.field-display-text:hover {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+}
+
 .category-header {
     background-color: #eff6ff;
     font-weight: 700;

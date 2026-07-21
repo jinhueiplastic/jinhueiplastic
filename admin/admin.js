@@ -204,7 +204,8 @@ function buildFormFields(product) {
                         <label class="field-label !mb-0">${f.label}</label>
                         ${isTableField ? `<button type="button" class="table-tool-toggle text-xs text-blue-600 hover:underline" data-toggle-key="${f.key}">規格表格編輯工具</button>` : ''}
                     </div>
-                    <textarea class="field-input" rows="4" data-key="${f.key}">${escaped}</textarea>
+                    ${fieldDisplayHtml(f.key, escaped)}
+                    <textarea class="field-input hidden" rows="4" data-key="${f.key}">${escaped}</textarea>
                     ${isTableField ? `<div class="table-tool-panel hidden mt-2 border rounded-lg p-3 bg-gray-50" data-panel-key="${f.key}"></div>` : ''}
                 </div>`;
         }
@@ -230,13 +231,16 @@ function buildFormFields(product) {
         return `
             <div>
                 <label class="field-label">${f.label}</label>
-                <input type="text" class="field-input" data-key="${f.key}" value="${escaped}">
+                ${fieldDisplayHtml(f.key, escaped)}
+                <input type="text" class="field-input hidden" data-key="${f.key}" value="${escaped}">
             </div>`;
     }).join('') + `
         <div class="sm:col-span-2 flex items-center gap-2 pt-1">
             <input type="checkbox" id="form-is-active" ${product && product.is_active === false ? '' : 'checked'}>
             <label for="form-is-active" class="text-sm text-gray-600">上架顯示於官網</label>
         </div>`;
+
+    wireClickToEditFields();
 
     formFields.querySelectorAll('.table-tool-toggle').forEach(btn => {
         btn.addEventListener('click', () => toggleTableTool(btn.dataset.toggleKey));
@@ -265,6 +269,42 @@ function buildFormFields(product) {
             }
         });
     }
+}
+
+// 除了圖片欄位以外，其他欄位（分類～名稱、規格說明、包裝規格…等）平常只顯示純文字，
+// 手機上一堆輸入框疊在一起很雜；點一下文字才變成輸入框可以改，改完點別的地方就變回文字。
+const FIELD_EMPTY_PLACEHOLDER = '<span class="text-gray-400">（點一下輸入）</span>';
+
+function fieldDisplayHtml(key, escapedValue) {
+    return `<div class="field-display-text" data-display-for="${key}">${escapedValue || FIELD_EMPTY_PLACEHOLDER}</div>`;
+}
+
+function wireClickToEditFields() {
+    formFields.querySelectorAll('[data-display-for]').forEach(displayEl => {
+        const key = displayEl.dataset.displayFor;
+        const inputEl = formFields.querySelector(`[data-key="${key}"]`);
+        if (!inputEl) return;
+
+        displayEl.addEventListener('click', () => {
+            displayEl.classList.add('hidden');
+            inputEl.classList.remove('hidden');
+            inputEl.focus();
+            if (inputEl.tagName === 'INPUT') inputEl.select();
+        });
+
+        inputEl.addEventListener('blur', () => {
+            inputEl.classList.add('hidden');
+            const v = inputEl.value.trim();
+            displayEl.innerHTML = v ? escapeHtml(v) : FIELD_EMPTY_PLACEHOLDER;
+            displayEl.classList.remove('hidden');
+        });
+
+        if (inputEl.tagName === 'INPUT') {
+            inputEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') inputEl.blur();
+            });
+        }
+    });
 }
 
 /* --- 規格表格編輯工具：把 desc_zh / desc_en 裡的 markdown 表格轉成可視化表格 --- */
@@ -323,11 +363,28 @@ function toggleTableTool(key) {
     }
     panel.classList.remove('hidden');
     renderTableToolPanel(key);
+
+    // 打開表格工具等於要開始編輯這個欄位，把「純文字顯示」切成輸入框（跟點文字進去編輯是同一個狀態）。
+    const displayEl = formFields.querySelector(`[data-display-for="${key}"]`);
+    const textarea = formFields.querySelector(`textarea[data-key="${key}"]`);
+    if (displayEl && textarea) {
+        displayEl.classList.add('hidden');
+        textarea.classList.remove('hidden');
+    }
 }
 
 function syncTextarea(key) {
     const textarea = formFields.querySelector(`textarea[data-key="${key}"]`);
-    if (textarea) textarea.value = composeText(descTableStates[key]);
+    if (!textarea) return;
+    textarea.value = composeText(descTableStates[key]);
+
+    // 表格工具是直接改 textarea.value（不是使用者自己打字觸發 blur），純文字顯示要一併同步，
+    // 不然使用者收起輸入框看到的還是表格工具編輯前的舊文字。
+    const displayEl = formFields.querySelector(`[data-display-for="${key}"]`);
+    if (displayEl) {
+        const v = textarea.value.trim();
+        displayEl.innerHTML = v ? escapeHtml(v) : FIELD_EMPTY_PLACEHOLDER;
+    }
 }
 
 // 結構性操作（新增/刪除/移動 列或欄）從中文表格同步到英文表格，
