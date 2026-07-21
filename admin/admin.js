@@ -49,9 +49,7 @@ async function loadProducts() {
 
     if (error) {
         setStatus('');
-        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-red-600">
-            讀取失敗：${escapeHtml(error.message)}
-        </td></tr>`;
+        tbody.innerHTML = `<p class="text-center text-red-600 py-6">讀取失敗：${escapeHtml(error.message)}</p>`;
         return;
     }
 
@@ -133,34 +131,36 @@ function groupByCategory(products) {
 function productRowHtml(p) {
     const img = String(p.image_url || '').split(',')[0].trim();
     const thumb = img
-        ? `<img src="${img}" alt="" class="product-thumb">`
-        : `<div class="product-thumb"></div>`;
+        ? `<img src="${img}" alt="" class="product-thumb" style="width:72px;height:72px;">`
+        : `<div class="product-thumb" style="width:72px;height:72px;"></div>`;
     return `
-        <tr>
-            <td class="px-3 py-2">
-                <input type="checkbox" data-id="${p.id}" class="active-toggle" ${p.is_active ? 'checked' : ''}>
-            </td>
-            <td class="px-3 py-2">${thumb}</td>
-            <td class="px-3 py-2">${escapeHtml(p.erp_code || '')}</td>
-            <td class="px-3 py-2">${escapeHtml(p.name_zh || '')}</td>
-            <td class="px-3 py-2">${escapeHtml(p.name_en || '')}</td>
-            <td class="px-3 py-2">
+        <div class="flex gap-4 border rounded-lg p-3 bg-white">
+            <div class="flex flex-col items-center gap-2 shrink-0">
+                ${thumb}
                 <button data-id="${p.id}" class="edit-btn text-blue-600 hover:underline text-sm">編輯</button>
-            </td>
-        </tr>`;
+            </div>
+            <div class="flex-1 min-w-0 flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                    <p class="font-bold text-gray-900 truncate">${escapeHtml(p.erp_code || '')}</p>
+                    <p class="text-gray-700 truncate">${escapeHtml(p.name_zh || '')}</p>
+                </div>
+                <label class="flex items-center gap-1 text-xs text-gray-500 shrink-0 whitespace-nowrap">
+                    <input type="checkbox" data-id="${p.id}" class="active-toggle" ${p.is_active ? 'checked' : ''}>
+                    上架
+                </label>
+            </div>
+        </div>`;
 }
 
 function renderTable(products) {
     if (!products.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">目前沒有商品資料</td></tr>`;
+        tbody.innerHTML = `<p class="text-center text-gray-400 py-6">目前沒有商品資料</p>`;
         return;
     }
 
     tbody.innerHTML = groupByCategory(products).map(([cat, items]) => `
-        <tr class="category-header">
-            <td colspan="6" class="px-3 py-2">${escapeHtml(cat)}（${items.length}）</td>
-        </tr>
-        ${items.map(productRowHtml).join('')}
+        <div class="category-header rounded-lg px-3 py-2">${escapeHtml(cat)}（${items.length}）</div>
+        <div class="space-y-2 mb-4">${items.map(productRowHtml).join('')}</div>
     `).join('');
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {

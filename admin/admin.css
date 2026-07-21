@@ -39,7 +39,7 @@ table tbody tr:hover {
     outline-offset: 1px;
 }
 
-.category-header td {
+.category-header {
     background-color: #eff6ff;
     font-weight: 700;
     color: #1e40af;
