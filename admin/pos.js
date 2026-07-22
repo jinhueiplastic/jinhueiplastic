@@ -7,7 +7,8 @@ let categoryNameById = {};   // catId -> 中文分類顯示名稱
 let variantOptionsByErp = {}; // erp_code -> { spec: [{value,image_url}], bore: [...], color: [...] }
 let selectedVariant = { spec: '', bore: '', color: '' }; // 目前規格畫面上，用按鈕點選的值
 let comboImagesByErp = {}; // erp_code -> { 'spec||bore||color': image_url }，每個確切組合各自的商品照
-let allUnits = []; // 全店共用的單位選項清單（個/支/包/箱…），不是綁在個別商品上
+let allUnits = []; // 所有出現過的單位（來自 pos_units），商品自己沒設定過單位時的備援清單
+let unitsByErp = {}; // erp_code -> [單位名稱]，每個商品各自記住自己常用的單位
 let selectedUnit = ''; // 目前規格畫面上，用按鈕點選的單位
 let selectedRegionFilter = new URLSearchParams(location.search).get('region') || null; // 依區域篩選客戶，null＝全部
 
@@ -31,21 +32,29 @@ const saveOrderBtn       = document.getElementById('save-order-btn');
 async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }, { data: itemUnitData, error: iuErr }] = await Promise.all([
         sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
         sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }),
         sb.from('pos_units').select('*').order('sort_order', { ascending: true }),
+        sb.from('pos_item_units').select('*').order('sort_order', { ascending: true }),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
     if (catErr) console.error(catErr);
     if (vErr) console.error(vErr);
     if (uErr) console.error(uErr);
+    if (iuErr) console.error(iuErr);
     products = productData || [];
     customers = customerData || [];
     allUnits = (unitData || []).map(u => u.name);
+
+    unitsByErp = {};
+    (itemUnitData || []).forEach(u => {
+        if (!unitsByErp[u.erp_code]) unitsByErp[u.erp_code] = [];
+        unitsByErp[u.erp_code].push(u.name);
+    });
 
     // pos_item_variants 一列可能是「單一選項按鈕」（規格/孔徑/顏色只填一欄）
     // 或「確切組合的實際照片」（填兩欄以上），兩種都從同一份資料算出來。
@@ -554,19 +563,36 @@ async function learnNewVariantOptions(itemsPayload) {
 
 // 保險機制：如果打了新單位但忘記按「新增」就直接加入購物車出單，訂單存檔後還是把它學起來，
 // 下次就有按鈕可以點（正常走「新增」按鈕的話這裡不會找到新東西，因為已經存過了）。
+// 同時也把「這個商品＋這個單位」的組合記到該商品身上，之後這個商品就會優先顯示自己的單位。
 async function learnNewUnits(itemsPayload) {
-    const newUnits = [...new Set(
+    const newGlobalUnits = [...new Set(
         itemsPayload.map(item => String(item.unit || '').trim()).filter(v => v && !allUnits.includes(v))
     )];
-    if (!newUnits.length) return;
-
-    const rows = newUnits.map((name, i) => ({ name, sort_order: allUnits.length + i }));
-    const { error } = await sb.from('pos_units').insert(rows);
-    if (error) {
-        console.error('自動學習單位失敗：', error);
-        return;
+    if (newGlobalUnits.length) {
+        const rows = newGlobalUnits.map((name, i) => ({ name, sort_order: allUnits.length + i }));
+        const { error } = await sb.from('pos_units').insert(rows);
+        if (error) console.error('自動學習單位失敗：', error);
+        else allUnits.push(...newGlobalUnits);
     }
-    allUnits.push(...newUnits);
+
+    const newItemUnitRows = [];
+    itemsPayload.forEach(item => {
+        const erp = item.product_erp_code;
+        const unit = String(item.unit || '').trim();
+        if (!erp || !unit) return;
+        const known = unitsByErp[erp] || [];
+        if (known.includes(unit)) return;
+        if (newItemUnitRows.some(r => r.erp_code === erp && r.name === unit)) return;
+        newItemUnitRows.push({ erp_code: erp, name: unit, sort_order: known.length });
+    });
+    if (newItemUnitRows.length) {
+        const { error } = await sb.from('pos_item_units').insert(newItemUnitRows);
+        if (error) { console.error('自動學習商品單位失敗：', error); return; }
+        newItemUnitRows.forEach(row => {
+            if (!unitsByErp[row.erp_code]) unitsByErp[row.erp_code] = [];
+            unitsByErp[row.erp_code].push(row.name);
+        });
+    }
 }
 
 function resetVariantPicker() {
@@ -588,11 +614,19 @@ function resetVariantPicker() {
 // 打完按 Enter 或點掉就送出、變回按鈕（新單位也會馬上存進 pos_units，之後就有按鈕可以點）。
 let unitAddMode = false;
 
+// 商品自己有設定過單位就只顯示那些；還沒設定過的話，退回顯示所有出現過的單位，
+// 不會讓還沒設定的商品完全沒有單位可選。
+function currentUnitOptions() {
+    if (!browseProduct) return allUnits;
+    const productUnits = unitsByErp[browseProduct.erp_code];
+    return (productUnits && productUnits.length) ? productUnits : allUnits;
+}
+
 function renderUnitTiles() {
     const container = document.getElementById('unit-tiles');
     if (!container) return;
 
-    const unitBtnsHtml = allUnits.map(u => `
+    const unitBtnsHtml = currentUnitOptions().map(u => `
         <button type="button" class="category-filter-btn unit-btn${selectedUnit === u ? ' active' : ''}" data-unit="${escapeHtml(u)}">
             ${escapeHtml(u)}
         </button>`).join('');
@@ -635,6 +669,19 @@ async function commitNewUnit(rawValue) {
         const { error } = await sb.from('pos_units').insert({ name: value, sort_order: allUnits.length });
         if (error) { alert('新增單位失敗：' + error.message); renderUnitTiles(); return; }
         allUnits.push(value);
+    }
+
+    // 順便記到這個商品身上，之後這個商品就會優先顯示自己的單位清單。
+    if (browseProduct) {
+        const erp = browseProduct.erp_code;
+        const known = unitsByErp[erp] || [];
+        if (!known.includes(value)) {
+            const { error } = await sb.from('pos_item_units').insert({ erp_code: erp, name: value, sort_order: known.length });
+            if (!error) {
+                if (!unitsByErp[erp]) unitsByErp[erp] = [];
+                unitsByErp[erp].push(value);
+            }
+        }
     }
 
     selectedUnit = value;

@@ -111,13 +111,23 @@
                 </div>
 
                 <div id="unit-section" class="border-t pt-4 mt-2">
-                    <h3 class="font-bold text-sm text-gray-700 mb-2">訂單單位</h3>
-                    <p class="text-xs text-gray-400 mb-2">POS 下單「數量」旁邊可以選的單位，全店共用，不是這項商品專屬的；新增／刪除立即生效，不用按下面的「儲存」。</p>
-                    <div class="flex gap-2">
-                        <input type="text" id="admin-unit-new-input" class="field-input" placeholder="輸入新單位，例如：箱">
-                        <button type="button" id="admin-unit-add-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-bold text-sm text-gray-700">訂單單位</h3>
+                        <button type="button" id="unit-apply-category-btn" class="text-xs text-blue-600 hover:underline">套用到整個分類</button>
                     </div>
-                    <div id="admin-unit-chips" class="flex flex-wrap gap-1 mt-2"></div>
+                    <p class="text-xs text-gray-400 mb-2">
+                        這項商品在 POS 下單「數量」旁邊可以選的單位，是這個商品專屬的（不是全店共用）。
+                        跟規格選項一樣，要按最下面「儲存」才會真正生效。
+                    </p>
+                    <div id="unit-chips" class="flex flex-wrap gap-1 mb-2"></div>
+
+                    <p class="text-xs text-gray-500 mb-1">快速加入（點一下就加進這項商品，不用重新打字）：</p>
+                    <div id="unit-quick-add" class="flex flex-wrap gap-1 mb-2"></div>
+
+                    <div class="flex gap-2">
+                        <input type="text" id="unit-new-input" class="field-input" placeholder="輸入全新的單位，例如：箱">
+                        <button type="button" id="unit-add-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                    </div>
                 </div>
 
                 <div id="form-fields-bottom" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2"></div>

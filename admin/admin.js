@@ -589,6 +589,7 @@ function openEditModal(id) {
     modalTitle.textContent = '編輯商品';
     buildFormFields(product);
     loadVariantSection(product);
+    loadUnitSection(product);
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -600,6 +601,7 @@ document.getElementById('new-product-btn').addEventListener('click', () => {
     modalTitle.textContent = '新增商品';
     buildFormFields(null);
     loadVariantSection(null);
+    loadUnitSection(null);
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -640,8 +642,9 @@ productForm.addEventListener('submit', async (e) => {
 
     try {
         await saveVariantChanges();
+        await saveUnitChanges();
     } catch (variantError) {
-        formError.textContent = '規格選項儲存失敗：' + variantError.message;
+        formError.textContent = '規格／單位儲存失敗：' + variantError.message;
         formError.classList.remove('hidden');
         return;
     }
@@ -1000,65 +1003,166 @@ window.addEventListener('beforeunload', (e) => {
     }
 });
 
-/* --- 訂單單位（pos_units）：POS 下單「數量」旁邊可以選的單位，全店共用，不是綁在個別商品上，
-   所以放在編輯視窗裡管理，但新增／刪除是立即生效，不用等按「儲存」。 --- */
-let allUnitsAdmin = [];
+/* --- 訂單單位（pos_item_units）：每個商品各自記住自己常用的單位，POS 下單只會顯示
+   這個商品有設定過的單位。跟規格選項一樣是本地暫存，按主表單「儲存」才真正寫入。
+   pos_units 保留當作「所有出現過的單位」的共用參考清單，只用來在這裡快速加入、不用重打字。 --- */
+let knownUnits = []; // 全部出現過的單位名稱（來自 pos_units），純粹給「快速加入」用
+let currentUnitErp = null;
+let unitTempCounter = 0;
+let localUnitRows = [];
+let deletedUnitIds = [];
 
-async function loadUnits() {
+async function loadKnownUnits() {
     const { data, error } = await sb.from('pos_units').select('*').order('sort_order', { ascending: true });
+    if (error) { console.error('讀取單位參考清單失敗：', error); return; }
+    knownUnits = (data || []).map(u => u.name);
+}
+
+async function loadUnitSection(product) {
+    const section = document.getElementById('unit-section');
+    deletedUnitIds = [];
+
+    if (!product || !product.erp_code) {
+        currentUnitErp = null;
+        localUnitRows = [];
+        section.classList.add('opacity-50', 'pointer-events-none');
+        document.getElementById('unit-chips').innerHTML = '';
+        document.getElementById('unit-quick-add').innerHTML =
+            '<p class="text-xs text-gray-400">請先儲存商品，才能設定單位。</p>';
+        return;
+    }
+
+    currentUnitErp = product.erp_code;
+    section.classList.remove('opacity-50', 'pointer-events-none');
+    document.getElementById('unit-quick-add').innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
+
+    const { data, error } = await sb
+        .from('pos_item_units')
+        .select('*')
+        .eq('erp_code', product.erp_code)
+        .order('sort_order', { ascending: true });
+
     if (error) {
-        document.getElementById('admin-unit-chips').innerHTML =
+        document.getElementById('unit-quick-add').innerHTML =
             `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
         return;
     }
-    allUnitsAdmin = data || [];
-    renderUnitChips();
+
+    localUnitRows = (data || []).map(r => ({ ...r, tempId: ++unitTempCounter }));
+    renderUnitSection();
 }
 
-function renderUnitChips() {
-    const container = document.getElementById('admin-unit-chips');
-    if (!container) return;
+function addLocalUnit(name) {
+    if (localUnitRows.some(r => r.name === name)) return;
+    localUnitRows.push({
+        tempId: ++unitTempCounter,
+        id: null,
+        erp_code: currentUnitErp,
+        name,
+        sort_order: localUnitRows.length,
+    });
+    modalDirty = true;
+    renderUnitSection();
+}
 
-    if (!allUnitsAdmin.length) {
-        container.innerHTML = '<p class="text-xs text-gray-400">還沒有任何單位。</p>';
-        return;
-    }
+function renderUnitSection() {
+    const chipsEl = document.getElementById('unit-chips');
+    chipsEl.innerHTML = localUnitRows.length
+        ? localUnitRows.map(r => `
+            <span class="unit-chip">
+                ${escapeHtml(r.name)}
+                <button type="button" data-temp-id="${r.tempId}" class="unit-chip-del">×</button>
+            </span>`).join('')
+        : '<p class="text-xs text-gray-400">這項商品還沒有設定單位。</p>';
 
-    container.innerHTML = allUnitsAdmin.map(u => `
-        <span class="unit-chip">
-            ${escapeHtml(u.name)}
-            <button type="button" data-id="${u.id}" class="unit-chip-del">×</button>
-        </span>`).join('');
-
-    container.querySelectorAll('.unit-chip-del').forEach(btn => {
-        btn.addEventListener('click', async () => {
+    chipsEl.querySelectorAll('.unit-chip-del').forEach(btn => {
+        btn.addEventListener('click', () => {
             if (!confirm('確定要刪除這個單位嗎？')) return;
-            const { error } = await sb.from('pos_units').delete().eq('id', btn.dataset.id);
-            if (error) { alert('刪除失敗：' + error.message); return; }
-            loadUnits();
+            const tempId = Number(btn.dataset.tempId);
+            const row = localUnitRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            if (row.id) deletedUnitIds.push(row.id);
+            localUnitRows = localUnitRows.filter(r => r.tempId !== tempId);
+            modalDirty = true;
+            renderUnitSection();
         });
+    });
+
+    const quickAddEl = document.getElementById('unit-quick-add');
+    const usedNames = new Set(localUnitRows.map(r => r.name));
+    const suggestions = knownUnits.filter(u => !usedNames.has(u));
+    quickAddEl.innerHTML = suggestions.length
+        ? suggestions.map(u => `<button type="button" class="category-filter-btn unit-quick-add-btn" data-unit="${escapeHtml(u)}">+ ${escapeHtml(u)}</button>`).join('')
+        : '<p class="text-xs text-gray-400">沒有其他已知的單位可以快速加入。</p>';
+
+    quickAddEl.querySelectorAll('.unit-quick-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => addLocalUnit(btn.dataset.unit));
     });
 }
 
-document.getElementById('admin-unit-add-btn').addEventListener('click', async () => {
-    const input = document.getElementById('admin-unit-new-input');
+document.getElementById('unit-add-btn').addEventListener('click', () => {
+    const input = document.getElementById('unit-new-input');
     const value = input.value.trim();
-    if (!value) return;
-    if (allUnitsAdmin.some(u => u.name === value)) { input.value = ''; return; }
-
-    const { error } = await sb.from('pos_units').insert({ name: value, sort_order: allUnitsAdmin.length });
-    if (error) { alert('新增失敗：' + error.message); return; }
-
+    if (!value || !currentUnitErp) return;
+    addLocalUnit(value);
     input.value = '';
-    loadUnits();
 });
 
-document.getElementById('admin-unit-new-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('admin-unit-add-btn').click(); }
+document.getElementById('unit-new-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('unit-add-btn').click(); }
 });
+
+// 把目前這項商品的單位設定（不管存過還是還沒按儲存），套用到同分類的其他商品身上，
+// 省得同一個分類（例如同一種螺絲）每一項商品都要重新設定一次。這是立即生效的動作，
+// 跟主表單的「儲存」無關，套用前會先問一次。
+document.getElementById('unit-apply-category-btn').addEventListener('click', async () => {
+    if (!currentUnitErp || !localUnitRows.length) { alert('請先幫這項商品加至少一個單位，才能套用到整個分類。'); return; }
+
+    const product = allProducts.find(p => p.erp_code === currentUnitErp);
+    const category = product ? (product.category_name_zh || '').trim() : '';
+    if (!category) { alert('這項商品沒有分類，無法套用。'); return; }
+
+    const targets = allProducts.filter(p => (p.category_name_zh || '').trim() === category && p.erp_code !== currentUnitErp);
+    if (!targets.length) { alert('這個分類裡沒有其他商品。'); return; }
+
+    const unitNames = localUnitRows.map(r => r.name);
+    if (!confirm(`確定要把單位（${unitNames.join('、')}）套用到「${category}」分類裡的其他 ${targets.length} 項商品嗎？（不會移除那些商品原本已有的單位）`)) return;
+
+    const rows = [];
+    targets.forEach(p => {
+        unitNames.forEach((name, i) => rows.push({ erp_code: p.erp_code, name, sort_order: i }));
+    });
+
+    const { error } = await sb.from('pos_item_units').upsert(rows, { onConflict: 'erp_code,name' });
+    if (error) { alert('套用失敗：' + error.message); return; }
+    alert(`已套用到 ${targets.length} 項商品。`);
+});
+
+// 主表單儲存時一併呼叫：本地暫存的單位異動寫回 pos_item_units；
+// 這次新出現、還不在參考清單（pos_units）裡的單位名稱，也一併補進去，之後才有得快速加入。
+async function saveUnitChanges() {
+    if (deletedUnitIds.length) {
+        const { error } = await sb.from('pos_item_units').delete().in('id', deletedUnitIds);
+        if (error) throw error;
+        deletedUnitIds = [];
+    }
+
+    if (localUnitRows.length) {
+        const rows = localUnitRows.map(r => ({ erp_code: r.erp_code, name: r.name, sort_order: r.sort_order || 0 }));
+        const { error } = await sb.from('pos_item_units').upsert(rows, { onConflict: 'erp_code,name' });
+        if (error) throw error;
+
+        const newKnown = [...new Set(rows.map(r => r.name))].filter(n => !knownUnits.includes(n));
+        if (newKnown.length) {
+            const { error: knownErr } = await sb.from('pos_units')
+                .upsert(newKnown.map((name, i) => ({ name, sort_order: knownUnits.length + i })), { onConflict: 'name' });
+            if (!knownErr) knownUnits.push(...newKnown);
+        }
+    }
+}
 
 async function initProductsPage() {
-    await Promise.all([loadProducts(), loadUnits()]);
+    await Promise.all([loadProducts(), loadKnownUnits()]);
 }
 
 initAdminAuth('products', initProductsPage);
