@@ -25,6 +25,35 @@ function renderAdminNav(activeKey) {
     `).join('');
 }
 
+// 每天晚上 11:59（換日前一分鐘）強制全部帳號登出一次。純前端做法：把「登入的邏輯日」存在
+// localStorage，每次開頁面、以及開著頁面時每分鐘檢查一次，發現跟現在的邏輯日不一樣就登出。
+// 缺點：不是精確到 23:59:00 那一刻踢人，是「下次有動作（開頁面/每分鐘檢查）」時才生效——
+// 例如電腦整晚沒開著頁面，隔天早上打開才會觸發；沒有後端可以無論如何都準時踢人。
+const ADMIN_LOGICAL_DAY_KEY = 'adminLogicalDay';
+const ADMIN_DAILY_LOGOUT_CUTOFF_MINUTES = 23 * 60 + 59; // 晚上 11:59
+
+function currentLogicalDayKey() {
+    const now = new Date();
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const d = new Date(now);
+    if (minutesNow >= ADMIN_DAILY_LOGOUT_CUTOFF_MINUTES) d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString('en-CA'); // YYYY-MM-DD，用瀏覽器當地時區
+}
+
+// 換日了的話登出並重新整理回登入畫面；回傳是否觸發了登出（呼叫端可以藉此中斷後續流程）。
+async function enforceDailyLogout() {
+    const stored = localStorage.getItem(ADMIN_LOGICAL_DAY_KEY);
+    const current = currentLogicalDayKey();
+    if (stored && stored !== current) {
+        localStorage.removeItem(ADMIN_LOGICAL_DAY_KEY);
+        await sb.auth.signOut();
+        location.reload();
+        return true;
+    }
+    localStorage.setItem(ADMIN_LOGICAL_DAY_KEY, current);
+    return false;
+}
+
 // 每個後台頁面共用：處理登入表單、登出、以及登入成功後導頁面自己的初始化函式（onReady）。
 function initAdminAuth(pageKey, onReady) {
     const loginView   = document.getElementById('login-view');
@@ -37,13 +66,18 @@ function initAdminAuth(pageKey, onReady) {
 
     renderAdminNav(pageKey);
 
-    function onLoggedIn(session) {
+    async function onLoggedIn(session) {
+        if (await enforceDailyLogout()) return; // 已經換日，登出流程已經在跑，這裡不用再往下做
+
         loginView.classList.add('hidden');
         appView.classList.remove('hidden');
         currentUserEmail = session.user.email || '';
         currentUserDisplayName = (session.user.user_metadata && session.user.user_metadata.display_name) || currentUserEmail;
         if (userEmailEl) userEmailEl.textContent = currentUserDisplayName;
         onReady();
+
+        // 頁面開著跨過 23:59 的話，不用等使用者重新整理，每分鐘檢查一次就會自動登出。
+        setInterval(enforceDailyLogout, 60 * 1000);
     }
 
     if (editNameBtn) {
@@ -81,6 +115,7 @@ function initAdminAuth(pageKey, onReady) {
 
     if (logoutBtn) {
         logoutBtn.addEventListener('click', async () => {
+            localStorage.removeItem(ADMIN_LOGICAL_DAY_KEY);
             await sb.auth.signOut();
             location.reload();
         });
