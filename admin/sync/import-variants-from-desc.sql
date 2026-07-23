@@ -1,13 +1,26 @@
 -- 一次性：把所有商品中文說明（desc_zh）裡的表格自動解析成 POS 選項（彈性軸版）。
--- 邏輯跟「修改 POS 商品」編輯頁「貼上表格解析並新增組合」按鈕一樣，這裡是一次幫全部商品跑完：
---   表格只有 1 欄 → 那一欄的表頭當軸名稱，每一列的值當這個軸的一個可點選項目
---                   （值裡如果用 / 、 , ， 分隔多個值，會自動拆成好幾個獨立選項）
---   表格有 2 欄以上 → 每一列是一筆「完整組合」，表頭當各軸名稱，那一列每一欄的值就是這筆組合各軸的值
---                    （例如型號｜W｜H｜L｜A排水孔位｜備註 這種表格，每一列會變成一筆 6 個軸都填好的組合；
---                    一列裡至少要有兩欄有值才會算一筆組合，只有一欄有值的列會被跳過）
+-- 每一欄各自是一個獨立的軸，軸的選項＝這一整個表格裡那一欄出現過的所有「不同」的值
+-- （值裡如果用 / 、 , ， 分隔多個值，會再拆成好幾個獨立選項）。
+--
+-- 例如：
+--   |型號|W|H|L|A排水孔位|備註|
+--   |1030|10cm|3cm|30cm|正中心|附防臭水門|
+--   |1045|10cm|3cm|45cm|正中心|附防臭水門|
+--   |1060|10cm|3cm|60cm|11cm或正中心|附防臭水門|
+-- 會變成：
+--   型號選項：1030、1045、1060…
+--   W選項：10cm（整欄都一樣，最後只會有這一個選項）
+--   H選項：3cm（同上）
+--   L選項：30cm、45cm、60cm…
+--   A排水孔位選項：正中心、11cm或正中心（重複的值只會留一個）
+--   備註選項：附防臭水門
+-- 「只有一個選項時預設直接選起來」是 POS 下單畫面的行為，不用在這裡特別處理。
 --
 -- 只新增資料，不會刪除或覆蓋既有的 pos_item_variants 資料（包括已經手動在網頁上建立的選項/組合），
 -- 可以重複執行，不會造成重複資料。執行完可以直接在「修改 POS 商品」頁面檢查結果。
+--
+-- 提醒：如果中文說明裡有「用 ^ 表示同上一列」這種不規則格式的表格（不是每欄都是獨立軸的表格），
+-- 這支script不會特別去理解那種格式，跑完可能會多出一些奇怪的選項，手動去該商品的軸列表刪掉就好。
 
 do $$
 declare
@@ -27,8 +40,6 @@ declare
     axis_name text;
     part text;
     parts text[];
-    values_obj jsonb;
-    filled_count int;
 begin
     for prod in select erp_code, desc_zh from pos_items where coalesce(erp_code, '') <> '' and coalesce(desc_zh, '') <> ''
     loop
@@ -48,10 +59,7 @@ begin
                 into header_cells
                 from unnest(string_to_array(trim(both '|' from trim(lines[block_start])), '|')) as c;
 
-                header_count := 0;
-                if header_cells is not null then
-                    select count(*) into header_count from unnest(header_cells) h where h <> '';
-                end if;
+                header_count := coalesce(array_length(header_cells, 1), 0);
 
                 if header_count >= 1 then
                     for j in (block_start + 1)..block_end loop
@@ -68,14 +76,25 @@ begin
                             continue;
                         end if;
 
-                        if header_count = 1 then
-                            -- 單欄表格：這一欄的值當某個軸的可點選項目，用 / 、 , ， 拆成好幾個
-                            axis_name := header_cells[1];
-                            if axis_name = '' or cells[1] is null or trim(cells[1]) = '' then
-                                continue;
+                        -- 每一欄各自是一個獨立的軸：這一欄在這個表格裡出現過的所有不同值都變成這個軸的選項
+                        -- （某一欄全部列都填同一個值的話，這個軸最後就只會有一個選項）。
+                        for k in 1..least(header_count, array_length(cells, 1)) loop
+                            axis_name := header_cells[k];
+                            if axis_name = '' or cells[k] is null or trim(cells[k]) = '' or trim(cells[k]) = '^' then
+                                continue; -- ^ 是常見的「同上一列」標記，不是真正的值
                             end if;
 
-                            parts := regexp_split_to_array(cells[1], '[/、,，]');
+                            -- 只有「整個表格只有 1 欄」的時候才用 / 、 , ， 拆成好幾個值
+                            -- （這種表格通常是刻意在一格裡條列好幾個選項）；
+                            -- 表格有 2 欄以上時，每一列已經是各自獨立的一筆資料，
+                            -- 格子裡的頓號、逗號很可能只是普通文字的一部分（例如一段描述），
+                            -- 不能亂拆，整格當一個值。
+                            if header_count = 1 then
+                                parts := regexp_split_to_array(cells[k], '[/、,，]');
+                            else
+                                parts := array[cells[k]];
+                            end if;
+
                             foreach part in array parts loop
                                 part := trim(regexp_replace(regexp_replace(trim(part), '^[「『（(]+', ''), '[」』）)]+$', ''));
                                 if part = '' then
@@ -86,22 +105,7 @@ begin
                                 values (prod.erp_code, jsonb_build_object(axis_name, part), null, 0)
                                 on conflict (erp_code, axis_values) do nothing;
                             end loop;
-                        else
-                            -- 多欄表格：這一列是一筆完整組合，欄位名稱＝軸名稱
-                            values_obj := '{}'::jsonb;
-                            for k in 1..least(array_length(header_cells, 1), coalesce(array_length(cells, 1), 0)) loop
-                                if header_cells[k] <> '' and cells[k] is not null and trim(cells[k]) <> '' then
-                                    values_obj := values_obj || jsonb_build_object(header_cells[k], trim(cells[k]));
-                                end if;
-                            end loop;
-
-                            select count(*) into filled_count from jsonb_object_keys(values_obj);
-                            if filled_count >= 2 then
-                                insert into pos_item_variants (erp_code, axis_values, image_url, sort_order)
-                                values (prod.erp_code, values_obj, null, 0)
-                                on conflict (erp_code, axis_values) do nothing;
-                            end if;
-                        end if;
+                        end loop;
                     end loop;
                 end if;
 

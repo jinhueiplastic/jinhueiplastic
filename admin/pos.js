@@ -632,10 +632,23 @@ async function learnNewUnits(itemsPayload) {
     }
 }
 
-function resetVariantPicker() {
+// 只有一個選項的軸，不用使用者特地點一下，直接預設選起來
+// （例如某些商品的 W／H 尺寸固定只有一種，不算是真的要選）。
+function applyDefaultVariantSelections(p) {
+    productAxisNames(p).forEach(axis => {
+        const options = (variantOptionsByErp[p.erp_code] && variantOptionsByErp[p.erp_code][axis]) || [];
+        if (options.length === 1) selectedVariant[axis] = options[0].value;
+    });
+    document.querySelectorAll('.variant-tile').forEach(b => {
+        b.classList.toggle('selected', b.dataset.value === selectedVariant[b.dataset.axis]);
+    });
+}
+
+function resetVariantPicker(p) {
     selectedVariant = {};
     document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
     document.querySelectorAll('.variant-text-input').forEach(t => { t.value = ''; });
+    if (p) applyDefaultVariantSelections(p);
     const qtyEl = document.getElementById('variant-qty');
     if (qtyEl) qtyEl.value = 1;
 
@@ -727,6 +740,7 @@ function wireVariantPicker(p) {
     selectedUnit = '';
     unitAddMode = false;
     renderUnitTiles();
+    applyDefaultVariantSelections(p);
 
     document.querySelectorAll('.variant-text-input').forEach(textEl => {
         const axis = textEl.dataset.axis;
@@ -785,7 +799,7 @@ function wireVariantPicker(p) {
 
         // 加入後留在同一個商品的規格畫面，方便同一項商品連續加不同規格；
         // 要換商品的話可以按上面的「← 返回」或「主分類」。
-        resetVariantPicker();
+        resetVariantPicker(p);
         updateVariantPreviewImage(p);
     });
 }
