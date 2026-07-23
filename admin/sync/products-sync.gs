@@ -24,10 +24,13 @@ const BOOLEAN_FIELDS = ['on_alibaba', 'will_upload_alibaba'];
 // POS 下單用的商品子集合，放在 Sheet 2 的另一個分頁，欄位順序跟 Categories 分頁完全一樣
 const POS_ITEMS_TAB = 'POS items';
 
-// POS 規格/孔徑/顏色，欄位：erp_code | 規格 | 孔徑 | 顏色 | 圖片網址 | 排序
-// 規格/孔徑/顏色三欄直接填實際值（不是打記號）：
+// POS 選項，欄位：erp_code | <軸名稱1> | <軸名稱2> | ... | 圖片網址 | 排序
+// 中間的軸欄位是動態的，不再限定「規格/孔徑/顏色」3 欄——想要幾種軸、軸叫什麼名字都可以
+// （例如型號、W、H、L、A排水孔位、備註…），欄位直接填實際值（不是打記號）：
 //   一列只填其中一欄 → 定義一個可點選項目（圖片網址是這個選項的示意圖）
-//   一列填兩欄以上   → 那個確切組合的實際商品照片（例如規格+顏色都填 = 那個規格搭那個顏色的實拍照）
+//   一列填兩欄以上   → 一筆完整組合（例如規格+顏色都填 = 那個規格搭那個顏色的實拍照；
+//                      也可以只是資訊，不一定要有照片，例如型號+W+H+L）
+// 表頭中間那些軸名稱欄位會在「⬇️ 拉回」的時候，直接照 Supabase 目前有的軸自動重新產生。
 const POS_VARIANTS_TAB = 'POS variants';
 
 // ===== 主選單 =====
@@ -279,10 +282,12 @@ function pullPosItemsFromSupabase() {
   SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
 }
 
-const POS_VARIANTS_HEADERS = ['erp_code', '規格', '孔徑', '顏色', '圖片網址', '排序'];
+// 頭尾固定欄位，中間的軸欄位是動態的（見下面 posVariantsAxisColumns）。
+const POS_VARIANTS_FIXED_HEADERS_HEAD = ['erp_code'];
+const POS_VARIANTS_FIXED_HEADERS_TAIL = ['圖片網址', '排序'];
 
-// 找不到「POS variants」分頁就自動新增一個；分頁存在但第一列是空的（還沒有表頭）
-// 就自動幫忙填上表頭。分頁裡已經有內容的話完全不動，不會蓋掉你打好的資料。
+// 找不到「POS variants」分頁就自動新增一個，並補上最基本的表頭（還沒有任何軸）。
+// 實際的軸欄位要跑一次「⬇️ 拉回」才會自動出現；分頁已經有內容的話完全不動。
 function ensurePosVariantsSheet() {
   const ss = SpreadsheetApp.openById(SHEET2_ID);
   let sheet = ss.getSheetByName(POS_VARIANTS_TAB);
@@ -290,46 +295,73 @@ function ensurePosVariantsSheet() {
     sheet = ss.insertSheet(POS_VARIANTS_TAB);
   }
 
-  const firstRow = sheet.getRange(1, 1, 1, POS_VARIANTS_HEADERS.length).getValues()[0];
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const firstRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const isEmpty = firstRow.every(v => String(v || '').trim() === '');
   if (isEmpty) {
-    const headerRange = sheet.getRange(1, 1, 1, POS_VARIANTS_HEADERS.length);
-    headerRange.setValues([POS_VARIANTS_HEADERS]);
+    const headers = POS_VARIANTS_FIXED_HEADERS_HEAD.concat(POS_VARIANTS_FIXED_HEADERS_TAIL);
+    const headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setValues([headers]);
     headerRange.setFontWeight('bold');
   }
 
   return sheet;
 }
 
+// 讀目前表頭，算出中間那些「軸名稱」欄位分別在第幾欄（跳過第一欄 erp_code、最後兩欄 圖片網址/排序）。
+function posVariantsAxisColumns(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const minCols = POS_VARIANTS_FIXED_HEADERS_HEAD.length + POS_VARIANTS_FIXED_HEADERS_TAIL.length;
+  if (lastCol <= minCols) return [];
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
+  const axisStart = POS_VARIANTS_FIXED_HEADERS_HEAD.length; // 0-based
+  const axisEnd = lastCol - POS_VARIANTS_FIXED_HEADERS_TAIL.length; // 不含
+  const cols = [];
+  for (let i = axisStart; i < axisEnd; i++) {
+    if (headers[i]) cols.push({ name: headers[i], col: i });
+  }
+  return cols;
+}
+
 // ===== 推送 Sheet 2「POS variants」→ Supabase pos_item_variants =====
 function syncPosVariants() {
   const sheet = ensurePosVariantsSheet();
+  const axisCols = posVariantsAxisColumns(sheet);
+  if (!axisCols.length) {
+    Logger.log('POS variants 目前沒有任何軸欄位可以推送（表頭中間是空的，先跑一次「⬇️ 拉回」或自己在表頭中間加欄位）。');
+    return;
+  }
 
   const data = sheet.getDataRange().getValues();
   const rows = [];
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     const erp = String(r[0] || '').trim();
-    const spec = String(r[1] || '').trim();
-    const bore = String(r[2] || '').trim();
-    const color = String(r[3] || '').trim();
-    if (!erp || (!spec && !bore && !color)) continue; // 規格/孔徑/顏色至少要填一欄
+    if (!erp) continue;
+
+    const axisValues = {};
+    axisCols.forEach(({ name, col }) => {
+      const v = String(r[col] || '').trim();
+      if (v) axisValues[name] = v;
+    });
+    if (!Object.keys(axisValues).length) continue; // 至少要有一個軸有值
 
     rows.push({
       erp_code: erp,
-      spec: spec,
-      bore: bore,
-      color: color,
-      image_url: String(r[4] || '').trim(),
-      sort_order: Number(r[5]) || 0,
+      axis_values: axisValues,
+      image_url: String(r[r.length - 2] || '').trim(),
+      sort_order: Number(r[r.length - 1]) || 0,
     });
   }
 
-  batchUpsertOnConflict('/rest/v1/pos_item_variants', rows, 'erp_code,spec,bore,color');
+  batchUpsertOnConflict('/rest/v1/pos_item_variants', rows, 'erp_code,axis_values');
   Logger.log('POS variants 同步完成，共 ' + rows.length + ' 筆');
 }
 
 // ===== 拉回 Supabase pos_item_variants → Sheet 2「POS variants」 =====
+// 軸欄位可能會變多變少，所以這裡是整份重新產生（表頭＋所有列），不是像其他分頁那樣只補差異，
+// 這樣才能保證表頭一定跟 Supabase 目前的軸完全對得上，不會有欄位對不齊的問題。
 function pullPosVariantsFromSupabase() {
   const sheet = ensurePosVariantsSheet();
 
@@ -339,42 +371,39 @@ function pullPosVariantsFromSupabase() {
     return;
   }
 
-  const keyOf = (erp, spec, bore, color) => [erp, spec, bore, color].join('||');
-
-  const data = sheet.getDataRange().getValues();
-  const rowByKey = {};
-  for (let i = 1; i < data.length; i++) {
-    const erp = String(data[i][0] || '').trim();
-    if (!erp) continue;
-    rowByKey[keyOf(erp, String(data[i][1] || '').trim(), String(data[i][2] || '').trim(), String(data[i][3] || '').trim())] = i + 1;
-  }
-
-  let updated = 0, appended = 0;
-  const newRows = [];
-
+  // 算出所有商品目前用過的軸名稱聯集（依第一次出現的順序排列），當成新的表頭中間欄位。
+  const axisNames = [];
+  const seen = {};
   rows.forEach(v => {
-    const erp = String(v.erp_code || '').trim();
-    const spec = v.spec || '';
-    const bore = v.bore || '';
-    const color = v.color || '';
-    if (!erp || (!spec && !bore && !color)) return;
-
-    const values = [erp, spec, bore, color, v.image_url || '', v.sort_order || 0];
-    const rowNum = rowByKey[keyOf(erp, spec, bore, color)];
-    if (rowNum) {
-      sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
-      updated++;
-    } else {
-      newRows.push(values);
-      appended++;
-    }
+    Object.keys(v.axis_values || {}).forEach(name => {
+      if (!seen[name]) { seen[name] = true; axisNames.push(name); }
+    });
   });
 
-  if (newRows.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
+  const headers = POS_VARIANTS_FIXED_HEADERS_HEAD.concat(axisNames, POS_VARIANTS_FIXED_HEADERS_TAIL);
+
+  const dataRows = rows
+    .filter(v => String(v.erp_code || '').trim() && Object.keys(v.axis_values || {}).length)
+    .map(v => {
+      const row = new Array(headers.length).fill('');
+      row[0] = v.erp_code;
+      axisNames.forEach((name, i) => {
+        row[POS_VARIANTS_FIXED_HEADERS_HEAD.length + i] = (v.axis_values || {})[name] || '';
+      });
+      row[headers.length - 2] = v.image_url || '';
+      row[headers.length - 1] = v.sort_order || 0;
+      return row;
+    });
+
+  sheet.clear();
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setValues([headers]);
+  headerRange.setFontWeight('bold');
+  if (dataRows.length) {
+    sheet.getRange(2, 1, dataRows.length, headers.length).setValues(dataRows);
   }
 
-  SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
+  SpreadsheetApp.getUi().alert('✅ 拉回完成：共 ' + dataRows.length + ' 筆，' + axisNames.length + ' 種軸（' + axisNames.join('、') + '）');
 }
 
 // ===== 工具函數 =====

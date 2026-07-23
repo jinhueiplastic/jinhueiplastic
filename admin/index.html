@@ -75,39 +75,39 @@
                 <div id="form-fields-top" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
 
                 <div id="variant-section" class="border-t pt-4 mt-2">
-                    <h3 class="font-bold text-sm text-gray-700 mb-2">POS 規格／孔徑／顏色選項</h3>
+                    <h3 class="font-bold text-sm text-gray-700 mb-2">POS 選項（規格／孔徑／顏色…可自訂任意軸）</h3>
+                    <p class="text-xs text-gray-400 mb-2">
+                        每個軸（例如「規格」「顏色」，或自己命名的「W」「型號」）底下可以新增好幾個可以點選的值，每個值都能各自上傳圖片。
+                        如果好幾種軸要「綁在一起」（例如某個型號固定搭配某個 W／H／L），在下面「完整組合」新增。
+                    </p>
 
-                    <div class="space-y-3">
-                        <div>
-                            <label class="field-label">規格（用 / 分隔，例如 1/2/3）</label>
-                            <div class="flex gap-2">
-                                <input type="text" id="axis-spec-input" class="field-input" placeholder="1/2/3">
-                                <button type="button" data-type="spec" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
-                            </div>
-                            <div id="axis-spec-chips" class="space-y-1 mt-1"></div>
+                    <div id="axis-groups" class="space-y-2 mb-3"></div>
+
+                    <div class="flex flex-wrap gap-2 items-end border-t pt-3">
+                        <div class="flex-1 min-w-[8rem]">
+                            <label class="field-label">軸名稱</label>
+                            <input type="text" id="axis-name-input" class="field-input" placeholder="例如：規格、顏色、W" list="known-axis-names">
+                            <datalist id="known-axis-names"></datalist>
                         </div>
-                        <div>
-                            <label class="field-label">孔徑（用 / 分隔，例如 1"/2"/3"）</label>
-                            <div class="flex gap-2">
-                                <input type="text" id="axis-bore-input" class="field-input" placeholder="1&quot;/2&quot;/3&quot;">
-                                <button type="button" data-type="bore" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
-                            </div>
-                            <div id="axis-bore-chips" class="space-y-1 mt-1"></div>
+                        <div class="flex-1 min-w-[8rem]">
+                            <label class="field-label">值（用 / 分隔，可一次加多個）</label>
+                            <input type="text" id="axis-value-input" class="field-input" placeholder="例如 1/2/3">
                         </div>
-                        <div>
-                            <label class="field-label">顏色（用 / 分隔，例如 黑/白）</label>
-                            <div class="flex gap-2">
-                                <input type="text" id="axis-color-input" class="field-input" placeholder="黑/白">
-                                <button type="button" data-type="color" class="add-axis-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
-                            </div>
-                            <div id="axis-color-chips" class="space-y-1 mt-1"></div>
-                        </div>
+                        <button type="button" id="add-axis-value-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增選項</button>
                     </div>
 
-                    <p class="text-xs text-gray-400 mt-1">每個規格/孔徑/顏色選項可以各自上傳圖片（上面每一列右邊的「上傳圖片」）。</p>
+                    <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">完整組合（同一列同時記錄好幾個軸的值，至少要填兩個軸；有照片時優先顯示這張）</h4>
+                    <div id="variant-combo-list" class="space-y-2 mb-2"></div>
+                    <div id="combo-builder"></div>
 
-                    <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">組合照片（同一個確切組合有自己的實際照片時才需要，至少要兩種軸都有選項才會列出來）</h4>
-                    <div id="variant-combo-list" class="space-y-2"></div>
+                    <div class="border-t pt-3 mt-3">
+                        <p class="text-xs text-gray-500 mb-1">
+                            從表格貼上快速新增多筆完整組合（跟中文說明欄位裡的表格格式一樣：第一列是軸名稱，之後每一列是一筆組合）：
+                        </p>
+                        <textarea id="combo-table-paste" class="field-input" rows="3" placeholder="|型號|W|H|L|A排水孔位|備註|&#10;|A1|10|20|30|top|-|"></textarea>
+                        <button type="button" id="combo-table-import-btn" class="mt-1 px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">解析並新增組合</button>
+                        <p id="combo-table-import-status" class="text-xs text-gray-400 mt-1"></p>
+                    </div>
                 </div>
 
                 <div id="unit-section" class="border-t pt-4 mt-2">

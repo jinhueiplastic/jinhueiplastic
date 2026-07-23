@@ -23,11 +23,7 @@ function buildInvoiceHtml(order, customer, items) {
         : new Date().toLocaleDateString('zh-TW');
 
     const itemsHtml = items.map(item => {
-        const variant = [
-            item.spec  ? '規格：' + item.spec  : '',
-            item.bore  ? '孔徑：' + item.bore  : '',
-            item.color ? '顏色：' + item.color : '',
-        ].filter(Boolean).join('　');
+        const variant = formatVariantSummary(item);
         const imgSrc = item.product_image_url
             ? ('/api/image-proxy?url=' + encodeURIComponent(item.product_image_url))
             : '';
@@ -204,7 +200,7 @@ function runSheetEntryHtml(entry) {
     const nameLine = [c.name, c.site_name].filter(Boolean).join('-');
 
     const itemsHtml = items.map(item => {
-        const variant = [item.spec, item.bore, item.color].filter(Boolean).join('/');
+        const variant = formatVariantSummary(item);
         const imgSrc = item.product_image_url
             ? ('/api/image-proxy?url=' + encodeURIComponent(item.product_image_url))
             : '';
@@ -215,7 +211,7 @@ function runSheetEntryHtml(entry) {
                     : `<div style="width:150px;height:150px;background:#f3f4f6;border-radius:4px;display:inline-block;"></div>`}
             </div>
             <div style="font-weight:700;font-size:26px;overflow-wrap:break-word;margin-top:4px;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}</div>
-            ${variant ? `<div style="font-weight:700;font-size:26px;">${escapeHtml(variant)}</div>` : ''}
+            ${variant ? `<div style="font-weight:700;font-size:26px;overflow-wrap:break-word;">${escapeHtml(variant)}</div>` : ''}
             <div style="font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}${item.unit ? escapeHtml(item.unit) : ''}</div>`;
     }).join('');
 

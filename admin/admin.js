@@ -661,14 +661,16 @@ productForm.addEventListener('submit', async (e) => {
     loadProducts();
 });
 
-/* --- POS 規格／孔徑／顏色選項（pos_item_variants），在編輯商品時於本地暫存，按主表單「儲存」才寫入 ---
-   流程：先分別幫規格/孔徑/顏色各自新增選項（用 / 、 , ， 分隔一次加多個），
-   下面會自動列出所有組合，每個組合各自有一個「上傳圖片」按鈕。
+/* --- POS 選項（pos_item_variants，彈性軸版），在編輯商品時於本地暫存，按主表單「儲存」才寫入 ---
+   軸名稱完全自訂（不再限定規格/孔徑/顏色），一列只填一個軸＝定義那個軸的一個可點選項目，
+   一列填兩個以上的軸＝一筆「完整組合」（可以只是資訊、也可以帶照片）。
    所有新增/刪除/上傳都只改本地的 localVariantRows，實際寫入 Supabase 由 saveVariantChanges() 負責。 */
 let currentVariantErp = null;
 let variantTempCounter = 0;
 let localVariantRows = [];
 let deletedVariantIds = [];
+let knownAxisNames = []; // 全部商品出現過的軸名稱，純粹給「新增選項」自動完成用
+let comboBuilderPairs = [{ name: '', value: '' }, { name: '', value: '' }];
 
 function splitBulkValues(text) {
     return text.split(/[/、,，]/)
@@ -676,20 +678,35 @@ function splitBulkValues(text) {
         .filter(Boolean);
 }
 
-// 只填一欄的列＝定義一個軸選項；填兩欄以上的列＝那個確切組合的實際照片
+function rowAxisEntries(row) {
+    return Object.entries(row.axis_values || {}).filter(([, v]) => v);
+}
+
+// 只填一個軸的列＝定義那個軸的一個選項；填兩個以上的列＝一筆完整組合
 function categorizeVariantRows(rows) {
-    const axisOptions = { spec: [], bore: [], color: [] };
-    const comboByKey = {};
+    const axisOptions = {};
+    const combos = [];
     rows.forEach(r => {
-        const filledCount = [r.spec, r.bore, r.color].filter(Boolean).length;
-        if (filledCount === 1) {
-            const type = r.spec ? 'spec' : (r.bore ? 'bore' : 'color');
-            axisOptions[type].push(r);
-        } else if (filledCount >= 2) {
-            comboByKey[[r.spec || '', r.bore || '', r.color || ''].join('||')] = r;
+        const entries = rowAxisEntries(r);
+        if (entries.length === 1) {
+            const [name] = entries[0];
+            if (!axisOptions[name]) axisOptions[name] = [];
+            axisOptions[name].push(r);
+        } else if (entries.length >= 2) {
+            combos.push(r);
         }
     });
-    return { axisOptions, comboByKey };
+    return { axisOptions, combos };
+}
+
+async function loadKnownAxisNames() {
+    const { data, error } = await sb.from('pos_item_variants').select('axis_values');
+    if (error) { console.error(error); return; }
+    const names = new Set();
+    (data || []).forEach(r => Object.keys(r.axis_values || {}).forEach(n => names.add(n)));
+    knownAxisNames = [...names].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    const datalist = document.getElementById('known-axis-names');
+    if (datalist) datalist.innerHTML = knownAxisNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 
 async function loadVariantSection(product) {
@@ -700,11 +717,10 @@ async function loadVariantSection(product) {
         currentVariantErp = null;
         localVariantRows = [];
         section.classList.add('opacity-50', 'pointer-events-none');
-        ['spec', 'bore', 'color'].forEach(type => {
-            document.getElementById(`axis-${type}-chips`).innerHTML = '';
-        });
+        document.getElementById('axis-groups').innerHTML = '';
         document.getElementById('variant-combo-list').innerHTML =
-            '<p class="text-xs text-gray-400">請先儲存商品，才能新增規格選項。</p>';
+            '<p class="text-xs text-gray-400">請先儲存商品，才能新增選項。</p>';
+        document.getElementById('combo-builder').innerHTML = '';
         return;
     }
 
@@ -724,203 +740,71 @@ async function loadVariantSection(product) {
         return;
     }
 
-    localVariantRows = (data || []).map(r => ({ ...r, tempId: ++variantTempCounter }));
+    localVariantRows = (data || []).map(r => ({ ...r, axis_values: r.axis_values || {}, tempId: ++variantTempCounter }));
     renderVariantSection();
 }
 
-function renderVariantSection() {
-    const { axisOptions, comboByKey } = categorizeVariantRows(localVariantRows);
-
-    ['spec', 'bore', 'color'].forEach(type => {
-        const chipsEl = document.getElementById(`axis-${type}-chips`);
-        chipsEl.innerHTML = axisOptions[type].map(r => {
-            const rawValue = r.spec || r.bore || r.color;
-            const splitCount = splitBulkValues(rawValue).length;
-            return `
-            <div class="flex items-center gap-3 border rounded-lg p-2" data-temp-id="${r.tempId}">
-                <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
-                <div class="flex-1 text-sm">${escapeHtml(rawValue)}</div>
-                <span class="axis-upload-status text-xs text-gray-400"></span>
-                <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
-                    上傳圖片
-                    <input type="file" accept="image/*" class="hidden axis-upload-input">
-                </label>
-                ${r.image_url ? `<button type="button" class="axis-image-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
-                ${splitCount > 1 ? `<button type="button" class="axis-chip-split px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="分割成 ${splitCount} 個選項">⇥ 分割</button>` : ''}
-                <button type="button" class="axis-chip-del px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap" title="刪除選項">刪除</button>
-            </div>`;
-        }).join('');
-
-        chipsEl.querySelectorAll('.axis-chip-del').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (!confirm('確定要刪除這個選項嗎？')) return;
-                removeVariantRow(Number(btn.closest('[data-temp-id]').dataset.tempId));
-            });
-        });
-
-        chipsEl.querySelectorAll('.axis-chip-split').forEach(btn => {
-            btn.addEventListener('click', () => {
-                splitVariantRow(type, Number(btn.closest('[data-temp-id]').dataset.tempId));
-            });
-        });
-
-        chipsEl.querySelectorAll('.axis-image-remove-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
-                if (!confirm('確定要移除這個選項的圖片嗎？')) return;
-                const row = localVariantRows.find(r => r.tempId === tempId);
-                if (!row) return;
-                row.image_url = null;
-                modalDirty = true;
-                renderVariantSection();
-            });
-        });
-
-        chipsEl.querySelectorAll('.axis-upload-input').forEach(input => {
-            input.addEventListener('change', async () => {
-                const file = input.files[0];
-                if (!file) return;
-
-                const rowEl = input.closest('[data-temp-id]');
-                const tempId = Number(rowEl.dataset.tempId);
-                const row = localVariantRows.find(r => r.tempId === tempId);
-                if (!row) return;
-
-                const thumbImg = rowEl.querySelector('.axis-option-thumb');
-                const statusEl = rowEl.querySelector('.axis-upload-status');
-                statusEl.textContent = '上傳中…';
-                try {
-                    const url = await uploadImageToCloudinary(file);
-                    row.image_url = url;
-                    modalDirty = true;
-                    thumbImg.src = url;
-                    statusEl.textContent = '';
-                    renderVariantSection();
-                } catch (e) {
-                    statusEl.textContent = '';
-                    alert('上傳失敗：' + e.message);
-                } finally {
-                    input.value = '';
-                }
-            });
-        });
-    });
-
-    renderComboList(axisOptions, comboByKey);
+function axisChipHtml(r, name) {
+    const rawValue = r.axis_values[name];
+    const splitCount = splitBulkValues(rawValue).length;
+    return `
+        <div class="flex items-center gap-3 border rounded-lg p-2" data-temp-id="${r.tempId}" data-axis-name="${escapeHtml(name)}">
+            <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
+            <div class="flex-1 text-sm">${escapeHtml(rawValue)}</div>
+            <span class="axis-upload-status text-xs text-gray-400"></span>
+            <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
+                上傳圖片
+                <input type="file" accept="image/*" class="hidden axis-upload-input">
+            </label>
+            ${r.image_url ? `<button type="button" class="axis-image-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
+            ${splitCount > 1 ? `<button type="button" class="axis-chip-split px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="分割成 ${splitCount} 個選項">⇥ 分割</button>` : ''}
+            <button type="button" class="axis-chip-del px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap" title="刪除選項">刪除</button>
+        </div>`;
 }
 
-function removeVariantRow(tempId) {
-    const row = localVariantRows.find(r => r.tempId === tempId);
-    if (!row) return;
-    if (row.id) deletedVariantIds.push(row.id);
-    localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
-    modalDirty = true;
-    renderVariantSection();
-}
-
-// 把舊資料裡「一個選項其實塞了好幾個值」（例如 4"、5"、6" 存成一筆）拆成好幾個獨立選項。
-function splitVariantRow(type, tempId) {
-    const row = localVariantRows.find(r => r.tempId === tempId);
-    if (!row) return;
-    const rawValue = row.spec || row.bore || row.color;
-    const values = splitBulkValues(rawValue);
-    if (values.length < 2) return;
-    if (!confirm(`要把「${rawValue}」分割成 ${values.length} 個選項嗎？`)) return;
-
-    if (row.id) deletedVariantIds.push(row.id);
-    localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
-
-    const { axisOptions } = categorizeVariantRows(localVariantRows);
-    const existing = new Set(axisOptions[type].map(r => r.spec || r.bore || r.color));
-    values.filter(v => !existing.has(v)).forEach(v => {
-        localVariantRows.push({
-            tempId: ++variantTempCounter,
-            id: null,
-            erp_code: currentVariantErp,
-            spec: type === 'spec' ? v : '',
-            bore: type === 'bore' ? v : '',
-            color: type === 'color' ? v : '',
-            image_url: null,
-            sort_order: 0,
-        });
-    });
-
-    modalDirty = true;
-    renderVariantSection();
-}
-
-function renderComboList(axisOptions, comboByKey) {
-    const container = document.getElementById('variant-combo-list');
-    const activeAxes = ['spec', 'bore', 'color'].filter(type => axisOptions[type].length > 0);
-
-    if (activeAxes.length < 2) {
-        container.innerHTML = '<p class="text-xs text-gray-400">至少要有兩種軸（例如規格＋顏色）都新增選項，才會列出組合照片。</p>';
-        return;
-    }
-
-    const specs  = axisOptions.spec.length  ? axisOptions.spec.map(r => r.spec)   : [''];
-    const bores  = axisOptions.bore.length  ? axisOptions.bore.map(r => r.bore)   : [''];
-    const colors = axisOptions.color.length ? axisOptions.color.map(r => r.color) : [''];
-
-    const combos = [];
-    specs.forEach(spec => bores.forEach(bore => colors.forEach(color => combos.push({ spec, bore, color }))));
-
-    container.innerHTML = combos.map(combo => {
-        const key = [combo.spec, combo.bore, combo.color].join('||');
-        const existing = comboByKey[key];
-        const label = [combo.spec, combo.bore, combo.color].filter(Boolean).join(', ');
-        return `
-            <div class="flex items-center gap-3 border rounded-lg p-2"
-                 data-spec="${escapeHtml(combo.spec)}" data-bore="${escapeHtml(combo.bore)}" data-color="${escapeHtml(combo.color)}"
-                 data-temp-id="${existing ? existing.tempId : ''}">
-                <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
-                <div class="flex-1 text-sm">${escapeHtml(label)}</div>
-                <span class="combo-upload-status text-xs text-gray-400"></span>
-                <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
-                    上傳圖片
-                    <input type="file" accept="image/*" class="hidden combo-upload-input">
-                </label>
-                ${existing ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
-            </div>`;
-    }).join('');
-
-    container.querySelectorAll('.combo-remove-btn').forEach(btn => {
+function wireAxisChips(scopeEl) {
+    scopeEl.querySelectorAll('.axis-chip-del').forEach(btn => {
         btn.addEventListener('click', () => {
-            const row = btn.closest('[data-temp-id]');
-            const tempId = Number(row.dataset.tempId);
-            if (!tempId || !confirm('確定要移除這張組合照片嗎？')) return;
-            removeVariantRow(tempId);
+            if (!confirm('確定要刪除這個選項嗎？')) return;
+            removeVariantRow(Number(btn.closest('[data-temp-id]').dataset.tempId));
         });
     });
 
-    container.querySelectorAll('.combo-upload-input').forEach(input => {
+    scopeEl.querySelectorAll('.axis-chip-split').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            splitVariantRow(rowEl.dataset.axisName, Number(rowEl.dataset.tempId));
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-image-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
+            if (!confirm('確定要移除這個選項的圖片嗎？')) return;
+            const row = localVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            row.image_url = null;
+            modalDirty = true;
+            renderVariantSection();
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-upload-input').forEach(input => {
         input.addEventListener('change', async () => {
             const file = input.files[0];
-            if (!file || !currentVariantErp) return;
+            if (!file) return;
 
-            const row = input.closest('[data-spec]');
-            const thumbImg = row.querySelector('.combo-thumb');
-            const statusEl = row.querySelector('.combo-upload-status');
+            const rowEl = input.closest('[data-temp-id]');
+            const tempId = Number(rowEl.dataset.tempId);
+            const row = localVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
 
+            const thumbImg = rowEl.querySelector('.axis-option-thumb');
+            const statusEl = rowEl.querySelector('.axis-upload-status');
             statusEl.textContent = '上傳中…';
             try {
                 const url = await uploadImageToCloudinary(file);
-                const existingTempId = Number(row.dataset.tempId) || null;
-                const existingRow = existingTempId ? localVariantRows.find(r => r.tempId === existingTempId) : null;
-                if (existingRow) {
-                    existingRow.image_url = url;
-                } else {
-                    localVariantRows.push({
-                        tempId: ++variantTempCounter,
-                        id: null,
-                        erp_code: currentVariantErp,
-                        spec: row.dataset.spec,
-                        bore: row.dataset.bore,
-                        color: row.dataset.color,
-                        image_url: url,
-                        sort_order: 0,
-                    });
-                }
+                row.image_url = url;
                 modalDirty = true;
                 thumbImg.src = url;
                 statusEl.textContent = '';
@@ -935,39 +819,275 @@ function renderComboList(axisOptions, comboByKey) {
     });
 }
 
-document.querySelectorAll('.add-axis-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        if (!currentVariantErp) return;
-        const type = btn.dataset.type;
-        const input = document.getElementById(`axis-${type}-input`);
-        const values = splitBulkValues(input.value);
-        if (!values.length) return;
+function renderVariantSection() {
+    const { axisOptions, combos } = categorizeVariantRows(localVariantRows);
+    const axisNames = Object.keys(axisOptions).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
 
-        const { axisOptions } = categorizeVariantRows(localVariantRows);
-        const existing = new Set(axisOptions[type].map(r => r.spec || r.bore || r.color));
-        const newValues = values.filter(v => !existing.has(v));
-        if (!newValues.length) { input.value = ''; return; }
+    const groupsEl = document.getElementById('axis-groups');
+    if (!axisNames.length) {
+        groupsEl.innerHTML = '<p class="text-xs text-gray-400">這個商品還沒有任何選項，在下面新增第一個軸吧（例如「規格」）。</p>';
+    } else {
+        groupsEl.innerHTML = axisNames.map(name => `
+            <div>
+                <label class="field-label">${escapeHtml(name)}</label>
+                <div class="space-y-1">${axisOptions[name].map(r => axisChipHtml(r, name)).join('')}</div>
+            </div>`).join('');
+    }
+    wireAxisChips(groupsEl);
 
-        newValues.forEach(v => {
-            localVariantRows.push({
-                tempId: ++variantTempCounter,
-                id: null,
-                erp_code: currentVariantErp,
-                spec: type === 'spec' ? v : '',
-                bore: type === 'bore' ? v : '',
-                color: type === 'color' ? v : '',
-                image_url: null,
-                sort_order: 0,
-            });
+    renderComboList(combos);
+    renderComboBuilder();
+}
+
+function removeVariantRow(tempId) {
+    const row = localVariantRows.find(r => r.tempId === tempId);
+    if (!row) return;
+    if (row.id) deletedVariantIds.push(row.id);
+    localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
+    modalDirty = true;
+    renderVariantSection();
+}
+
+// 把舊資料裡「一個選項其實塞了好幾個值」（例如 4"、5"、6" 存成一筆）拆成好幾個獨立選項。
+function splitVariantRow(axisName, tempId) {
+    const row = localVariantRows.find(r => r.tempId === tempId);
+    if (!row) return;
+    const rawValue = row.axis_values[axisName];
+    const values = splitBulkValues(rawValue);
+    if (values.length < 2) return;
+    if (!confirm(`要把「${rawValue}」分割成 ${values.length} 個選項嗎？`)) return;
+
+    if (row.id) deletedVariantIds.push(row.id);
+    localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
+
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    const existing = new Set((axisOptions[axisName] || []).map(r => r.axis_values[axisName]));
+    values.filter(v => !existing.has(v)).forEach(v => {
+        localVariantRows.push({
+            tempId: ++variantTempCounter,
+            id: null,
+            erp_code: currentVariantErp,
+            axis_values: { [axisName]: v },
+            image_url: null,
+            sort_order: 0,
         });
+    });
 
+    modalDirty = true;
+    renderVariantSection();
+}
+
+function renderComboList(combos) {
+    const container = document.getElementById('variant-combo-list');
+    if (!combos.length) {
+        container.innerHTML = '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
+        return;
+    }
+
+    container.innerHTML = combos.map(r => {
+        const label = rowAxisEntries(r).map(([k, v]) => `${k}：${v}`).join('　');
+        return `
+            <div class="flex items-center gap-3 border rounded-lg p-2" data-temp-id="${r.tempId}">
+                <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
+                <div class="flex-1 text-sm">${escapeHtml(label)}</div>
+                <span class="combo-upload-status text-xs text-gray-400"></span>
+                <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
+                    上傳圖片
+                    <input type="file" accept="image/*" class="hidden combo-upload-input">
+                </label>
+                ${r.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
+                <button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>
+            </div>`;
+    }).join('');
+
+    container.querySelectorAll('.combo-delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!confirm('確定要刪除這筆組合嗎？')) return;
+            removeVariantRow(Number(btn.closest('[data-temp-id]').dataset.tempId));
+        });
+    });
+
+    container.querySelectorAll('.combo-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
+            if (!confirm('確定要移除這張組合照片嗎？')) return;
+            const row = localVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            row.image_url = null;
+            modalDirty = true;
+            renderVariantSection();
+        });
+    });
+
+    container.querySelectorAll('.combo-upload-input').forEach(input => {
+        input.addEventListener('change', async () => {
+            const file = input.files[0];
+            if (!file) return;
+
+            const rowEl = input.closest('[data-temp-id]');
+            const tempId = Number(rowEl.dataset.tempId);
+            const row = localVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+
+            const thumbImg = rowEl.querySelector('.combo-thumb');
+            const statusEl = rowEl.querySelector('.combo-upload-status');
+            statusEl.textContent = '上傳中…';
+            try {
+                const url = await uploadImageToCloudinary(file);
+                row.image_url = url;
+                modalDirty = true;
+                thumbImg.src = url;
+                statusEl.textContent = '';
+                renderVariantSection();
+            } catch (e) {
+                statusEl.textContent = '';
+                alert('上傳失敗：' + e.message);
+            } finally {
+                input.value = '';
+            }
+        });
+    });
+}
+
+// 手動新增一筆完整組合：自己填軸名稱＋值（至少兩軸），不受限於已經有選項按鈕的軸，
+// 這樣像 W／H／L 這種只出現在組合裡、平常不需要單獨當按鈕選的軸也能填。
+function renderComboBuilder() {
+    const el = document.getElementById('combo-builder');
+    if (!currentVariantErp) { el.innerHTML = ''; return; }
+
+    el.innerHTML = `
+        <div class="border rounded-lg p-3">
+            <p class="text-xs text-gray-500 mb-1">手動新增一筆完整組合：</p>
+            <div id="combo-builder-rows" class="space-y-1"></div>
+            <div class="flex gap-2 mt-2">
+                <button type="button" id="combo-builder-add-row" class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100">+ 再加一軸</button>
+                <button type="button" id="combo-builder-submit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">新增這筆組合</button>
+            </div>
+        </div>`;
+
+    const rowsEl = document.getElementById('combo-builder-rows');
+    const renderRows = () => {
+        rowsEl.innerHTML = comboBuilderPairs.map((pair, i) => `
+            <div class="flex gap-2">
+                <input type="text" class="field-input combo-builder-name" style="width:9rem" list="known-axis-names" placeholder="軸名稱" value="${escapeHtml(pair.name)}" data-idx="${i}">
+                <input type="text" class="field-input combo-builder-value" placeholder="值" value="${escapeHtml(pair.value)}" data-idx="${i}">
+            </div>`).join('');
+        rowsEl.querySelectorAll('.combo-builder-name').forEach(inp => {
+            inp.addEventListener('input', () => { comboBuilderPairs[Number(inp.dataset.idx)].name = inp.value; });
+        });
+        rowsEl.querySelectorAll('.combo-builder-value').forEach(inp => {
+            inp.addEventListener('input', () => { comboBuilderPairs[Number(inp.dataset.idx)].value = inp.value; });
+        });
+    };
+    renderRows();
+
+    document.getElementById('combo-builder-add-row').addEventListener('click', () => {
+        comboBuilderPairs.push({ name: '', value: '' });
+        renderRows();
+    });
+
+    document.getElementById('combo-builder-submit').addEventListener('click', () => {
+        const values = {};
+        comboBuilderPairs.forEach(p => {
+            const n = p.name.trim();
+            const v = p.value.trim();
+            if (n && v) values[n] = v;
+        });
+        if (Object.keys(values).length < 2) { alert('至少要填兩個軸才算一筆組合'); return; }
+
+        localVariantRows.push({
+            tempId: ++variantTempCounter,
+            id: null,
+            erp_code: currentVariantErp,
+            axis_values: values,
+            image_url: null,
+            sort_order: 0,
+        });
+        comboBuilderPairs = [{ name: '', value: '' }, { name: '', value: '' }];
         modalDirty = true;
-        input.value = '';
         renderVariantSection();
     });
+}
+
+document.getElementById('add-axis-value-btn').addEventListener('click', () => {
+    if (!currentVariantErp) return;
+    const nameInput = document.getElementById('axis-name-input');
+    const valueInput = document.getElementById('axis-value-input');
+    const axisName = nameInput.value.trim();
+    if (!axisName) { nameInput.focus(); return; }
+    const values = splitBulkValues(valueInput.value);
+    if (!values.length) { valueInput.focus(); return; }
+
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    const existing = new Set((axisOptions[axisName] || []).map(r => r.axis_values[axisName]));
+    const newValues = values.filter(v => !existing.has(v));
+    if (!newValues.length) { valueInput.value = ''; return; }
+
+    newValues.forEach(v => {
+        localVariantRows.push({
+            tempId: ++variantTempCounter,
+            id: null,
+            erp_code: currentVariantErp,
+            axis_values: { [axisName]: v },
+            image_url: null,
+            sort_order: 0,
+        });
+    });
+
+    if (!knownAxisNames.includes(axisName)) {
+        knownAxisNames.push(axisName);
+        knownAxisNames.sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+        const datalist = document.getElementById('known-axis-names');
+        if (datalist) datalist.innerHTML = knownAxisNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    }
+
+    modalDirty = true;
+    nameInput.value = '';
+    valueInput.value = '';
+    renderVariantSection();
 });
 
-// 主表單按下「儲存」時才真正把本地暫存的規格選項／組合照片異動寫回 Supabase。
+// 從商品說明表格一樣格式的 markdown 表格貼上，一次匯入多筆完整組合：
+// 第一列（表頭）當軸名稱，之後每一列是一筆組合，跟中文說明欄位常用的表格格式相同。
+document.getElementById('combo-table-import-btn').addEventListener('click', () => {
+    if (!currentVariantErp) return;
+    const statusEl = document.getElementById('combo-table-import-status');
+    const textarea = document.getElementById('combo-table-paste');
+    const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.startsWith('|'));
+    if (lines.length < 2) { statusEl.textContent = '至少要有標題列＋一列資料，而且每列要用 | 分隔。'; return; }
+
+    const parseRow = (line) => line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    const headers = parseRow(lines[0]);
+    if (headers.filter(Boolean).length < 2) { statusEl.textContent = '標題列至少要有兩欄（兩個軸）。'; return; }
+
+    let added = 0, skipped = 0;
+    for (let i = 1; i < lines.length; i++) {
+        if (/^[|:\s-]+$/.test(lines[i])) continue; // markdown 分隔列（---）
+        const cells = parseRow(lines[i]);
+        const values = {};
+        headers.forEach((h, idx) => {
+            const v = (cells[idx] || '').trim();
+            if (h && v) values[h] = v;
+        });
+        if (Object.keys(values).length < 2) { skipped++; continue; }
+        localVariantRows.push({
+            tempId: ++variantTempCounter,
+            id: null,
+            erp_code: currentVariantErp,
+            axis_values: values,
+            image_url: null,
+            sort_order: 0,
+        });
+        added++;
+    }
+
+    if (added) modalDirty = true;
+    statusEl.textContent = `已新增 ${added} 筆組合${skipped ? `，略過 ${skipped} 筆（欄位不足兩個）` : ''}。記得最下面按「儲存」才會真正生效。`;
+    textarea.value = '';
+    renderVariantSection();
+});
+
+// 主表單按下「儲存」時才真正把本地暫存的選項／組合異動寫回 Supabase。
 async function saveVariantChanges() {
     if (deletedVariantIds.length) {
         const { error } = await sb.from('pos_item_variants').delete().in('id', deletedVariantIds);
@@ -978,13 +1098,11 @@ async function saveVariantChanges() {
     if (localVariantRows.length) {
         const rows = localVariantRows.map(r => ({
             erp_code: r.erp_code,
-            spec: r.spec || '',
-            bore: r.bore || '',
-            color: r.color || '',
+            axis_values: r.axis_values || {},
             image_url: r.image_url || null,
             sort_order: r.sort_order || 0,
         }));
-        const { error } = await sb.from('pos_item_variants').upsert(rows, { onConflict: 'erp_code,spec,bore,color' });
+        const { error } = await sb.from('pos_item_variants').upsert(rows, { onConflict: 'erp_code,axis_values' });
         if (error) throw error;
     }
 }
@@ -1168,7 +1286,7 @@ async function saveUnitChanges() {
 }
 
 async function initProductsPage() {
-    await Promise.all([loadProducts(), loadKnownUnits()]);
+    await Promise.all([loadProducts(), loadKnownUnits(), loadKnownAxisNames()]);
 }
 
 initAdminAuth('products', initProductsPage);

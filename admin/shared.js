@@ -139,6 +139,24 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
+// order_items 的規格資料有兩種來源：新訂單存的是彈性軸 variant_values（JSON，軸名稱不限），
+// 舊訂單只有規格/孔徑/顏色 3 個固定欄位。兩種統一整理成 [[軸名, 值], ...]，畫面顯示都共用這個。
+function itemVariantEntries(item) {
+    const values = item && item.variant_values;
+    if (values && typeof values === 'object' && Object.keys(values).length) {
+        return Object.entries(values).filter(([, v]) => v);
+    }
+    return [
+        ['規格', item && item.spec],
+        ['孔徑', item && item.bore],
+        ['顏色', item && item.color],
+    ].filter(([, v]) => v);
+}
+
+function formatVariantSummary(item) {
+    return itemVariantEntries(item).map(([k, v]) => `${k}：${v}`).join('、');
+}
+
 // Cloud name 和 unsigned upload preset 都不是密鑰，可以放在前端程式碼裡；
 // 真正的 API Secret 絕對不能出現在這裡（那個要保密，用在伺服器端）。
 const CLOUDINARY_CLOUD_NAME = 'dhnctvjs8';

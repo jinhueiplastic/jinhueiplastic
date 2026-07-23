@@ -4,9 +4,9 @@ let cart = [];
 let cartCounter = 0;
 let categoryCards = [];      // 官網「商品目錄」頁用的分類卡片：{ catId, name, image }
 let categoryNameById = {};   // catId -> 中文分類顯示名稱
-let variantOptionsByErp = {}; // erp_code -> { spec: [{value,image_url}], bore: [...], color: [...] }
-let selectedVariant = { spec: '', bore: '', color: '' }; // 目前規格畫面上，用按鈕點選的值
-let comboImagesByErp = {}; // erp_code -> { 'spec||bore||color': image_url }，每個確切組合各自的商品照
+let variantOptionsByErp = {}; // erp_code -> { 軸名稱: [{value,image_url}], ... }，各軸各自有哪些可點選項目
+let selectedVariant = {}; // 目前規格畫面上，用按鈕/打字選到的值，key 是軸名稱
+let combosByErp = {}; // erp_code -> [{ values: {軸名:值,...}, image_url }]，同一列記錄好幾個軸的完整組合
 let allUnits = []; // 所有出現過的單位（來自 pos_units），商品自己沒設定過單位時的備援清單
 let unitsByErp = {}; // erp_code -> [單位名稱]，每個商品各自記住自己常用的單位
 let selectedUnit = ''; // 目前規格畫面上，用按鈕點選的單位
@@ -56,24 +56,23 @@ async function initPos() {
         unitsByErp[u.erp_code].push(u.name);
     });
 
-    // pos_item_variants 一列可能是「單一選項按鈕」（規格/孔徑/顏色只填一欄）
-    // 或「確切組合的實際照片」（填兩欄以上），兩種都從同一份資料算出來。
+    // pos_item_variants 一列可能是「單一選項按鈕」（只填一個軸）
+    // 或「完整組合」（填兩個以上的軸，可以只是資訊、也可以帶實際照片），兩種都從同一份資料算出來。
+    // 軸名稱完全自訂，不再限定規格/孔徑/顏色。
     variantOptionsByErp = {};
-    comboImagesByErp = {};
+    combosByErp = {};
     (variantData || []).forEach(v => {
-        const spec = v.spec || '';
-        const bore = v.bore || '';
-        const color = v.color || '';
-        const filledCount = [spec, bore, color].filter(Boolean).length;
-        if (!filledCount) return;
+        const entries = Object.entries(v.axis_values || {}).filter(([, val]) => val);
+        if (!entries.length) return;
 
-        if (filledCount === 1) {
-            const type = spec ? 'spec' : (bore ? 'bore' : 'color');
-            if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = { spec: [], bore: [], color: [] };
-            variantOptionsByErp[v.erp_code][type].push({ value: spec || bore || color, image_url: v.image_url });
+        if (entries.length === 1) {
+            const [name, value] = entries[0];
+            if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = {};
+            if (!variantOptionsByErp[v.erp_code][name]) variantOptionsByErp[v.erp_code][name] = [];
+            variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url });
         } else {
-            if (!comboImagesByErp[v.erp_code]) comboImagesByErp[v.erp_code] = {};
-            comboImagesByErp[v.erp_code][[spec, bore, color].join('||')] = v.image_url;
+            if (!combosByErp[v.erp_code]) combosByErp[v.erp_code] = [];
+            combosByErp[v.erp_code].push({ values: v.axis_values, image_url: v.image_url });
         }
     });
 
@@ -390,19 +389,22 @@ function renderProductGridHtml(items) {
         `</div>`;
 }
 
-const VARIANT_LABELS = { spec: '規格', bore: '孔徑', color: '顏色' };
+// 這個商品目前有哪些「可以直接點選」的軸（有單一選項按鈕的軸；只出現在完整組合裡、
+// 沒有自己獨立選項的軸——例如型號帶出來的 W/H/L——不會變成按鈕，而是選到符合的組合時用資訊列顯示）。
+function productAxisNames(product) {
+    const opts = variantOptionsByErp[product.erp_code];
+    return opts ? Object.keys(opts) : [];
+}
 
-// 規格/孔徑/顏色選項統一只看 pos_item_variants（跟「修改 POS 商品」編輯頁同一份資料）：
 // 有選項的話畫成可以直接點的按鈕，下面一律都留一個打字輸入框，可以輸入清單以外的值
 // （選了按鈕又打字，以打字的為準；打字後按鈕會自動取消選取，避免兩邊同時生效搞不清楚）。
-function variantFieldHtml(type, product) {
-    const options = (variantOptionsByErp[product.erp_code] && variantOptionsByErp[product.erp_code][type]) || [];
-    const label = VARIANT_LABELS[type];
+function variantFieldHtml(axisName, product) {
+    const options = (variantOptionsByErp[product.erp_code] && variantOptionsByErp[product.erp_code][axisName]) || [];
 
     const tilesHtml = options.length ? `
         <div class="flex flex-wrap gap-2 mb-2">
             ${options.map(o => `
-                <button type="button" class="variant-tile" data-type="${type}" data-value="${escapeHtml(o.value)}">
+                <button type="button" class="variant-tile" data-axis="${escapeHtml(axisName)}" data-value="${escapeHtml(o.value)}">
                     ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
                     <span>${escapeHtml(o.value)}</span>
                 </button>`).join('')}
@@ -410,15 +412,17 @@ function variantFieldHtml(type, product) {
 
     return `
         <div>
-            <label class="field-label">${label}</label>
+            <label class="field-label">${escapeHtml(axisName)}</label>
             ${tilesHtml}
-            <input type="text" id="variant-${type}-text" class="field-input" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
+            <input type="text" class="field-input variant-text-input" data-axis="${escapeHtml(axisName)}" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
         </div>`;
 }
 
-// 單位是全店共用的一份清單（跟規格/孔徑/顏色不一樣，不是綁在個別商品上），
+// 單位是每個商品各自記住的清單（跟規格/孔徑/顏色分開），
 // 按鈕選或直接打新的都可以，新增的會馬上存進 pos_units，之後就一直有這個按鈕可以點。
 function renderVariantPickerHtml(p) {
+    const axisNames = productAxisNames(p);
+    const fieldsHtml = axisNames.map(name => variantFieldHtml(name, p)).join('');
     return `
         <div class="flex gap-4 flex-col sm:flex-row">
             <img id="variant-preview-img" src="${escapeHtml(thumbOf(p))}" alt=""
@@ -428,9 +432,8 @@ function renderVariantPickerHtml(p) {
                 <p class="text-xs text-blue-600 font-bold">${escapeHtml(p.erp_code || '')}</p>
                 <h4 class="font-bold text-lg text-gray-800 mb-3">${escapeHtml(orderDisplayName(p))}</h4>
                 <div class="space-y-3">
-                    ${variantFieldHtml('spec', p)}
-                    ${variantFieldHtml('bore', p)}
-                    ${variantFieldHtml('color', p)}
+                    ${fieldsHtml}
+                    <div id="variant-combo-info" class="text-xs text-gray-500"></div>
                     <div class="flex flex-wrap items-end gap-2">
                         <div>
                             <label class="field-label">數量</label>
@@ -491,63 +494,91 @@ function renderBrowseArea() {
     }
 }
 
-function currentVariantValue(type) {
-    if (selectedVariant[type]) return selectedVariant[type];
-    const textEl = document.getElementById(`variant-${type}-text`);
-    return textEl ? textEl.value.trim() : '';
+// 目前畫面上選到的值（按鈕優先，沒按按鈕才看有沒有打字），key 是軸名稱。
+function currentVariantValues() {
+    const values = {};
+    Object.keys(selectedVariant).forEach(axis => {
+        if (selectedVariant[axis]) values[axis] = selectedVariant[axis];
+    });
+    document.querySelectorAll('.variant-text-input').forEach(inp => {
+        const axis = inp.dataset.axis;
+        if (!values[axis] && inp.value.trim()) values[axis] = inp.value.trim();
+    });
+    return values;
 }
 
-// 有這個確切組合（規格+孔徑+顏色）的實際商品照片就用那張，沒有的話退回該商品的一般照片。
-function findComboImage(erp, spec, bore, color) {
-    const key = [spec || '', bore || '', color || ''].join('||');
-    return (comboImagesByErp[erp] && comboImagesByErp[erp][key]) || '';
+// 找出「目前選到的每個軸都對得上」的完整組合裡，比對到的軸最多（最具體）的那一筆；
+// 這樣即使組合裡還帶著使用者沒有直接選的其他軸（例如型號帶出來的 W/H/L），也能找到。
+function findBestCombo(erp, selectedValues) {
+    const combos = combosByErp[erp] || [];
+    const selectedEntries = Object.entries(selectedValues);
+    if (!selectedEntries.length) return null;
+
+    let best = null;
+    let bestScore = 0;
+    combos.forEach(combo => {
+        const matches = selectedEntries.every(([k, v]) => combo.values[k] === v);
+        if (!matches) return;
+        const score = Object.keys(combo.values).length;
+        if (score > bestScore) { best = combo; bestScore = score; }
+    });
+    return best;
 }
 
-// 有確切組合（2 種以上軸）的實際照片就優先用那張；只選了一種軸的話，
-// 退回用那個選項自己的照片（規格/孔徑/顏色選項本身也各自能上傳照片）；都沒有才用商品的一般照片。
+// 有符合的完整組合、且它有實際照片就優先用那張；只選了一個軸的話，
+// 退回用那個選項自己的照片（每個軸的選項本身也各自能上傳照片）；都沒有才用商品的一般照片。
 function currentComboImage(p) {
-    const spec = currentVariantValue('spec');
-    const bore = currentVariantValue('bore');
-    const color = currentVariantValue('color');
+    const values = currentVariantValues();
+    const combo = findBestCombo(p.erp_code, values);
+    if (combo && combo.image_url) return combo.image_url;
 
-    const comboImage = findComboImage(p.erp_code, spec, bore, color);
-    if (comboImage) return comboImage;
-
-    const filled = [spec, bore, color].filter(Boolean);
-    if (filled.length === 1) {
-        const type = spec ? 'spec' : (bore ? 'bore' : 'color');
-        const options = (variantOptionsByErp[p.erp_code] && variantOptionsByErp[p.erp_code][type]) || [];
-        const match = options.find(o => o.value === filled[0]);
+    const entries = Object.entries(values);
+    if (entries.length === 1) {
+        const [axis, value] = entries[0];
+        const options = (variantOptionsByErp[p.erp_code] && variantOptionsByErp[p.erp_code][axis]) || [];
+        const match = options.find(o => o.value === value);
         if (match && match.image_url) return match.image_url;
     }
 
     return thumbOf(p);
 }
 
+// 符合的完整組合如果還帶有使用者沒有直接選的其他軸（例如型號帶出來的 W/H/L），顯示成資訊列給參考。
+function comboExtraInfoText(p) {
+    const values = currentVariantValues();
+    const combo = findBestCombo(p.erp_code, values);
+    if (!combo) return '';
+    const extra = Object.entries(combo.values).filter(([k]) => !(k in values));
+    if (!extra.length) return '';
+    return extra.map(([k, v]) => `${k}：${v}`).join('　');
+}
+
 function updateVariantPreviewImage(p) {
     const img = document.getElementById('variant-preview-img');
     if (img) img.src = currentComboImage(p);
+    const infoEl = document.getElementById('variant-combo-info');
+    if (infoEl) infoEl.textContent = comboExtraInfoText(p);
 }
 
-// 訂單存檔後，把這次用到、但還沒被登記過的規格/孔徑/顏色值自動存成新的可點選項目
-// （沒有圖片，之後可以去「修改 POS 商品」補上圖片）。已經是既有選項或組合照片一部分的值不會重複新增。
-async function learnNewVariantOptions(itemsPayload) {
+// 訂單存檔後，把這次用到、但還沒被登記過的值自動存成新的可點選項目
+// （沒有圖片，之後可以去「修改 POS 商品」補上圖片）。已經是既有選項的值不會重複新增。
+// 只看使用者「直接選」的軸（selected_axis_values），不看組合帶出來的其他軸
+// （否則型號帶出來的 W/H/L 也會被學成獨立按鈕，變成不是原本要的資訊列了）。
+async function learnNewVariantOptions(learnPayload) {
     const newRows = [];
 
-    itemsPayload.forEach(item => {
+    learnPayload.forEach(item => {
         const erp = item.product_erp_code;
         if (!erp) return;
-        ['spec', 'bore', 'color'].forEach(type => {
-            const value = String(item[type] || '').trim();
-            if (!value) return;
+        Object.entries(item.selected_axis_values || {}).forEach(([name, value]) => {
+            const v = String(value || '').trim();
+            if (!v) return;
 
-            const known = (variantOptionsByErp[erp] && variantOptionsByErp[erp][type]) || [];
-            if (known.some(o => o.value === value)) return;
-            if (newRows.some(r => r.erp_code === erp && r[type] === value)) return;
+            const known = (variantOptionsByErp[erp] && variantOptionsByErp[erp][name]) || [];
+            if (known.some(o => o.value === v)) return;
+            if (newRows.some(r => r.erp_code === erp && Object.keys(r.axis_values)[0] === name && r.axis_values[name] === v)) return;
 
-            const row = { erp_code: erp, spec: '', bore: '', color: '' };
-            row[type] = value;
-            newRows.push(row);
+            newRows.push({ erp_code: erp, axis_values: { [name]: v } });
         });
     });
 
@@ -560,10 +591,10 @@ async function learnNewVariantOptions(itemsPayload) {
     }
 
     newRows.forEach(row => {
-        const type = row.spec ? 'spec' : (row.bore ? 'bore' : 'color');
-        const value = row.spec || row.bore || row.color;
-        if (!variantOptionsByErp[row.erp_code]) variantOptionsByErp[row.erp_code] = { spec: [], bore: [], color: [] };
-        variantOptionsByErp[row.erp_code][type].push({ value, image_url: '' });
+        const [name, value] = Object.entries(row.axis_values)[0];
+        if (!variantOptionsByErp[row.erp_code]) variantOptionsByErp[row.erp_code] = {};
+        if (!variantOptionsByErp[row.erp_code][name]) variantOptionsByErp[row.erp_code][name] = [];
+        variantOptionsByErp[row.erp_code][name].push({ value, image_url: '' });
     });
 }
 
@@ -602,12 +633,9 @@ async function learnNewUnits(itemsPayload) {
 }
 
 function resetVariantPicker() {
-    selectedVariant = { spec: '', bore: '', color: '' };
+    selectedVariant = {};
     document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
-    ['spec', 'bore', 'color'].forEach(type => {
-        const textEl = document.getElementById(`variant-${type}-text`);
-        if (textEl) textEl.value = '';
-    });
+    document.querySelectorAll('.variant-text-input').forEach(t => { t.value = ''; });
     const qtyEl = document.getElementById('variant-qty');
     if (qtyEl) qtyEl.value = 1;
 
@@ -695,36 +723,37 @@ async function commitNewUnit(rawValue) {
 }
 
 function wireVariantPicker(p) {
-    selectedVariant = { spec: '', bore: '', color: '' };
+    selectedVariant = {};
     selectedUnit = '';
     unitAddMode = false;
     renderUnitTiles();
 
-    ['spec', 'bore', 'color'].forEach(type => {
-        const textEl = document.getElementById(`variant-${type}-text`);
-        if (textEl) {
-            textEl.addEventListener('input', () => {
-                // 打字的話以打字為準，把按鈕選取取消，避免兩邊同時生效搞不清楚是哪個。
-                if (textEl.value.trim() && selectedVariant[type]) {
-                    selectedVariant[type] = '';
-                    document.querySelectorAll(`.variant-tile[data-type="${type}"]`).forEach(b => b.classList.remove('selected'));
-                }
-                updateVariantPreviewImage(p);
-            });
-        }
+    document.querySelectorAll('.variant-text-input').forEach(textEl => {
+        const axis = textEl.dataset.axis;
+        textEl.addEventListener('input', () => {
+            // 打字的話以打字為準，把按鈕選取取消，避免兩邊同時生效搞不清楚是哪個。
+            if (textEl.value.trim() && selectedVariant[axis]) {
+                selectedVariant[axis] = '';
+                document.querySelectorAll('.variant-tile').forEach(b => {
+                    if (b.dataset.axis === axis) b.classList.remove('selected');
+                });
+            }
+            updateVariantPreviewImage(p);
+        });
     });
 
     document.querySelectorAll('.variant-tile').forEach(btn => {
         btn.addEventListener('click', () => {
-            const type = btn.dataset.type;
+            const axis = btn.dataset.axis;
             const value = btn.dataset.value;
-            selectedVariant[type] = (selectedVariant[type] === value) ? '' : value; // 再點一次取消選取
-            document.querySelectorAll(`.variant-tile[data-type="${type}"]`).forEach(b => {
-                b.classList.toggle('selected', b.dataset.value === selectedVariant[type]);
+            selectedVariant[axis] = (selectedVariant[axis] === value) ? '' : value; // 再點一次取消選取
+            document.querySelectorAll('.variant-tile').forEach(b => {
+                if (b.dataset.axis === axis) b.classList.toggle('selected', b.dataset.value === selectedVariant[axis]);
             });
             // 點按鈕的話清掉打字框，避免畫面上同時顯示兩個不同的值。
-            const textEl = document.getElementById(`variant-${type}-text`);
-            if (textEl) textEl.value = '';
+            document.querySelectorAll('.variant-text-input').forEach(t => {
+                if (t.dataset.axis === axis) t.value = '';
+            });
             updateVariantPreviewImage(p);
         });
     });
@@ -735,14 +764,20 @@ function wireVariantPicker(p) {
         const qty = Number(document.getElementById('variant-qty').value) || 1;
         const unitNewInput = document.getElementById('unit-new-input');
         const unit = selectedUnit || (unitNewInput ? unitNewInput.value.trim() : '');
+
+        // 訂單快照要記錄完整的一組值：使用者直接選的軸，加上符合的完整組合帶出來的其他軸
+        // （例如選了型號，組合裡的 W/H/L 也要一起記進這張訂單，出貨單才看得到）。
+        const selected = currentVariantValues();
+        const combo = findBestCombo(p.erp_code, selected);
+        const variantValues = combo ? { ...selected, ...combo.values } : selected;
+
         cart.push({
             rowId: ++cartCounter,
             erp: p.erp_code,
             name_zh: orderDisplayName(p),
             image_url: currentComboImage(p),
-            spec: currentVariantValue('spec'),
-            bore: currentVariantValue('bore'),
-            color: currentVariantValue('color'),
+            variant_values: variantValues,
+            selected_axis_values: selected, // 只用來之後「自動學習新選項」，不會存進訂單
             unit,
             qty,
         });
@@ -763,7 +798,7 @@ function renderCart() {
         return;
     }
     cartContainer.innerHTML = cart.map(item => {
-        const variant = [item.spec, item.bore, item.color].filter(Boolean).join(' / ');
+        const variant = formatVariantSummary(item);
         return `
             <div class="flex items-center gap-3 bg-white border rounded-lg p-3 mb-2">
                 <img src="${escapeHtml(item.image_url)}" alt="" class="product-thumb" style="width:48px;height:48px;flex-shrink:0;">
@@ -808,11 +843,13 @@ saveOrderBtn.addEventListener('click', async () => {
             product_erp_code: item.erp,
             product_name_zh: item.name_zh,
             product_image_url: item.image_url,
-            spec: item.spec,
-            bore: item.bore,
-            color: item.color,
+            variant_values: item.variant_values || {},
             unit: item.unit,
             quantity: item.qty,
+        }));
+        const learnPayload = cart.map(item => ({
+            product_erp_code: item.erp,
+            selected_axis_values: item.selected_axis_values || {},
         }));
         const { error: itemsErr } = await sb.from('order_items').insert(itemsPayload);
         if (itemsErr) throw itemsErr;
@@ -828,7 +865,7 @@ saveOrderBtn.addEventListener('click', async () => {
         // 出單後清空客戶，方便接著幫同一區域的下一位客戶下單；區域篩選（selectedRegionFilter）不受影響。
         deselectCustomer();
 
-        await learnNewVariantOptions(itemsPayload);
+        await learnNewVariantOptions(learnPayload);
         resultBanner.classList.remove('hidden');
         resultBanner.innerHTML = `
             ✅ 訂單已儲存，訂單編號：<strong>${escapeHtml(order.order_no)}</strong>

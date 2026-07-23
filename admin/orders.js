@@ -76,7 +76,7 @@ function renderResults(orders) {
     resultsContainer.innerHTML = orders.map(o => {
         const items = o.order_items || [];
         const itemsSummary = items.map(it => {
-            const variant = [it.spec, it.bore, it.color].filter(Boolean).join('/');
+            const variant = formatVariantSummary(it);
             const name = it.product_name_zh || it.product_erp_code || '';
             return `${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''} x${it.quantity}${it.unit ? escapeHtml(it.unit) : ''}`;
         }).join('、');
