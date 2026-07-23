@@ -48,6 +48,8 @@ const POS_VARIANTS_TAB = 'POS variants';
 //   pos_item_variants 這 3 張表各自新增一個：Events 勾 Insert、Update、Delete，
 //   Type 選 HTTP Request，Method 選 POST，URL 貼上步驟 1 拿到的網址，
 //   後面自己加上 ?secret=（換成跟下面 WEBHOOK_SECRET 一樣的一串亂碼）。
+//   如果後台介面找不到「Create a new hook」按鈕，改跑 admin/sync/database-webhooks-setup.sql
+//   （在 SQL Editor 執行一次即可，效果完全一樣，只是換成用 SQL 直接建）。
 //
 // 網址要帶 ?secret=xxx 是避免別人猜到這個網址就能亂觸發同步
 // （Apps Script 網頁應用程式讀不到自訂的 Header，密鑰只能放在網址上），
