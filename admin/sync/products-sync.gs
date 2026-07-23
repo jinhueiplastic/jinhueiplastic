@@ -52,7 +52,7 @@ const POS_VARIANTS_TAB = 'POS variants';
 // 網址要帶 ?secret=xxx 是避免別人猜到這個網址就能亂觸發同步
 // （Apps Script 網頁應用程式讀不到自訂的 Header，密鑰只能放在網址上），
 // 記得把下面這個字串換成你自己想的一串，不要用預設值。
-const WEBHOOK_SECRET = 'change-this-to-your-own-secret';
+const WEBHOOK_SECRET = 'giohoioghidfogjhisaqzz';
 
 // 從網頁應用程式（doPost）或定時觸發器呼叫拉回函式時，沒有「使用中的試算表視窗」，
 // 直接呼叫 SpreadsheetApp.getUi() 會噴錯，統一包一層安全版本，取不到 UI 就安靜略過、寫進執行紀錄就好。
