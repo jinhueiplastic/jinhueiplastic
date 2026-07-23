@@ -33,6 +33,74 @@ const POS_ITEMS_TAB = 'POS items';
 // 表頭中間那些軸名稱欄位會在「⬇️ 拉回」的時候，直接照 Supabase 目前有的軸自動重新產生。
 const POS_VARIANTS_TAB = 'POS variants';
 
+// ===== 網站（Supabase）資料一有異動就自動拉回 Google Sheet =====
+// 要生效需要兩個一次性設定，兩個都要在你自己的帳號裡手動點，程式碼本身沒辦法幫你做：
+//
+// 步驟 1：把這個檔案部署成「網頁應用程式」
+//   Apps Script 編輯器右上角「部署」→「新增部署」，類型選「網頁應用程式」，
+//   「執行身分」選你自己，「誰可以存取」選「所有人」，按部署，會拿到一個網址
+//   （長得像 https://script.google.com/macros/s/xxxxx/exec）。
+//   之後如果又改了這個檔案，要「管理部署」→ 針對同一個部署按編輯（鉛筆圖示）→
+//   版本選「新版本」再部署一次，網址才會套用新的程式碼（重新整理網址不會自動生效）。
+//
+// 步驟 2：到 Supabase 後台設定 Database Webhook
+//   左側選單 Database → Webhooks → Create a new hook，對 products／pos_items／
+//   pos_item_variants 這 3 張表各自新增一個：Events 勾 Insert、Update、Delete，
+//   Type 選 HTTP Request，Method 選 POST，URL 貼上步驟 1 拿到的網址，
+//   後面自己加上 ?secret=（換成跟下面 WEBHOOK_SECRET 一樣的一串亂碼）。
+//
+// 網址要帶 ?secret=xxx 是避免別人猜到這個網址就能亂觸發同步
+// （Apps Script 網頁應用程式讀不到自訂的 Header，密鑰只能放在網址上），
+// 記得把下面這個字串換成你自己想的一串，不要用預設值。
+const WEBHOOK_SECRET = 'change-this-to-your-own-secret';
+
+// 從網頁應用程式（doPost）或定時觸發器呼叫拉回函式時，沒有「使用中的試算表視窗」，
+// 直接呼叫 SpreadsheetApp.getUi() 會噴錯，統一包一層安全版本，取不到 UI 就安靜略過、寫進執行紀錄就好。
+function safeAlert(message) {
+  try {
+    SpreadsheetApp.getUi().alert(message);
+  } catch (err) {
+    Logger.log(message);
+  }
+}
+
+function doPost(e) {
+  const secret = e && e.parameter && e.parameter.secret;
+  if (secret !== WEBHOOK_SECRET) {
+    return ContentService.createTextOutput('forbidden');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return ContentService.createTextOutput('bad payload');
+  }
+
+  const table = payload && payload.table;
+
+  // 短時間內同一張表被連續改好幾筆（例如一次儲存好幾列規格），Supabase 會一列送一次事件，
+  // 先搶鎖，搶不到代表已經有另一次同步在跑了，這次先略過（多半沒差，因為那一次通常也會把
+  // 最新狀態一起拉回去；真的很不巧漏掉的話，下一次任何異動或手動「⬇️ 拉回」都會補齊）。
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) {
+    return ContentService.createTextOutput('busy, skipped');
+  }
+  try {
+    if (table === 'products') {
+      pullProductsFromSupabase();
+    } else if (table === 'pos_items') {
+      pullPosItemsFromSupabase();
+    } else if (table === 'pos_item_variants') {
+      pullPosVariantsFromSupabase();
+    }
+  } finally {
+    lock.releaseLock();
+  }
+
+  return ContentService.createTextOutput('ok');
+}
+
 // ===== 主選單 =====
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('🔄 Supabase 同步')
@@ -53,7 +121,7 @@ function onOpen() {
 function syncAll() {
   syncSiteContent();
   syncProducts();
-  SpreadsheetApp.getUi().alert('✅ 全部同步完成！');
+  safeAlert('✅ 全部同步完成！');
 }
 
 // ===== 同步 Sheet 1：網站內容（未改動，仍是整批清空重寫） =====
@@ -140,11 +208,11 @@ function syncProducts() {
 function pullProductsFromSupabase() {
   const ss = SpreadsheetApp.openById(SHEET2_ID);
   const sheet = ss.getSheetByName('Categories');
-  if (!sheet) { SpreadsheetApp.getUi().alert('找不到 Categories 分頁'); return; }
+  if (!sheet) { safeAlert('找不到 Categories 分頁'); return; }
 
   const products = supabaseRequest('GET', '/rest/v1/products?select=*&order=erp_code.asc', null);
   if (!products) {
-    SpreadsheetApp.getUi().alert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
+    safeAlert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
     return;
   }
 
@@ -189,7 +257,7 @@ function pullProductsFromSupabase() {
     sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
   }
 
-  SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
+  safeAlert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
 }
 
 // ===== 推送 Sheet 2「POS items」→ Supabase pos_items（upsert，不會刪除既有資料） =====
@@ -232,11 +300,11 @@ function syncPosItems() {
 function pullPosItemsFromSupabase() {
   const ss = SpreadsheetApp.openById(SHEET2_ID);
   const sheet = ss.getSheetByName(POS_ITEMS_TAB);
-  if (!sheet) { SpreadsheetApp.getUi().alert('找不到 ' + POS_ITEMS_TAB + ' 分頁'); return; }
+  if (!sheet) { safeAlert('找不到 ' + POS_ITEMS_TAB + ' 分頁'); return; }
 
   const items = supabaseRequest('GET', '/rest/v1/pos_items?select=*&order=erp_code.asc', null);
   if (!items) {
-    SpreadsheetApp.getUi().alert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
+    safeAlert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
     return;
   }
 
@@ -279,7 +347,7 @@ function pullPosItemsFromSupabase() {
     sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
   }
 
-  SpreadsheetApp.getUi().alert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
+  safeAlert('✅ 拉回完成：更新 ' + updated + ' 筆，新增 ' + appended + ' 筆');
 }
 
 // 頭尾固定欄位，中間的軸欄位是動態的（見下面 posVariantsAxisColumns）。
@@ -367,7 +435,7 @@ function pullPosVariantsFromSupabase() {
 
   const rows = supabaseRequest('GET', '/rest/v1/pos_item_variants?select=*&order=erp_code.asc', null);
   if (!rows) {
-    SpreadsheetApp.getUi().alert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
+    safeAlert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
     return;
   }
 
@@ -403,7 +471,7 @@ function pullPosVariantsFromSupabase() {
     sheet.getRange(2, 1, dataRows.length, headers.length).setValues(dataRows);
   }
 
-  SpreadsheetApp.getUi().alert('✅ 拉回完成：共 ' + dataRows.length + ' 筆，' + axisNames.length + ' 種軸（' + axisNames.join('、') + '）');
+  safeAlert('✅ 拉回完成：共 ' + dataRows.length + ' 筆，' + axisNames.length + ' 種軸（' + axisNames.join('、') + '）');
 }
 
 // ===== 工具函數 =====
