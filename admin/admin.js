@@ -144,6 +144,11 @@ function productRowHtml(p) {
     const thumb = img
         ? `<img src="${img}" alt="" class="product-thumb" style="width:72px;height:72px;">`
         : `<div class="product-thumb" style="width:72px;height:72px;"></div>`;
+
+    // 有設定下單名稱的話優先顯示下單名稱，原本的商品名稱用括號附註在後面方便對照；沒設定就只顯示商品名稱。
+    const orderName = (p.order_display_name || '').trim();
+    const nameLine = orderName ? `${orderName}（${p.name_zh || ''}）` : (p.name_zh || '');
+
     return `
         <div class="flex gap-4 border rounded-lg p-3 bg-white">
             <div class="flex flex-col items-center gap-2 shrink-0">
@@ -153,7 +158,7 @@ function productRowHtml(p) {
             <div class="flex-1 min-w-0 flex items-start justify-between gap-2">
                 <div class="min-w-0">
                     <p class="font-bold text-gray-900 truncate">${escapeHtml(p.erp_code || '')}</p>
-                    <p class="text-gray-700 truncate">${escapeHtml(p.name_zh || '')}</p>
+                    <p class="text-gray-700 truncate">${escapeHtml(nameLine)}</p>
                 </div>
                 <label class="flex items-center gap-1 text-xs text-gray-500 shrink-0 whitespace-nowrap">
                     <input type="checkbox" data-id="${p.id}" class="active-toggle" ${p.is_active ? 'checked' : ''}>
