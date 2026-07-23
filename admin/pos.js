@@ -298,11 +298,17 @@ function groupProductsByCategory() {
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
 }
 
+// 有設定「下單名稱」就用那個，沒有的話退回中文品名——POS 下單畫面上顯示商品名稱的地方都用這個。
+function orderDisplayName(p) {
+    return (p.order_display_name || '').trim() || p.name_zh || '';
+}
+
 function productMatches(p, q) {
     const query = q.toLowerCase();
     return String(p.erp_code || '').toLowerCase().includes(query)
         || String(p.name_zh || '').toLowerCase().includes(query)
-        || String(p.name_en || '').toLowerCase().includes(query);
+        || String(p.name_en || '').toLowerCase().includes(query)
+        || String(p.order_display_name || '').toLowerCase().includes(query);
 }
 
 searchInput.addEventListener('input', () => {
@@ -374,11 +380,11 @@ function renderProductGridHtml(items) {
         items.map(p => `
             <div class="category-card cursor-pointer" data-erp="${escapeHtml(p.erp_code)}">
                 <div class="category-img-container">
-                    <img src="${escapeHtml(thumbOf(p))}" alt="${escapeHtml(p.name_zh || '')}" style="background:#f3f4f6;">
+                    <img src="${escapeHtml(thumbOf(p))}" alt="${escapeHtml(orderDisplayName(p))}" style="background:#f3f4f6;">
                 </div>
                 <div class="p-3 text-center bg-white border-t">
                     <p class="text-xs text-blue-600 font-bold mb-0.5">${escapeHtml(p.erp_code || '')}</p>
-                    <h4 class="font-bold text-gray-800 text-sm">${escapeHtml(p.name_zh || '')}</h4>
+                    <h4 class="font-bold text-gray-800 text-sm">${escapeHtml(orderDisplayName(p))}</h4>
                 </div>
             </div>`).join('') +
         `</div>`;
@@ -420,7 +426,7 @@ function renderVariantPickerHtml(p) {
                  class="rounded-lg border">
             <div class="flex-1">
                 <p class="text-xs text-blue-600 font-bold">${escapeHtml(p.erp_code || '')}</p>
-                <h4 class="font-bold text-lg text-gray-800 mb-3">${escapeHtml(p.name_zh || '')}</h4>
+                <h4 class="font-bold text-lg text-gray-800 mb-3">${escapeHtml(orderDisplayName(p))}</h4>
                 <div class="space-y-3">
                     ${variantFieldHtml('spec', p)}
                     ${variantFieldHtml('bore', p)}
@@ -479,7 +485,7 @@ function renderBrowseArea() {
         homeBtn.classList.remove('hidden');
         backBtn.classList.remove('hidden');
         breadcrumb.classList.remove('hidden');
-        breadcrumb.textContent = (browseCategory ? `分類：${categoryNameById[browseCategory] || browseCategory}　` : '') + `商品：${browseProduct.name_zh || browseProduct.erp_code}`;
+        breadcrumb.textContent = (browseCategory ? `分類：${categoryNameById[browseCategory] || browseCategory}　` : '') + `商品：${orderDisplayName(browseProduct) || browseProduct.erp_code}`;
         browseArea.innerHTML = renderVariantPickerHtml(browseProduct);
         wireVariantPicker(browseProduct);
     }
@@ -732,7 +738,7 @@ function wireVariantPicker(p) {
         cart.push({
             rowId: ++cartCounter,
             erp: p.erp_code,
-            name_zh: p.name_zh,
+            name_zh: orderDisplayName(p),
             image_url: currentComboImage(p),
             spec: currentVariantValue('spec'),
             bore: currentVariantValue('bore'),
