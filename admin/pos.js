@@ -87,6 +87,7 @@ async function initPos() {
 
     renderRegionTiles();
     renderRegionDatalist();
+    fillTodayAsMinguo('order-date-yyy', 'order-date-mm', 'order-date-dd');
 
     cart = [];
     browseMode = 'categories';
@@ -834,6 +835,17 @@ function renderCart() {
 
 // ===== 儲存訂單 =====
 
+// 訂單日期欄位（民國年/月/日）選的是「哪一天」，時分秒還是用當下實際存檔的時間，
+// 這樣同一天存好幾張訂單，排序還是看得出先後順序。
+function orderCreatedAtFromDateFields() {
+    const isoDate = minguoFieldsToIsoDate('order-date-yyy', 'order-date-mm', 'order-date-dd');
+    if (!isoDate) return null;
+    const [y, m, d] = isoDate.split('-').map(Number);
+    const now = new Date();
+    const combined = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return combined.toISOString();
+}
+
 saveOrderBtn.addEventListener('click', async () => {
     resultBanner.classList.add('hidden');
 
@@ -841,13 +853,16 @@ saveOrderBtn.addEventListener('click', async () => {
     if (!customerId) { alert('請先選擇客戶'); return; }
     if (!cart.length) { alert('請至少加入一項商品'); return; }
 
+    const createdAt = orderCreatedAtFromDateFields();
+    if (!createdAt) { alert('請填寫正確的訂單日期（民國年/月/日）'); return; }
+
     saveOrderBtn.disabled = true;
     saveOrderBtn.textContent = '儲存中…';
 
     try {
         const { data: order, error: orderErr } = await sb
             .from('orders')
-            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName })
+            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, created_at: createdAt })
             .select()
             .single();
         if (orderErr) throw orderErr;

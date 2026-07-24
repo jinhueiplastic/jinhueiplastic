@@ -80,23 +80,6 @@ function renderResults(orders) {
     }).join('');
 }
 
-// 民國年/月/日轉西元 'YYYY-MM-DD'，任一欄空白或不是數字就回傳 null（代表這個界限不設限）。
-function minguoFieldsToIsoDate(yyyId, mmId, ddId) {
-    const yyy = Number(document.getElementById(yyyId).value);
-    const mm  = Number(document.getElementById(mmId).value);
-    const dd  = Number(document.getElementById(ddId).value);
-    if (!yyy || !mm || !dd) return null;
-    const gregorianYear = yyy + 1911;
-    return `${gregorianYear}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-}
-
-function fillTodayAsMinguo(yyyId, mmId, ddId) {
-    const today = new Date();
-    document.getElementById(yyyId).value = today.getFullYear() - 1911;
-    document.getElementById(mmId).value = today.getMonth() + 1;
-    document.getElementById(ddId).value = today.getDate();
-}
-
 function applyFilter() {
     if (selectedRegion === null) {
         matchedOrders = [];

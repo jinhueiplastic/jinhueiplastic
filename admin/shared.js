@@ -157,6 +157,23 @@ function formatVariantSummary(item) {
     return itemVariantEntries(item).map(([k, v]) => `${k}：${v}`).join('、');
 }
 
+// 民國年/月/日轉西元 'YYYY-MM-DD'，任一欄空白或不是數字就回傳 null。
+function minguoFieldsToIsoDate(yyyId, mmId, ddId) {
+    const yyy = Number(document.getElementById(yyyId).value);
+    const mm  = Number(document.getElementById(mmId).value);
+    const dd  = Number(document.getElementById(ddId).value);
+    if (!yyy || !mm || !dd) return null;
+    const gregorianYear = yyy + 1911;
+    return `${gregorianYear}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+function fillTodayAsMinguo(yyyId, mmId, ddId) {
+    const today = new Date();
+    document.getElementById(yyyId).value = today.getFullYear() - 1911;
+    document.getElementById(mmId).value = today.getMonth() + 1;
+    document.getElementById(ddId).value = today.getDate();
+}
+
 // Cloud name 和 unsigned upload preset 都不是密鑰，可以放在前端程式碼裡；
 // 真正的 API Secret 絕對不能出現在這裡（那個要保密，用在伺服器端）。
 const CLOUDINARY_CLOUD_NAME = 'dhnctvjs8';

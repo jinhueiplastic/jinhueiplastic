@@ -58,6 +58,17 @@
 
                 <div class="order-1 md:order-2">
                     <div class="bg-white border rounded-lg p-4 mb-4">
+                        <label class="field-label">訂單日期（民國年/月/日）</label>
+                        <div class="flex gap-1 items-center">
+                            <input type="number" id="order-date-yyy" class="field-input" style="width:4.5rem" placeholder="YYY" min="1">
+                            <span class="text-gray-400">/</span>
+                            <input type="number" id="order-date-mm" class="field-input" style="width:3.5rem" placeholder="MM" min="1" max="12">
+                            <span class="text-gray-400">/</span>
+                            <input type="number" id="order-date-dd" class="field-input" style="width:3.5rem" placeholder="DD" min="1" max="31">
+                        </div>
+                    </div>
+
+                    <div class="bg-white border rounded-lg p-4 mb-4">
                         <label class="field-label">依區域篩選客戶</label>
                         <div id="region-tiles" class="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-4"></div>
 
