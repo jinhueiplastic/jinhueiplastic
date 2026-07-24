@@ -87,7 +87,7 @@ async function initPos() {
 
     renderRegionTiles();
     renderRegionDatalist();
-    fillTodayAsMinguo('order-date-yyy', 'order-date-mm', 'order-date-dd');
+    initOrderDateField();
 
     cart = [];
     browseMode = 'categories';
@@ -835,12 +835,25 @@ function renderCart() {
 
 // ===== 儲存訂單 =====
 
-// 訂單日期欄位（民國年/月/日）選的是「哪一天」，時分秒還是用當下實際存檔的時間，
+// 訂單日期用瀏覽器內建的月曆選（<input type="date">），值本身就是西元 'YYYY-MM-DD'，
+// 旁邊另外顯示一個民國年的文字標籤方便對照（訂單、出貨單其他地方都是看民國年）。
+function initOrderDateField() {
+    const dateInput = document.getElementById('order-date-input');
+    const rocLabel = document.getElementById('order-date-roc-label');
+    dateInput.value = new Date().toISOString().slice(0, 10);
+    rocLabel.textContent = isoDateToRocLabel(dateInput.value);
+    dateInput.addEventListener('input', () => {
+        rocLabel.textContent = isoDateToRocLabel(dateInput.value);
+    });
+}
+
+// 訂單日期欄位選的是「哪一天」，時分秒還是用當下實際存檔的時間，
 // 這樣同一天存好幾張訂單，排序還是看得出先後順序。
 function orderCreatedAtFromDateFields() {
-    const isoDate = minguoFieldsToIsoDate('order-date-yyy', 'order-date-mm', 'order-date-dd');
+    const isoDate = document.getElementById('order-date-input').value;
     if (!isoDate) return null;
     const [y, m, d] = isoDate.split('-').map(Number);
+    if (!y || !m || !d) return null;
     const now = new Date();
     const combined = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
     return combined.toISOString();
@@ -854,7 +867,7 @@ saveOrderBtn.addEventListener('click', async () => {
     if (!cart.length) { alert('請至少加入一項商品'); return; }
 
     const createdAt = orderCreatedAtFromDateFields();
-    if (!createdAt) { alert('請填寫正確的訂單日期（民國年/月/日）'); return; }
+    if (!createdAt) { alert('請選擇訂單日期'); return; }
 
     saveOrderBtn.disabled = true;
     saveOrderBtn.textContent = '儲存中…';
