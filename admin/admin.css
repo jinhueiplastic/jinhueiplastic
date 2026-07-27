@@ -131,6 +131,15 @@ table tbody tr:hover {
     background: #eff6ff;
 }
 
+.variant-tile:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+    background: #f3f4f6;
+}
+.variant-tile:disabled:hover {
+    border-color: #e5e7eb;
+}
+
 .variant-tile img {
     width: 48px;
     height: 48px;

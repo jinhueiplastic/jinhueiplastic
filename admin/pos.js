@@ -74,7 +74,7 @@ async function initPos() {
             variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url });
         } else {
             if (!combosByErp[v.erp_code]) combosByErp[v.erp_code] = [];
-            combosByErp[v.erp_code].push({ values: v.axis_values, image_url: v.image_url });
+            combosByErp[v.erp_code].push({ values: v.axis_values, image_url: v.image_url, is_disabled: !!v.is_disabled });
         }
     });
 
@@ -556,7 +556,53 @@ function comboExtraInfoText(p) {
     return extra.map(([k, v]) => `${k}：${v}`).join('　');
 }
 
+// 有沒有一筆「標記為停用」的完整組合，剛好卡住「這個軸選這個值」（同時符合組合裡其他已經選定的軸）；
+// 有的話代表這個值在目前的選擇下不能選（例如型號=2 時，顏色不會有紅）。
+// 只有組合裡「除了正在判斷的這個軸以外」的其他軸都已經被選定、而且值剛好對得上，才會生效——
+// 還沒選到那個軸之前，不會提早把選項擋掉。
+function isValueDisabled(erp, axis, value, otherSelectedValues) {
+    const combos = combosByErp[erp] || [];
+    return combos.some(combo => {
+        if (!combo.is_disabled) return false;
+        if (combo.values[axis] !== value) return false;
+        return Object.entries(combo.values).every(([k, v]) => k === axis || otherSelectedValues[k] === v);
+    });
+}
+
+// 依照目前選到的值，把每個規格按鈕該不該變灰色（不能點）算出來；
+// 如果目前選到的值剛好因為別的軸也選了而變成不能選的組合，自動取消選取，避免送出無效組合。
+function updateDisabledTiles(p) {
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const current = currentVariantValues();
+        Object.keys(selectedVariant).forEach(axis => {
+            const value = selectedVariant[axis];
+            if (!value) return;
+            const others = { ...current };
+            delete others[axis];
+            if (isValueDisabled(p.erp_code, axis, value, others)) {
+                selectedVariant[axis] = '';
+                document.querySelectorAll('.variant-tile').forEach(b => {
+                    if (b.dataset.axis === axis && b.dataset.value === value) b.classList.remove('selected');
+                });
+                changed = true;
+            }
+        });
+    }
+
+    const current = currentVariantValues();
+    document.querySelectorAll('.variant-tile').forEach(btn => {
+        const axis = btn.dataset.axis;
+        const value = btn.dataset.value;
+        const others = { ...current };
+        delete others[axis];
+        btn.disabled = isValueDisabled(p.erp_code, axis, value, others);
+    });
+}
+
 function updateVariantPreviewImage(p) {
+    updateDisabledTiles(p);
     const img = document.getElementById('variant-preview-img');
     if (img) img.src = currentComboImage(p);
     const infoEl = document.getElementById('variant-combo-info');

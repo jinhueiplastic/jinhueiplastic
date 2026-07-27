@@ -830,11 +830,29 @@ function renderVariantSection() {
     } else {
         groupsEl.innerHTML = axisNames.map(name => `
             <div>
-                <label class="field-label">${escapeHtml(name)}</label>
+                <div class="flex items-center justify-between">
+                    <label class="field-label">${escapeHtml(name)}</label>
+                    <button type="button" class="axis-delete-all-btn text-xs text-red-600 hover:underline" data-axis-name="${escapeHtml(name)}">刪除整個軸</button>
+                </div>
                 <div class="space-y-1">${axisOptions[name].map(r => axisChipHtml(r, name)).join('')}</div>
             </div>`).join('');
     }
     wireAxisChips(groupsEl);
+
+    groupsEl.querySelectorAll('.axis-delete-all-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const name = btn.dataset.axisName;
+            const rows = (axisOptions[name] || []);
+            if (!confirm(`確定要刪除「${name}」這整個軸嗎？底下 ${rows.length} 個選項都會一起刪掉。`)) return;
+            rows.forEach(r => {
+                if (r.id) deletedVariantIds.push(r.id);
+            });
+            const tempIds = new Set(rows.map(r => r.tempId));
+            localVariantRows = localVariantRows.filter(r => !tempIds.has(r.tempId));
+            modalDirty = true;
+            renderVariantSection();
+        });
+    });
 
     renderComboList(combos, axisOptions, axisNames);
     renderComboBuilder(axisOptions);
@@ -934,10 +952,15 @@ function renderComboList(combos, axisOptions, axisNames) {
 
     container.innerHTML = cells.map((cell, i) => {
         const existing = cell.existing;
+        const isDisabled = !!(existing && existing.is_disabled);
         return `
-            <div class="flex items-center gap-3 border rounded-lg p-2" data-cell-idx="${i}">
+            <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
                 <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
-                <div class="flex-1 text-sm">${escapeHtml(cell.label)}</div>
+                <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
+                <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
+                    <input type="checkbox" class="combo-disable-checkbox" ${isDisabled ? 'checked' : ''}>
+                    停用（不能選）
+                </label>
                 <span class="combo-upload-status text-xs text-gray-400"></span>
                 <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
                     上傳圖片
@@ -968,6 +991,31 @@ function renderComboList(combos, axisOptions, axisNames) {
                 renderVariantSection();
             });
         }
+
+        // 「停用（不能選）」勾起來＝這個組合在 POS 下單會讓其中一個軸的選項變灰色點不到。
+        // 沒有圖片、純粹只是拿來標記停用的組合，取消勾選時直接刪掉這筆資料，避免留下沒用的空紀錄。
+        rowEl.querySelector('.combo-disable-checkbox').addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            if (cell.existing) {
+                cell.existing.is_disabled = checked;
+                if (!checked && !cell.existing.image_url) {
+                    removeVariantRow(cell.existing.tempId);
+                    return;
+                }
+            } else if (checked) {
+                localVariantRows.push({
+                    tempId: ++variantTempCounter,
+                    id: null,
+                    erp_code: currentVariantErp,
+                    axis_values: cell.values,
+                    image_url: null,
+                    is_disabled: true,
+                    sort_order: 0,
+                });
+            }
+            modalDirty = true;
+            renderVariantSection();
+        });
 
         rowEl.querySelector('.combo-upload-input').addEventListener('change', async (e) => {
             const input = e.target;
@@ -1149,6 +1197,7 @@ async function saveVariantChanges() {
             axis_values: r.axis_values || {},
             image_url: r.image_url || null,
             sort_order: r.sort_order || 0,
+            is_disabled: !!r.is_disabled,
         }));
         const { error } = await sb.from('pos_item_variants').upsert(rows, { onConflict: 'erp_code,axis_values' });
         if (error) throw error;
