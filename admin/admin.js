@@ -670,7 +670,6 @@ let variantTempCounter = 0;
 let localVariantRows = [];
 let deletedVariantIds = [];
 let knownAxisNames = []; // 全部商品出現過的軸名稱，純粹給「新增選項」自動完成用
-let comboBuilderPairs = [{ name: '', value: '' }, { name: '', value: '' }];
 
 function splitBulkValues(text) {
     return text.split(/[/、,，]/)
@@ -838,7 +837,7 @@ function renderVariantSection() {
     wireAxisChips(groupsEl);
 
     renderComboList(combos);
-    renderComboBuilder();
+    renderComboBuilder(axisOptions);
 }
 
 function removeVariantRow(tempId) {
@@ -951,51 +950,44 @@ function renderComboList(combos) {
     });
 }
 
-// 手動新增一筆完整組合：自己填軸名稱＋值（至少兩軸），不受限於已經有選項按鈕的軸，
-// 這樣像 W／H／L 這種只出現在組合裡、平常不需要單獨當按鈕選的軸也能填。
-function renderComboBuilder() {
+// 手動新增一筆完整組合：每個「目前已經有選項」的軸各自一個下拉選單（選項就是那個軸現有的值）。
+// 這些下拉選單完全跟著目前的軸選項連動——新增一個軸的第一個選項，這裡就多一欄；
+// 把某個軸的選項全部刪光，這裡對應的那一欄也會跟著消失。
+function renderComboBuilder(axisOptions) {
     const el = document.getElementById('combo-builder');
+    const axisNames = Object.keys(axisOptions).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
     if (!currentVariantErp) { el.innerHTML = ''; return; }
+    if (axisNames.length < 2) {
+        el.innerHTML = '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才能在這裡手動組合。</p>';
+        return;
+    }
 
     el.innerHTML = `
         <div class="border rounded-lg p-3">
-            <p class="text-xs text-gray-500 mb-1">手動新增一筆完整組合：</p>
-            <div id="combo-builder-rows" class="space-y-1"></div>
-            <div class="flex gap-2 mt-2">
-                <button type="button" id="combo-builder-add-row" class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100">+ 再加一軸</button>
-                <button type="button" id="combo-builder-submit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">新增這筆組合</button>
+            <p class="text-xs text-gray-500 mb-1">手動新增一筆完整組合（至少選兩個軸）：</p>
+            <div class="flex flex-wrap gap-2 mb-2">
+                ${axisNames.map(name => `
+                    <div>
+                        <label class="field-label">${escapeHtml(name)}</label>
+                        <select class="field-input combo-builder-select" data-axis="${escapeHtml(name)}" style="width:auto">
+                            <option value="">（不指定）</option>
+                            ${axisOptions[name].map(r => {
+                                const v = r.axis_values[name];
+                                return `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
+                            }).join('')}
+                        </select>
+                    </div>`).join('')}
             </div>
+            <button type="button" id="combo-builder-submit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">新增這筆組合</button>
         </div>`;
-
-    const rowsEl = document.getElementById('combo-builder-rows');
-    const renderRows = () => {
-        rowsEl.innerHTML = comboBuilderPairs.map((pair, i) => `
-            <div class="flex gap-2">
-                <input type="text" class="field-input combo-builder-name" style="width:9rem" list="known-axis-names" placeholder="軸名稱" value="${escapeHtml(pair.name)}" data-idx="${i}">
-                <input type="text" class="field-input combo-builder-value" placeholder="值" value="${escapeHtml(pair.value)}" data-idx="${i}">
-            </div>`).join('');
-        rowsEl.querySelectorAll('.combo-builder-name').forEach(inp => {
-            inp.addEventListener('input', () => { comboBuilderPairs[Number(inp.dataset.idx)].name = inp.value; });
-        });
-        rowsEl.querySelectorAll('.combo-builder-value').forEach(inp => {
-            inp.addEventListener('input', () => { comboBuilderPairs[Number(inp.dataset.idx)].value = inp.value; });
-        });
-    };
-    renderRows();
-
-    document.getElementById('combo-builder-add-row').addEventListener('click', () => {
-        comboBuilderPairs.push({ name: '', value: '' });
-        renderRows();
-    });
 
     document.getElementById('combo-builder-submit').addEventListener('click', () => {
         const values = {};
-        comboBuilderPairs.forEach(p => {
-            const n = p.name.trim();
-            const v = p.value.trim();
-            if (n && v) values[n] = v;
+        el.querySelectorAll('.combo-builder-select').forEach(sel => {
+            if (sel.value) values[sel.dataset.axis] = sel.value;
         });
-        if (Object.keys(values).length < 2) { alert('至少要填兩個軸才算一筆組合'); return; }
+        if (Object.keys(values).length < 2) { alert('至少要選兩個軸才算一筆組合'); return; }
 
         localVariantRows.push({
             tempId: ++variantTempCounter,
@@ -1005,7 +997,6 @@ function renderComboBuilder() {
             image_url: null,
             sort_order: 0,
         });
-        comboBuilderPairs = [{ name: '', value: '' }, { name: '', value: '' }];
         modalDirty = true;
         renderVariantSection();
     });
