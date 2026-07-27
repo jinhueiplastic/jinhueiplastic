@@ -837,13 +837,101 @@ function renderCart() {
 
 // 訂單日期用瀏覽器內建的月曆選（<input type="date">），值本身就是西元 'YYYY-MM-DD'，
 // 旁邊另外顯示一個民國年的文字標籤方便對照（訂單、出貨單其他地方都是看民國年）。
+// 瀏覽器內建的日期選擇器沒辦法顯示民國年，所以訂單日期改成自己畫一個小月曆：
+// 選到的日期存在隱藏欄位 #order-date-input（西元 'YYYY-MM-DD'，給存檔邏輯讀），
+// 畫面上顯示的按鈕文字跟月曆本身都是民國年格式（YYY/MM/DD）。
+let orderDateCalendarViewDate = new Date(); // 月曆目前顯示到哪個月份（只看年、月）
+
+function isoDateOf(y, m, d) {
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function setOrderDate(isoDate) {
+    document.getElementById('order-date-input').value = isoDate;
+    document.getElementById('order-date-display-btn').textContent = isoDateToRocLabel(isoDate);
+}
+
+function renderOrderDateCalendar() {
+    const container = document.getElementById('order-date-calendar');
+    const viewYear = orderDateCalendarViewDate.getFullYear();
+    const viewMonth = orderDateCalendarViewDate.getMonth(); // 0-based
+    const selectedIso = document.getElementById('order-date-input').value;
+
+    const firstWeekday = new Date(viewYear, viewMonth, 1).getDay(); // 0＝星期日
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
+
+    let cellsHtml = '';
+    for (let i = 0; i < firstWeekday; i++) cellsHtml += '<div></div>';
+    for (let day = 1; day <= daysInMonth; day++) {
+        const iso = isoDateOf(viewYear, viewMonth, day);
+        const isSelected = iso === selectedIso;
+        cellsHtml += `<button type="button" class="order-date-day-btn text-center text-sm py-1 rounded ${isSelected ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}" data-iso="${iso}">${day}</button>`;
+    }
+
+    container.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+            <button type="button" id="order-date-prev-month" class="px-2 py-1 text-sm rounded hover:bg-gray-100">‹</button>
+            <span class="text-sm font-bold">民國${viewYear - 1911}年${String(viewMonth + 1).padStart(2, '0')}月</span>
+            <button type="button" id="order-date-next-month" class="px-2 py-1 text-sm rounded hover:bg-gray-100">›</button>
+        </div>
+        <div class="grid grid-cols-7 gap-1 text-center text-xs text-gray-400 mb-1">
+            ${weekdayLabels.map(w => `<div>${w}</div>`).join('')}
+        </div>
+        <div class="grid grid-cols-7 gap-1">${cellsHtml}</div>
+        <div class="text-right mt-2">
+            <button type="button" id="order-date-today-btn" class="text-xs text-blue-600 hover:underline">回到今天</button>
+        </div>`;
+
+    document.getElementById('order-date-prev-month').addEventListener('click', () => {
+        orderDateCalendarViewDate = new Date(viewYear, viewMonth - 1, 1);
+        renderOrderDateCalendar();
+    });
+    document.getElementById('order-date-next-month').addEventListener('click', () => {
+        orderDateCalendarViewDate = new Date(viewYear, viewMonth + 1, 1);
+        renderOrderDateCalendar();
+    });
+    document.getElementById('order-date-today-btn').addEventListener('click', () => {
+        const today = new Date();
+        orderDateCalendarViewDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        setOrderDate(isoDateOf(today.getFullYear(), today.getMonth(), today.getDate()));
+        renderOrderDateCalendar();
+    });
+    container.querySelectorAll('.order-date-day-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setOrderDate(btn.dataset.iso);
+            container.classList.add('hidden');
+        });
+    });
+}
+
 function initOrderDateField() {
-    const dateInput = document.getElementById('order-date-input');
-    const rocLabel = document.getElementById('order-date-roc-label');
-    dateInput.value = new Date().toISOString().slice(0, 10);
-    rocLabel.textContent = isoDateToRocLabel(dateInput.value);
-    dateInput.addEventListener('input', () => {
-        rocLabel.textContent = isoDateToRocLabel(dateInput.value);
+    const today = new Date();
+    orderDateCalendarViewDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    setOrderDate(isoDateOf(today.getFullYear(), today.getMonth(), today.getDate()));
+
+    const displayBtn = document.getElementById('order-date-display-btn');
+    const calendar = document.getElementById('order-date-calendar');
+
+    displayBtn.addEventListener('click', () => {
+        if (calendar.classList.contains('hidden')) {
+            // 每次打開都跳回目前選到的日期所在月份，比較直覺。
+            const iso = document.getElementById('order-date-input').value;
+            if (iso) {
+                const [y, m] = iso.split('-').map(Number);
+                orderDateCalendarViewDate = new Date(y, m - 1, 1);
+            }
+            renderOrderDateCalendar();
+            calendar.classList.remove('hidden');
+        } else {
+            calendar.classList.add('hidden');
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!calendar.contains(e.target) && e.target !== displayBtn) {
+            calendar.classList.add('hidden');
+        }
     });
 }
 

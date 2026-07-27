@@ -174,12 +174,12 @@ function fillTodayAsMinguo(yyyId, mmId, ddId) {
     document.getElementById(ddId).value = today.getDate();
 }
 
-// 西元 'YYYY-MM-DD'（<input type="date"> 的值就是這個格式）轉成「民國YYY/MM/DD」顯示用文字。
+// 西元 'YYYY-MM-DD' 轉成「YYY/MM/DD」（民國年）顯示用文字。
 function isoDateToRocLabel(isoDate) {
     if (!isoDate) return '';
     const [y, m, d] = isoDate.split('-').map(Number);
     if (!y || !m || !d) return '';
-    return `民國${y - 1911}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
+    return `${y - 1911}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
 }
 
 // Cloud name 和 unsigned upload preset 都不是密鑰，可以放在前端程式碼裡；
