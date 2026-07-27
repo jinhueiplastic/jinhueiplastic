@@ -836,7 +836,7 @@ function renderVariantSection() {
     }
     wireAxisChips(groupsEl);
 
-    renderComboList(combos);
+    renderComboList(combos, axisOptions, axisNames);
     renderComboBuilder(axisOptions);
 }
 
@@ -878,71 +878,126 @@ function splitVariantRow(axisName, tempId) {
     renderVariantSection();
 }
 
-function renderComboList(combos) {
+// 用排序過的「軸名=值」字串當 key，比對兩組軸值是不是完全一樣（跟 jsonb 的結構比對邏輯一致）。
+function comboKeyOf(values) {
+    return Object.keys(values).sort().map(k => `${k}${values[k]}`).join('');
+}
+
+// 軸數不多、選項也不多時（例如規格3種×顏色2種＝6種），自動列出「每個軸都對應到」的所有組合，
+// 不用一筆一筆手動建立；軸太多、選項太多時（組合數量爆炸，例如型號/W/H/L/A排水孔位/備註 6 個軸）
+// 就不自動列，只顯示已經存的組合，改用下面「手動新增一筆完整組合」的下拉選單自己建立。
+const COMBO_GRID_MAX_AXES = 4;
+const COMBO_GRID_MAX_TOTAL = 300;
+
+function renderComboList(combos, axisOptions, axisNames) {
     const container = document.getElementById('variant-combo-list');
-    if (!combos.length) {
-        container.innerHTML = '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
+
+    const comboByKey = {};
+    combos.forEach(c => { comboByKey[comboKeyOf(c.axis_values)] = c; });
+
+    const cells = []; // { values, existing: 該組合現有的資料列或 null, label }
+    const matchedKeys = new Set();
+
+    const totalGridCombos = axisNames.length >= 2
+        ? axisNames.reduce((acc, name) => acc * axisOptions[name].length, 1)
+        : 0;
+
+    if (axisNames.length >= 2 && axisNames.length <= COMBO_GRID_MAX_AXES && totalGridCombos <= COMBO_GRID_MAX_TOTAL) {
+        let gridCombos = [{}];
+        axisNames.forEach(name => {
+            const next = [];
+            axisOptions[name].forEach(r => {
+                gridCombos.forEach(c => next.push({ ...c, [name]: r.axis_values[name] }));
+            });
+            gridCombos = next;
+        });
+        gridCombos.forEach(values => {
+            const key = comboKeyOf(values);
+            const existing = comboByKey[key] || null;
+            if (existing) matchedKeys.add(key);
+            cells.push({ values, existing, label: axisNames.map(n => values[n]).join('　') });
+        });
+    }
+
+    // 已存的組合裡，軸的組成跟上面自動列出的表格不完全一樣的（例如只用到部分軸、或軸數太多沒自動列），
+    // 另外接在後面，確保不會因為自動列表的規則而讓既有資料憑空消失不見。
+    combos.filter(c => !matchedKeys.has(comboKeyOf(c.axis_values))).forEach(r => {
+        cells.push({ values: r.axis_values, existing: r, label: rowAxisEntries(r).map(([k, v]) => `${k}：${v}`).join('　') });
+    });
+
+    if (!cells.length) {
+        container.innerHTML = axisNames.length < 2
+            ? '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才會自動列出組合；也可以用下面「手動新增一筆完整組合」直接建立。</p>'
+            : '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
         return;
     }
 
-    container.innerHTML = combos.map(r => {
-        const label = rowAxisEntries(r).map(([k, v]) => `${k}：${v}`).join('　');
+    container.innerHTML = cells.map((cell, i) => {
+        const existing = cell.existing;
         return `
-            <div class="flex items-center gap-3 border rounded-lg p-2" data-temp-id="${r.tempId}">
-                <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
-                <div class="flex-1 text-sm">${escapeHtml(label)}</div>
+            <div class="flex items-center gap-3 border rounded-lg p-2" data-cell-idx="${i}">
+                <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
+                <div class="flex-1 text-sm">${escapeHtml(cell.label)}</div>
                 <span class="combo-upload-status text-xs text-gray-400"></span>
                 <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
                     上傳圖片
                     <input type="file" accept="image/*" class="hidden combo-upload-input">
                 </label>
-                ${r.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
-                <button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>
+                ${existing && existing.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
+                ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
     }).join('');
 
-    container.querySelectorAll('.combo-delete-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            if (!confirm('確定要刪除這筆組合嗎？')) return;
-            removeVariantRow(Number(btn.closest('[data-temp-id]').dataset.tempId));
-        });
-    });
+    container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
+        const cell = cells[Number(rowEl.dataset.cellIdx)];
 
-    container.querySelectorAll('.combo-remove-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
-            if (!confirm('確定要移除這張組合照片嗎？')) return;
-            const row = localVariantRows.find(r => r.tempId === tempId);
-            if (!row) return;
-            row.image_url = null;
-            modalDirty = true;
-            renderVariantSection();
-        });
-    });
+        const delBtn = rowEl.querySelector('.combo-delete-btn');
+        if (delBtn) {
+            delBtn.addEventListener('click', () => {
+                if (!confirm('確定要刪除這筆組合嗎？')) return;
+                removeVariantRow(cell.existing.tempId);
+            });
+        }
 
-    container.querySelectorAll('.combo-upload-input').forEach(input => {
-        input.addEventListener('change', async () => {
+        const removeBtn = rowEl.querySelector('.combo-remove-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                if (!confirm('確定要移除這張組合照片嗎？')) return;
+                cell.existing.image_url = null;
+                modalDirty = true;
+                renderVariantSection();
+            });
+        }
+
+        rowEl.querySelector('.combo-upload-input').addEventListener('change', async (e) => {
+            const input = e.target;
             const file = input.files[0];
             if (!file) return;
-
-            const rowEl = input.closest('[data-temp-id]');
-            const tempId = Number(rowEl.dataset.tempId);
-            const row = localVariantRows.find(r => r.tempId === tempId);
-            if (!row) return;
 
             const thumbImg = rowEl.querySelector('.combo-thumb');
             const statusEl = rowEl.querySelector('.combo-upload-status');
             statusEl.textContent = '上傳中…';
             try {
                 const url = await uploadImageToCloudinary(file);
-                row.image_url = url;
+                if (cell.existing) {
+                    cell.existing.image_url = url;
+                } else {
+                    localVariantRows.push({
+                        tempId: ++variantTempCounter,
+                        id: null,
+                        erp_code: currentVariantErp,
+                        axis_values: cell.values,
+                        image_url: url,
+                        sort_order: 0,
+                    });
+                }
                 modalDirty = true;
                 thumbImg.src = url;
                 statusEl.textContent = '';
                 renderVariantSection();
-            } catch (e) {
+            } catch (e2) {
                 statusEl.textContent = '';
-                alert('上傳失敗：' + e.message);
+                alert('上傳失敗：' + e2.message);
             } finally {
                 input.value = '';
             }
