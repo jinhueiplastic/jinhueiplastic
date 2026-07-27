@@ -36,7 +36,9 @@ async function initPos() {
         sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
-        sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }),
+        // pos_item_variants 累積很多商品的規格資料後很容易超過 Supabase 一次查詢 1000 筆的上限，
+        // 用 fetchAllRows 分頁抓齊，不然新增的選項排在後面的話會抓不到、POS 下單看起來就像沒存到。
+        fetchAllRows(() => sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true })),
         sb.from('pos_units').select('*').order('sort_order', { ascending: true }),
         sb.from('pos_item_units').select('*').order('sort_order', { ascending: true }),
     ]);

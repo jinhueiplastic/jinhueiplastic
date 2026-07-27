@@ -700,7 +700,9 @@ function categorizeVariantRows(rows) {
 }
 
 async function loadKnownAxisNames() {
-    const { data, error } = await sb.from('pos_item_variants').select('axis_values');
+    // 這張表資料量大時很容易超過 Supabase 一次查詢 1000 筆的上限，分頁抓齊，
+    // 不然「快速加入」自動完成清單會漏掉只出現在後面幾頁的軸名稱。
+    const { data, error } = await fetchAllRows(() => sb.from('pos_item_variants').select('axis_values'));
     if (error) { console.error(error); return; }
     const names = new Set();
     (data || []).forEach(r => Object.keys(r.axis_values || {}).forEach(n => names.add(n)));

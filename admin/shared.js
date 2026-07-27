@@ -157,6 +157,24 @@ function formatVariantSummary(item) {
     return itemVariantEntries(item).map(([k, v]) => `${k}：${v}`).join('、');
 }
 
+// Supabase/PostgREST 一次查詢預設最多只會回傳 1000 筆，資料量大的表格（例如累積很多商品規格的
+// pos_item_variants）只查一次可能會漏掉後面的資料，新增的東西剛好排在後面就會「看起來沒存到」。
+// buildQuery 是一個回傳全新查詢的函式（例如 () => sb.from('x').select('*').order(...)），
+// 用 .range() 一頁一頁抓，直到抓不滿一整頁為止，確保整張表都抓齊。
+async function fetchAllRows(buildQuery) {
+    const pageSize = 1000;
+    let allRows = [];
+    let offset = 0;
+    while (true) {
+        const { data, error } = await buildQuery().range(offset, offset + pageSize - 1);
+        if (error) return { data: allRows, error };
+        allRows = allRows.concat(data || []);
+        if (!data || data.length < pageSize) break;
+        offset += pageSize;
+    }
+    return { data: allRows, error: null };
+}
+
 // 民國年/月/日轉西元 'YYYY-MM-DD'，任一欄空白或不是數字就回傳 null。
 function minguoFieldsToIsoDate(yyyId, mmId, ddId) {
     const yyy = Number(document.getElementById(yyyId).value);
