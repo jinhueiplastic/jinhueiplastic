@@ -695,7 +695,63 @@ function categorizeVariantRows(rows) {
             combos.push(r);
         }
     });
+    // 每個軸自己的選項照 sort_order 排序，才能正確顯示上/下移動、插入前/後的結果。
+    Object.keys(axisOptions).forEach(name => {
+        axisOptions[name].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    });
     return { axisOptions, combos };
+}
+
+// 上移／下移：跟前一個或後一個選項交換位置，然後把整個軸重新編號成 10 的倍數。
+function moveAxisOption(name, tempId, direction) {
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    const rows = axisOptions[name] || [];
+    const idx = rows.findIndex(r => r.tempId === tempId);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= rows.length) return;
+
+    [rows[idx], rows[swapIdx]] = [rows[swapIdx], rows[idx]];
+    rows.forEach((r, i) => { r.sort_order = (i + 1) * 10; });
+
+    modalDirty = true;
+    renderVariantSection();
+}
+
+// 在某個選項的前面或後面插入新值（可以用 / 、 , ， 一次插入多個），
+// 插入後把整個軸重新編號成 10 的倍數，不用管原本 sort_order 夠不夠塞。
+function insertAxisOptionAt(name, tempId, position) {
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    const rows = axisOptions[name] || [];
+    const idx = rows.findIndex(r => r.tempId === tempId);
+    if (idx === -1) return;
+
+    const raw = prompt(`要在「${rows[idx].axis_values[name]}」${position === 'before' ? '前面' : '後面'}插入什麼值？（可以用 / 、 , ， 一次加多個）`);
+    if (!raw) return;
+    const values = splitBulkValues(raw);
+    if (!values.length) return;
+
+    const existingSet = new Set(rows.map(r => r.axis_values[name]));
+    const newValues = values.filter(v => !existingSet.has(v));
+    if (!newValues.length) return;
+
+    const newRows = newValues.map(v => ({
+        tempId: ++variantTempCounter,
+        id: null,
+        erp_code: currentVariantErp,
+        axis_values: { [name]: v },
+        image_url: null,
+        sort_order: 0,
+        is_disabled: false,
+    }));
+
+    const insertAt = position === 'before' ? idx : idx + 1;
+    const newOrderedRows = [...rows.slice(0, insertAt), ...newRows, ...rows.slice(insertAt)];
+    newOrderedRows.forEach((r, i) => { r.sort_order = (i + 1) * 10; });
+
+    localVariantRows.push(...newRows);
+
+    modalDirty = true;
+    renderVariantSection();
 }
 
 async function loadKnownAxisNames() {
@@ -745,14 +801,20 @@ async function loadVariantSection(product) {
     renderVariantSection();
 }
 
-function axisChipHtml(r, name) {
+function axisChipHtml(r, name, isFirst, isLast) {
     const rawValue = r.axis_values[name];
     const splitCount = splitBulkValues(rawValue).length;
     return `
-        <div class="flex items-center gap-3 border rounded-lg p-2" data-temp-id="${r.tempId}" data-axis-name="${escapeHtml(name)}">
+        <div class="flex items-center gap-2 border rounded-lg p-2" data-temp-id="${r.tempId}" data-axis-name="${escapeHtml(name)}">
+            <div class="flex flex-col gap-0.5">
+                <button type="button" class="axis-move-up-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${isFirst ? 'opacity-30 pointer-events-none' : ''}" title="上移">▲</button>
+                <button type="button" class="axis-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${isLast ? 'opacity-30 pointer-events-none' : ''}" title="下移">▼</button>
+            </div>
             <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
             <div class="flex-1 text-sm">${escapeHtml(rawValue)}</div>
             <span class="axis-upload-status text-xs text-gray-400"></span>
+            <button type="button" class="axis-insert-before-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之前插入新選項">＋前</button>
+            <button type="button" class="axis-insert-after-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之後插入新選項">＋後</button>
             <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
                 上傳圖片
                 <input type="file" accept="image/*" class="hidden axis-upload-input">
@@ -775,6 +837,31 @@ function wireAxisChips(scopeEl) {
         btn.addEventListener('click', () => {
             const rowEl = btn.closest('[data-temp-id]');
             splitVariantRow(rowEl.dataset.axisName, Number(rowEl.dataset.tempId));
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-move-up-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            moveAxisOption(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), -1);
+        });
+    });
+    scopeEl.querySelectorAll('.axis-move-down-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            moveAxisOption(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 1);
+        });
+    });
+    scopeEl.querySelectorAll('.axis-insert-before-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            insertAxisOptionAt(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 'before');
+        });
+    });
+    scopeEl.querySelectorAll('.axis-insert-after-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            insertAxisOptionAt(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 'after');
         });
     });
 
@@ -834,7 +921,7 @@ function renderVariantSection() {
                     <label class="field-label">${escapeHtml(name)}</label>
                     <button type="button" class="axis-delete-all-btn text-xs text-red-600 hover:underline" data-axis-name="${escapeHtml(name)}">刪除整個軸</button>
                 </div>
-                <div class="space-y-1">${axisOptions[name].map(r => axisChipHtml(r, name)).join('')}</div>
+                <div class="space-y-1">${axisOptions[name].map((r, i) => axisChipHtml(r, name, i === 0, i === axisOptions[name].length - 1)).join('')}</div>
             </div>`).join('');
     }
     wireAxisChips(groupsEl);
@@ -962,11 +1049,12 @@ function renderComboList(combos, axisOptions, axisNames) {
                     停用（不能選）
                 </label>
                 <span class="combo-upload-status text-xs text-gray-400"></span>
+                ${isDisabled ? '' : `
                 <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
                     上傳圖片
                     <input type="file" accept="image/*" class="hidden combo-upload-input">
-                </label>
-                ${existing && existing.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
+                </label>`}
+                ${!isDisabled && existing && existing.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
     }).join('');
@@ -1017,7 +1105,8 @@ function renderComboList(combos, axisOptions, axisNames) {
             renderVariantSection();
         });
 
-        rowEl.querySelector('.combo-upload-input').addEventListener('change', async (e) => {
+        const uploadInput = rowEl.querySelector('.combo-upload-input');
+        if (uploadInput) uploadInput.addEventListener('change', async (e) => {
             const input = e.target;
             const file = input.files[0];
             if (!file) return;
