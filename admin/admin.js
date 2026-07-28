@@ -1079,9 +1079,33 @@ function renderComboList(combos, axisOptions, axisNames) {
             });
             gridCombos = next;
         });
+
+        // 只要這個表格裡已經有人勾過至少一格「停用」，就代表這個商品是真的在用「有建立才算存在」
+        // 這一套邏輯（不是單純展示用的表格）——這時「可以選」的格子如果一直沒有實際資料列，
+        // POS 下單那邊會找不到任何「確定有效」的組合可以參考，導致完全沒有限制效果。
+        // 所以只要偵測到已經有停用過的格子，就把其餘還沒有資料的格子也一起補成「可以選」的實際資料列，
+        // 不用等使用者一格一格點開才存進去。（完全沒人勾過停用的表格維持原樣，不會平白多出上百筆資料。）
+        const anyDisabledInGrid = gridCombos.some(values => {
+            const c = comboByKey[comboKeyOf(values)];
+            return c && c.is_disabled;
+        });
+
         gridCombos.forEach(values => {
             const key = comboKeyOf(values);
-            const existing = comboByKey[key] || null;
+            let existing = comboByKey[key] || null;
+            if (!existing && anyDisabledInGrid) {
+                existing = {
+                    tempId: ++variantTempCounter,
+                    id: null,
+                    erp_code: currentVariantErp,
+                    axis_values: values,
+                    image_url: null,
+                    sort_order: 0,
+                    is_disabled: false,
+                };
+                localVariantRows.push(existing);
+                comboByKey[key] = existing;
+            }
             if (existing) matchedKeys.add(key);
             cells.push({ values, existing, label: axisNames.map(n => values[n]).join('　') });
         });
