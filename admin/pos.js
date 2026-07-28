@@ -556,17 +556,53 @@ function comboExtraInfoText(p) {
     return extra.map(([k, v]) => `${k}：${v}`).join('　');
 }
 
-// 有沒有一筆「標記為停用」的完整組合，剛好卡住「這個軸選這個值」（同時符合組合裡其他已經選定的軸）；
-// 有的話代表這個值在目前的選擇下不能選（例如型號=2 時，顏色不會有紅）。
-// 只有組合裡「除了正在判斷的這個軸以外」的其他軸都已經被選定、而且值剛好對得上，才會生效——
-// 還沒選到那個軸之前，不會提早把選項擋掉。
+// 這個軸有沒有人「維護」過完整組合表格：找出所有包含這個軸的組合列裡，軸數最多的那一種組合形狀
+// （例如商品有 規格/顏色/尺寸 三軸組合，就會回傳 ['規格','顏色','尺寸']）。
+// 完全沒有任何組合提到這個軸的話回傳 null，代表這個軸還沒被拿來做過組合表格，維持預設全部可選。
+function fullyTrackedAxisSet(erp, axis) {
+    const combos = combosByErp[erp] || [];
+    let best = null;
+    combos.forEach(c => {
+        const keys = Object.keys(c.values);
+        if (!keys.includes(axis)) return;
+        if (!best || keys.length > best.length) best = keys;
+    });
+    return best;
+}
+
 function isValueDisabled(erp, axis, value, otherSelectedValues) {
     const combos = combosByErp[erp] || [];
-    return combos.some(combo => {
+
+    // 1) 有沒有一筆「明確標記停用」的組合，剛好卡住這個值（組合裡其他軸都已經選定且對得上）。
+    const explicitlyDisabled = combos.some(combo => {
         if (!combo.is_disabled) return false;
         if (combo.values[axis] !== value) return false;
         return Object.entries(combo.values).every(([k, v]) => k === axis || otherSelectedValues[k] === v);
     });
+    if (explicitlyDisabled) return true;
+
+    // 2) 這個軸有沒有被拿去建過完整組合表格（例如 規格/顏色/尺寸 三軸都建過組合），
+    //    而且裡面「至少有一筆沒被停用、確定有效」的組合可以參考（只有停用標記、沒有任何
+    //    確定有效的組合時不套用這條，避免把「大部分都可以選、只停用少數幾個」的商品也
+    //    一起誤判成「沒建過的都不能選」）。
+    //    有確定有效的組合可以參考的話，代表這個商品的組合資料是「有建立才算存在」——
+    //    目前選到的這個值（含這次判斷的候選值），只要在同樣軸數、確定有效的組合裡，
+    //    找不到任何一筆能對上已經選定的軸，就代表不管還沒選的軸怎麼選都湊不出真實存在的
+    //    商品，直接視為不能選（不用另外標記停用）。
+    const trackedAxes = fullyTrackedAxisSet(erp, axis);
+    if (!trackedAxes) return false;
+
+    const sameShapeCombos = combos.filter(c => {
+        const keys = Object.keys(c.values);
+        return keys.length === trackedAxes.length && trackedAxes.every(a => keys.includes(a));
+    });
+    const enabledSameShapeCombos = sameShapeCombos.filter(c => !c.is_disabled);
+    if (!enabledSameShapeCombos.length) return false;
+
+    const pinned = { ...otherSelectedValues, [axis]: value };
+    const pinnedKeys = trackedAxes.filter(a => a in pinned);
+    const anyMatch = enabledSameShapeCombos.some(c => pinnedKeys.every(a => c.values[a] === pinned[a]));
+    return !anyMatch;
 }
 
 // 依照目前選到的值，把每個規格按鈕該不該變灰色（不能點）算出來；
