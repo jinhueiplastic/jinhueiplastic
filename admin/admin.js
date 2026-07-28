@@ -702,7 +702,47 @@ function categorizeVariantRows(rows) {
     return { axisOptions, combos };
 }
 
-// 上移／下移：跟前一個或後一個選項交換位置，然後把整個軸重新編號成 10 的倍數。
+// sort_order 同時用來表示「軸跟軸之間的順序」跟「同一個軸裡選項的順序」：
+// 軸序 * AXIS_BAND + 選項序 * 10。軸／選項的順序一有變動，就用這個把全部重新編號成
+// 乾淨的值，不用管之前留下的舊資料夠不夠塞、有沒有重複。
+const AXIS_BAND = 100000;
+
+function renumberVariantSortOrders(axisNamesInOrder, axisOptionsMap) {
+    axisNamesInOrder.forEach((name, axisIdx) => {
+        (axisOptionsMap[name] || []).forEach((r, optIdx) => {
+            r.sort_order = axisIdx * AXIS_BAND + (optIdx + 1) * 10;
+        });
+    });
+}
+
+// 目前的軸順序：照各軸選項裡最小的 sort_order 排（之前搬移過的話會照那個順序），
+// 還沒被排過序、大家都還是預設值的話用軸名稱排序當備援。
+function currentAxisNamesInOrder(axisOptions) {
+    return Object.keys(axisOptions).sort((a, b) => {
+        const rowsA = axisOptions[a], rowsB = axisOptions[b];
+        const orderA = rowsA.length ? Math.min(...rowsA.map(r => r.sort_order || 0)) : 0;
+        const orderB = rowsB.length ? Math.min(...rowsB.map(r => r.sort_order || 0)) : 0;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.localeCompare(b, 'zh-Hant');
+    });
+}
+
+// 上移／下移：整個軸跟前一個或後一個軸交換順序。
+function moveAxisGroup(name, direction) {
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    const idx = axisNames.indexOf(name);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= axisNames.length) return;
+
+    [axisNames[idx], axisNames[swapIdx]] = [axisNames[swapIdx], axisNames[idx]];
+    renumberVariantSortOrders(axisNames, axisOptions);
+
+    modalDirty = true;
+    renderVariantSection();
+}
+
+// 上移／下移：同一個軸裡，跟前一個或後一個選項交換位置。
 function moveAxisOption(name, tempId, direction) {
     const { axisOptions } = categorizeVariantRows(localVariantRows);
     const rows = axisOptions[name] || [];
@@ -711,14 +751,14 @@ function moveAxisOption(name, tempId, direction) {
     if (idx === -1 || swapIdx < 0 || swapIdx >= rows.length) return;
 
     [rows[idx], rows[swapIdx]] = [rows[swapIdx], rows[idx]];
-    rows.forEach((r, i) => { r.sort_order = (i + 1) * 10; });
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    renumberVariantSortOrders(axisNames, axisOptions);
 
     modalDirty = true;
     renderVariantSection();
 }
 
-// 在某個選項的前面或後面插入新值（可以用 / 、 , ， 一次插入多個），
-// 插入後把整個軸重新編號成 10 的倍數，不用管原本 sort_order 夠不夠塞。
+// 在某個選項的前面或後面插入新值（可以用 / 、 , ， 一次插入多個）。
 function insertAxisOptionAt(name, tempId, position) {
     const { axisOptions } = categorizeVariantRows(localVariantRows);
     const rows = axisOptions[name] || [];
@@ -734,6 +774,9 @@ function insertAxisOptionAt(name, tempId, position) {
     const newValues = values.filter(v => !existingSet.has(v));
     if (!newValues.length) return;
 
+    // 先照插入之前的資料把軸順序記下來，插入新選項只會動到這個軸內部的順序。
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+
     const newRows = newValues.map(v => ({
         tempId: ++variantTempCounter,
         id: null,
@@ -745,10 +788,10 @@ function insertAxisOptionAt(name, tempId, position) {
     }));
 
     const insertAt = position === 'before' ? idx : idx + 1;
-    const newOrderedRows = [...rows.slice(0, insertAt), ...newRows, ...rows.slice(insertAt)];
-    newOrderedRows.forEach((r, i) => { r.sort_order = (i + 1) * 10; });
-
+    axisOptions[name] = [...rows.slice(0, insertAt), ...newRows, ...rows.slice(insertAt)];
     localVariantRows.push(...newRows);
+
+    renumberVariantSortOrders(axisNames, axisOptions);
 
     modalDirty = true;
     renderVariantSection();
@@ -909,22 +952,33 @@ function wireAxisChips(scopeEl) {
 
 function renderVariantSection() {
     const { axisOptions, combos } = categorizeVariantRows(localVariantRows);
-    const axisNames = Object.keys(axisOptions).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    const axisNames = currentAxisNamesInOrder(axisOptions);
 
     const groupsEl = document.getElementById('axis-groups');
     if (!axisNames.length) {
         groupsEl.innerHTML = '<p class="text-xs text-gray-400">這個商品還沒有任何選項，在下面新增第一個軸吧（例如「規格」）。</p>';
     } else {
-        groupsEl.innerHTML = axisNames.map(name => `
+        groupsEl.innerHTML = axisNames.map((name, axisIdx) => `
             <div>
-                <div class="flex items-center justify-between">
-                    <label class="field-label">${escapeHtml(name)}</label>
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-1">
+                        <button type="button" class="axis-group-move-up-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸上移">▲</button>
+                        <button type="button" class="axis-group-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === axisNames.length - 1 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸下移">▼</button>
+                        <label class="field-label mb-0">${escapeHtml(name)}</label>
+                    </div>
                     <button type="button" class="axis-delete-all-btn text-xs text-red-600 hover:underline" data-axis-name="${escapeHtml(name)}">刪除整個軸</button>
                 </div>
                 <div class="space-y-1">${axisOptions[name].map((r, i) => axisChipHtml(r, name, i === 0, i === axisOptions[name].length - 1)).join('')}</div>
             </div>`).join('');
     }
     wireAxisChips(groupsEl);
+
+    groupsEl.querySelectorAll('.axis-group-move-up-btn').forEach(btn => {
+        btn.addEventListener('click', () => moveAxisGroup(btn.dataset.axisName, -1));
+    });
+    groupsEl.querySelectorAll('.axis-group-move-down-btn').forEach(btn => {
+        btn.addEventListener('click', () => moveAxisGroup(btn.dataset.axisName, 1));
+    });
 
     groupsEl.querySelectorAll('.axis-delete-all-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -967,9 +1021,14 @@ function splitVariantRow(axisName, tempId) {
     localVariantRows = localVariantRows.filter(r => r.tempId !== tempId);
 
     const { axisOptions } = categorizeVariantRows(localVariantRows);
-    const existing = new Set((axisOptions[axisName] || []).map(r => r.axis_values[axisName]));
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    if (!axisNames.includes(axisName)) axisNames.push(axisName); // 分割的是這個軸唯一的一列，分割前一瞬間軸會暫時消失
+
+    const existingRows = axisOptions[axisName] || [];
+    const existing = new Set(existingRows.map(r => r.axis_values[axisName]));
+    const newRows = [];
     values.filter(v => !existing.has(v)).forEach(v => {
-        localVariantRows.push({
+        newRows.push({
             tempId: ++variantTempCounter,
             id: null,
             erp_code: currentVariantErp,
@@ -978,6 +1037,10 @@ function splitVariantRow(axisName, tempId) {
             sort_order: 0,
         });
     });
+    axisOptions[axisName] = [...existingRows, ...newRows];
+    localVariantRows.push(...newRows);
+
+    renumberVariantSortOrders(axisNames, axisOptions);
 
     modalDirty = true;
     renderVariantSection();
@@ -1204,20 +1267,26 @@ document.getElementById('add-axis-value-btn').addEventListener('click', () => {
     if (!values.length) { valueInput.focus(); return; }
 
     const { axisOptions } = categorizeVariantRows(localVariantRows);
-    const existing = new Set((axisOptions[axisName] || []).map(r => r.axis_values[axisName]));
+    const existingRows = axisOptions[axisName] || [];
+    const existing = new Set(existingRows.map(r => r.axis_values[axisName]));
     const newValues = values.filter(v => !existing.has(v));
     if (!newValues.length) { valueInput.value = ''; return; }
 
-    newValues.forEach(v => {
-        localVariantRows.push({
-            tempId: ++variantTempCounter,
-            id: null,
-            erp_code: currentVariantErp,
-            axis_values: { [axisName]: v },
-            image_url: null,
-            sort_order: 0,
-        });
-    });
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    if (!axisNames.includes(axisName)) axisNames.push(axisName); // 全新的軸排在最後面
+
+    const newRows = newValues.map(v => ({
+        tempId: ++variantTempCounter,
+        id: null,
+        erp_code: currentVariantErp,
+        axis_values: { [axisName]: v },
+        image_url: null,
+        sort_order: 0,
+        is_disabled: false,
+    }));
+    axisOptions[axisName] = [...existingRows, ...newRows];
+    localVariantRows.push(...newRows);
+    renumberVariantSortOrders(axisNames, axisOptions);
 
     if (!knownAxisNames.includes(axisName)) {
         knownAxisNames.push(axisName);
