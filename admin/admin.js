@@ -1220,7 +1220,11 @@ function renderComboBuilder(axisOptions) {
 
     el.innerHTML = `
         <div class="border rounded-lg p-3">
-            <p class="text-xs text-gray-500 mb-1">手動新增一筆完整組合（至少選兩個軸）：</p>
+            <p class="text-xs text-gray-500 mb-1">
+                手動新增一筆完整組合（至少選兩個軸；沒選的軸留「不指定」代表那個軸選什麼值都適用——
+                例如只選規格＋顏色、尺寸留不指定，就代表「這個規格配這個顏色」不管尺寸選什麼都套用，
+                不用每個尺寸都各建一筆）：
+            </p>
             <div class="flex flex-wrap gap-2 mb-2">
                 ${axisNames.map(name => `
                     <div>
@@ -1234,10 +1238,13 @@ function renderComboBuilder(axisOptions) {
                         </select>
                     </div>`).join('')}
             </div>
-            <button type="button" id="combo-builder-submit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">新增這筆組合</button>
+            <div class="flex gap-2">
+                <button type="button" id="combo-builder-submit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">新增這筆組合</button>
+                <button type="button" id="combo-builder-submit-disabled" class="px-3 py-1.5 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">新增並停用（不能選）</button>
+            </div>
         </div>`;
 
-    document.getElementById('combo-builder-submit').addEventListener('click', () => {
+    function createComboFromBuilder(isDisabled) {
         const values = {};
         el.querySelectorAll('.combo-builder-select').forEach(sel => {
             if (sel.value) values[sel.dataset.axis] = sel.value;
@@ -1251,10 +1258,14 @@ function renderComboBuilder(axisOptions) {
             axis_values: values,
             image_url: null,
             sort_order: 0,
+            is_disabled: isDisabled,
         });
         modalDirty = true;
         renderVariantSection();
-    });
+    }
+
+    document.getElementById('combo-builder-submit').addEventListener('click', () => createComboFromBuilder(false));
+    document.getElementById('combo-builder-submit-disabled').addEventListener('click', () => createComboFromBuilder(true));
 }
 
 document.getElementById('add-axis-value-btn').addEventListener('click', () => {
