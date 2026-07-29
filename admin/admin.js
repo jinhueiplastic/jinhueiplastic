@@ -798,6 +798,40 @@ function renameAxis(oldName) {
     renderVariantSection();
 }
 
+// 改一個選項的值：不只是這個選項本身（1 個 key 的列），連組合（2 個以上 key 的列）裡
+// 有用到「這個軸＝這個值」的也要一起改，不然組合會變成指向一個已經不存在的值。
+function editAxisOptionValue(name, tempId) {
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    const rows = axisOptions[name] || [];
+    const row = rows.find(r => r.tempId === tempId);
+    if (!row) return;
+
+    const currentValue = row.axis_values[name];
+    const raw = prompt(`把「${currentValue}」改成？`, currentValue);
+    if (raw === null) return;
+    const trimmed = stripWrappingBrackets(raw.trim()).trim();
+    if (!trimmed || trimmed === currentValue) return;
+
+    if (rows.some(r => r.tempId !== tempId && r.axis_values[name] === trimmed)) {
+        alert(`「${name}」已經有「${trimmed}」這個選項了，換一個值，或是先刪掉其中一個再改。`);
+        return;
+    }
+
+    localVariantRows.forEach(r => {
+        if (!(name in r.axis_values) || r.axis_values[name] !== currentValue) return;
+        const newValues = { ...r.axis_values, [name]: trimmed };
+
+        // axis_values 是 upsert 的 onConflict 依據，直接改內容會留下一筆指向舊
+        // axis_values 的孤兒列，所以有真的存進資料庫過的列要刪掉舊的、當新的重存。
+        if (r.id) deletedVariantIds.push(r.id);
+        r.id = null;
+        r.axis_values = newValues;
+    });
+
+    modalDirty = true;
+    renderVariantSection();
+}
+
 // 上移／下移：同一個軸裡，跟前一個或後一個選項交換位置。
 function moveAxisOption(name, tempId, direction) {
     const { axisOptions } = categorizeVariantRows(localVariantRows);
@@ -910,7 +944,7 @@ function axisChipHtml(r, name, isFirst, isLast) {
                 <button type="button" class="axis-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${isLast ? 'opacity-30 pointer-events-none' : ''}" title="下移">▼</button>
             </div>
             <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
-            <div class="flex-1 text-sm">${escapeHtml(rawValue)}</div>
+            <button type="button" class="axis-value-edit-btn flex-1 text-sm text-left hover:underline hover:text-blue-600" title="點一下改這個選項的值">${escapeHtml(rawValue)} ✎</button>
             <span class="axis-upload-status text-xs text-gray-400"></span>
             <button type="button" class="axis-insert-before-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之前插入新選項">＋前</button>
             <button type="button" class="axis-insert-after-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之後插入新選項">＋後</button>
@@ -925,6 +959,13 @@ function axisChipHtml(r, name, isFirst, isLast) {
 }
 
 function wireAxisChips(scopeEl) {
+    scopeEl.querySelectorAll('.axis-value-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            editAxisOptionValue(rowEl.dataset.axisName, Number(rowEl.dataset.tempId));
+        });
+    });
+
     scopeEl.querySelectorAll('.axis-chip-del').forEach(btn => {
         btn.addEventListener('click', () => {
             if (!confirm('確定要刪除這個選項嗎？')) return;
