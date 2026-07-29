@@ -440,6 +440,30 @@ function variantFieldHtml(axisName, product) {
 
 // 單位是每個商品各自記住的清單（跟規格/孔徑/顏色分開），
 // 按鈕選或直接打新的都可以，新增的會馬上存進 pos_units，之後就一直有這個按鈕可以點。
+// 還沒設定「下單名稱」、目前是靠中文品名頂著顯示的話，讓它可以直接點擊設定；
+// 已經有「下單名稱」的話就是純文字，要改名請到「修改 POS 商品」頁面改。
+function variantProductNameHtml(p) {
+    const displayName = orderDisplayName(p);
+    if ((p.order_display_name || '').trim()) {
+        return `<h4 class="font-bold text-lg text-gray-800">${escapeHtml(displayName)}</h4>`;
+    }
+    return `<button type="button" id="variant-name-edit-btn" class="font-bold text-lg text-gray-800 text-left hover:underline hover:text-blue-600" title="點一下設定下單名稱">${escapeHtml(displayName)} ✎</button>`;
+}
+
+async function editProductOrderDisplayName(p) {
+    const raw = prompt('設定「下單名稱」（POS 下單／查詢訂單／區域表單都會改用這個顯示；不填的話繼續用中文品名）：', p.name_zh || '');
+    if (raw === null) return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+
+    const { error } = await sb.from('pos_items').update({ order_display_name: trimmed }).eq('id', p.id);
+    if (error) { alert('設定失敗：' + error.message); return; }
+
+    p.order_display_name = trimmed;
+    const wrap = document.getElementById('variant-product-name-wrap');
+    if (wrap) wrap.innerHTML = variantProductNameHtml(p);
+}
+
 function renderVariantPickerHtml(p) {
     const axisNames = productAxisNames(p);
     const fieldsHtml = axisNames.map(name => variantFieldHtml(name, p)).join('');
@@ -450,7 +474,7 @@ function renderVariantPickerHtml(p) {
                  class="rounded-lg border">
             <div class="flex-1">
                 <p class="text-xs text-blue-600 font-bold">${escapeHtml(p.erp_code || '')}</p>
-                <h4 class="font-bold text-lg text-gray-800 mb-3">${escapeHtml(orderDisplayName(p))}</h4>
+                <div id="variant-product-name-wrap" class="mb-3">${variantProductNameHtml(p)}</div>
                 <div class="space-y-3">
                     ${fieldsHtml}
                     <div class="flex flex-wrap items-end gap-2">
@@ -828,6 +852,9 @@ async function commitNewUnit(rawValue) {
 }
 
 function wireVariantPicker(p) {
+    const nameEditBtn = document.getElementById('variant-name-edit-btn');
+    if (nameEditBtn) nameEditBtn.addEventListener('click', () => editProductOrderDisplayName(p));
+
     selectedVariant = {};
     selectedUnit = '';
     unitAddMode = false;
