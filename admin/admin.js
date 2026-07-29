@@ -743,6 +743,45 @@ function moveAxisGroup(name, direction) {
     renderVariantSection();
 }
 
+// 幫整個軸改名：不只是選項本身（1 個 key 的列），連組合（2 個以上 key 的列）裡
+// 有用到這個軸名稱當 key 的也要一起改，不然組合會變成指向一個已經不存在的軸。
+function renameAxis(oldName) {
+    const newName = prompt(`把「${oldName}」改名成？`, oldName);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+
+    const { axisOptions } = categorizeVariantRows(localVariantRows);
+    if (axisOptions[trimmed]) {
+        alert(`已經有「${trimmed}」這個軸了，換一個名字，或是先刪掉其中一個再改名。`);
+        return;
+    }
+
+    localVariantRows.forEach(row => {
+        if (!(oldName in row.axis_values)) return;
+        const value = row.axis_values[oldName];
+        const newValues = { ...row.axis_values };
+        delete newValues[oldName];
+        newValues[trimmed] = value;
+
+        // axis_values 是 upsert 的 onConflict 依據，直接改內容會留下一筆指向舊
+        // axis_values 的孤兒列，所以有真的存進資料庫過的列要刪掉舊的、當新的重存。
+        if (row.id) deletedVariantIds.push(row.id);
+        row.id = null;
+        row.axis_values = newValues;
+    });
+
+    if (!knownAxisNames.includes(trimmed)) {
+        knownAxisNames.push(trimmed);
+        knownAxisNames.sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+        const datalist = document.getElementById('known-axis-names');
+        if (datalist) datalist.innerHTML = knownAxisNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    }
+
+    modalDirty = true;
+    renderVariantSection();
+}
+
 // 上移／下移：同一個軸裡，跟前一個或後一個選項交換位置。
 function moveAxisOption(name, tempId, direction) {
     const { axisOptions } = categorizeVariantRows(localVariantRows);
@@ -965,7 +1004,7 @@ function renderVariantSection() {
                     <div class="flex items-center gap-1">
                         <button type="button" class="axis-group-move-up-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸上移">▲</button>
                         <button type="button" class="axis-group-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === axisNames.length - 1 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸下移">▼</button>
-                        <label class="field-label mb-0">${escapeHtml(name)}</label>
+                        <button type="button" class="axis-rename-btn field-label mb-0 hover:underline hover:text-blue-600" data-axis-name="${escapeHtml(name)}" title="點一下改軸名稱">${escapeHtml(name)} ✎</button>
                     </div>
                     <button type="button" class="axis-delete-all-btn text-xs text-red-600 hover:underline" data-axis-name="${escapeHtml(name)}">刪除整個軸</button>
                 </div>
@@ -979,6 +1018,9 @@ function renderVariantSection() {
     });
     groupsEl.querySelectorAll('.axis-group-move-down-btn').forEach(btn => {
         btn.addEventListener('click', () => moveAxisGroup(btn.dataset.axisName, 1));
+    });
+    groupsEl.querySelectorAll('.axis-rename-btn').forEach(btn => {
+        btn.addEventListener('click', () => renameAxis(btn.dataset.axisName));
     });
 
     groupsEl.querySelectorAll('.axis-delete-all-btn').forEach(btn => {
