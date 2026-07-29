@@ -890,7 +890,9 @@ function insertAxisOptionAt(name, tempId, position) {
 async function loadKnownAxisNames() {
     // 這張表資料量大時很容易超過 Supabase 一次查詢 1000 筆的上限，分頁抓齊，
     // 不然「快速加入」自動完成清單會漏掉只出現在後面幾頁的軸名稱。
-    const { data, error } = await fetchAllRows(() => sb.from('pos_item_variants').select('axis_values'));
+    // 沒有指定排序的話，資料庫每次查詢回傳的順序不保證一樣，分頁時可能漏掉某幾頁——
+    // 加上 id 排序讓順序固定下來。
+    const { data, error } = await fetchAllRows(() => sb.from('pos_item_variants').select('axis_values').order('id', { ascending: true }));
     if (error) { console.error(error); return; }
     const names = new Set();
     (data || []).forEach(r => Object.keys(r.axis_values || {}).forEach(n => names.add(n)));

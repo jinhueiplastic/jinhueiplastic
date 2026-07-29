@@ -38,7 +38,10 @@ async function initPos() {
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
         // pos_item_variants 累積很多商品的規格資料後很容易超過 Supabase 一次查詢 1000 筆的上限，
         // 用 fetchAllRows 分頁抓齊，不然新增的選項排在後面的話會抓不到、POS 下單看起來就像沒存到。
-        fetchAllRows(() => sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true })),
+        // 完整組合的 sort_order 一律是 0，全系統的組合資料筆數一多，同一個值綁著大量列，
+        // 資料庫對「平手」的列不保證每次查詢順序都一樣——分頁查詢時可能漏掉某幾頁夾在中間的列。
+        // 加上 id 當第二個排序依據，讓每次查詢的順序固定下來，分頁才不會漏資料。
+        fetchAllRows(() => sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }).order('id', { ascending: true })),
         sb.from('pos_units').select('*').order('sort_order', { ascending: true }),
         sb.from('pos_item_units').select('*').order('sort_order', { ascending: true }),
     ]);
