@@ -1072,11 +1072,13 @@ function renderComboList(combos, axisOptions, axisNames) {
         : 0;
 
     if (axisNames.length >= 2 && axisNames.length <= COMBO_GRID_MAX_AXES && totalGridCombos <= COMBO_GRID_MAX_TOTAL) {
+        // 照軸的順序排列組合，先排到的軸變動最慢、最後排到的軸變動最快
+        // （例如 規格/顏色/尺寸，會是 樓板接頭+桔+1½"、樓板接頭+桔+2"…按這個順序列出）。
         let gridCombos = [{}];
         axisNames.forEach(name => {
             const next = [];
-            axisOptions[name].forEach(r => {
-                gridCombos.forEach(c => next.push({ ...c, [name]: r.axis_values[name] }));
+            gridCombos.forEach(c => {
+                axisOptions[name].forEach(r => next.push({ ...c, [name]: r.axis_values[name] }));
             });
             gridCombos = next;
         });
