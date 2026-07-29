@@ -592,7 +592,8 @@ function renderTableToolPanel(key) {
 function openEditModal(id) {
     const product = allProducts.find(p => String(p.id) === String(id));
     editingId = id;
-    modalTitle.textContent = '編輯商品';
+    const displayName = (product && ((product.order_display_name || '').trim() || product.name_zh)) || '';
+    modalTitle.textContent = displayName ? `${displayName} - 編輯商品` : '編輯商品';
     buildFormFields(product);
     loadVariantSection(product);
     loadUnitSection(product);
