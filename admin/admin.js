@@ -672,9 +672,25 @@ let localVariantRows = [];
 let deletedVariantIds = [];
 let knownAxisNames = []; // 全部商品出現過的軸名稱，純粹給「新增選項」自動完成用
 
+// 把「整個值」前後包住的括號拿掉（例如貼上「（紅）」想要的其實是「紅」）。
+// 只有第一個字跟最後一個字剛好是配對的括號才拆，不然像「1" x 1" (25mm)」
+// 這種括號只是值本身內容的一部分，最後的「)」會被誤砍掉。
+function stripWrappingBrackets(v) {
+    const pairs = { '（': '）', '(': ')', '「': '」', '『': '』' };
+    const first = v[0];
+    const last = v[v.length - 1];
+    if (v.length >= 2 && pairs[first] === last) {
+        const inner = v.slice(1, -1);
+        const opens = (inner.match(/[（(「『]/g) || []).length;
+        const closes = (inner.match(/[）)」』]/g) || []).length;
+        if (opens === closes) return inner.trim();
+    }
+    return v;
+}
+
 function splitBulkValues(text) {
     return text.split(/[/、,，]/)
-        .map(v => v.trim().replace(/^[「『（(]+|[」』）)]+$/g, '').trim())
+        .map(v => stripWrappingBrackets(v.trim()).trim())
         .filter(Boolean);
 }
 
