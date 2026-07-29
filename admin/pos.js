@@ -436,7 +436,6 @@ function renderVariantPickerHtml(p) {
                 <h4 class="font-bold text-lg text-gray-800 mb-3">${escapeHtml(orderDisplayName(p))}</h4>
                 <div class="space-y-3">
                     ${fieldsHtml}
-                    <div id="variant-combo-info" class="text-xs text-gray-500"></div>
                     <div class="flex flex-wrap items-end gap-2">
                         <div>
                             <label class="field-label">數量</label>
@@ -546,15 +545,6 @@ function currentComboImage(p) {
     return thumbOf(p);
 }
 
-// 符合的完整組合如果還帶有使用者沒有直接選的其他軸（例如型號帶出來的 W/H/L），顯示成資訊列給參考。
-function comboExtraInfoText(p) {
-    const values = currentVariantValues();
-    const combo = findBestCombo(p.erp_code, values);
-    if (!combo) return '';
-    const extra = Object.entries(combo.values).filter(([k]) => !(k in values));
-    if (!extra.length) return '';
-    return extra.map(([k, v]) => `${k}：${v}`).join('　');
-}
 
 // 這個軸有沒有人「維護」過完整組合表格：找出所有包含這個軸的組合列裡，軸數最多的那一種組合形狀
 // （例如商品有 規格/顏色/尺寸 三軸組合，就會回傳 ['規格','顏色','尺寸']）。
@@ -641,8 +631,6 @@ function updateVariantPreviewImage(p) {
     updateDisabledTiles(p);
     const img = document.getElementById('variant-preview-img');
     if (img) img.src = currentComboImage(p);
-    const infoEl = document.getElementById('variant-combo-info');
-    if (infoEl) infoEl.textContent = comboExtraInfoText(p);
 }
 
 // 訂單存檔後，把這次用到、但還沒被登記過的值自動存成新的可點選項目
