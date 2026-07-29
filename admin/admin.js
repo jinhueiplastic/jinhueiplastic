@@ -1108,6 +1108,7 @@ function renderComboList(combos, axisOptions, axisNames) {
 
     const cells = []; // { values, existing: 該組合現有的資料列或 null, label }
     const matchedKeys = new Set();
+    let anyDisabledInGrid = false;
 
     const totalGridCombos = axisNames.length >= 2
         ? axisNames.reduce((acc, name) => acc * axisOptions[name].length, 1)
@@ -1130,7 +1131,7 @@ function renderComboList(combos, axisOptions, axisNames) {
         // POS 下單那邊會找不到任何「確定有效」的組合可以參考，導致完全沒有限制效果。
         // 所以只要偵測到已經有停用過的格子，就把其餘還沒有資料的格子也一起補成「可以選」的實際資料列，
         // 不用等使用者一格一格點開才存進去。（完全沒人勾過停用的表格維持原樣，不會平白多出上百筆資料。）
-        const anyDisabledInGrid = gridCombos.some(values => {
+        anyDisabledInGrid = gridCombos.some(values => {
             const c = comboByKey[comboKeyOf(values)];
             return c && c.is_disabled;
         });
@@ -1152,15 +1153,29 @@ function renderComboList(combos, axisOptions, axisNames) {
                 comboByKey[key] = existing;
             }
             if (existing) matchedKeys.add(key);
-            cells.push({ values, existing, label: axisNames.map(n => values[n]).join('　') });
+            cells.push({ values, existing, isGridCell: true, label: axisNames.map(n => values[n]).join('　') });
         });
     }
 
     // 已存的組合裡，軸的組成跟上面自動列出的表格不完全一樣的（例如只用到部分軸、或軸數太多沒自動列），
     // 另外接在後面，確保不會因為自動列表的規則而讓既有資料憑空消失不見。
     combos.filter(c => !matchedKeys.has(comboKeyOf(c.axis_values))).forEach(r => {
-        cells.push({ values: r.axis_values, existing: r, label: rowAxisEntries(r).map(([k, v]) => `${k}：${v}`).join('　') });
+        cells.push({ values: r.axis_values, existing: r, isGridCell: false, label: rowAxisEntries(r).map(([k, v]) => `${k}：${v}`).join('　') });
     });
+
+    // 表格模式下（anyDisabledInGrid），只要格子還在自動列出的組合表格範圍內，
+    // 「刪掉」都留不住——下一次畫面重畫，backfill 會把它當成漏掉的可選格子重新補回來。
+    // 所以這種情況下「刪除組合」實際上要做的是「標記停用」，才會真的讓這格在 POS 下單變不能選；
+    // 表格外的組合（例如軸太多沒自動列出、手動貼上的）不受 backfill 影響，維持原本直接刪除的行為。
+    function deleteCell(cell) {
+        if (cell.isGridCell && anyDisabledInGrid && cell.existing && !cell.existing.is_disabled) {
+            cell.existing.is_disabled = true;
+            modalDirty = true;
+            renderVariantSection();
+            return;
+        }
+        removeVariantRow(cell.existing.tempId);
+    }
 
     if (!cells.length) {
         container.innerHTML = axisNames.length < 2
@@ -1227,22 +1242,50 @@ function renderComboList(combos, axisOptions, axisNames) {
         });
 
         deleteSelectedBtn.addEventListener('click', () => {
-            const selectedTempIds = [];
+            const selectedCells = [];
             container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
                 const cb = rowEl.querySelector('.combo-select-checkbox');
                 if (cb && cb.checked) {
                     const cell = cells[Number(rowEl.dataset.cellIdx)];
-                    if (cell.existing) selectedTempIds.push(cell.existing.tempId);
+                    if (cell.existing) selectedCells.push(cell);
                 }
             });
-            if (!selectedTempIds.length) return;
-            if (!confirm(`確定要刪除選取的 ${selectedTempIds.length} 筆組合嗎？`)) return;
+            if (!selectedCells.length) return;
 
-            const idSet = new Set(selectedTempIds);
-            localVariantRows.forEach(r => {
-                if (idSet.has(r.tempId) && r.id) deletedVariantIds.push(r.id);
+            // 如果選取的範圍已經涵蓋這個表格裡全部已停用的格子，代表整批刪完之後這個表格
+            // 就不會再有任何停用標記了——這種情況可以放心整批真的刪掉，不用轉成標記停用
+            // （不然像是「全選」整批刪除，會變成把本來停用的格子刪掉之後又被別的格子的
+            // 停用標記補成可選，其他格子卻被轉成停用，結果整個表格反過來，不是使用者要的）。
+            const selectedTempIdSet = new Set(selectedCells.map(c => c.existing.tempId));
+            const survivingDisabledInGrid = cells.some(
+                c => c.isGridCell && c.existing && c.existing.is_disabled && !selectedTempIdSet.has(c.existing.tempId)
+            );
+
+            const toDisableCount = survivingDisabledInGrid
+                ? selectedCells.filter(c => c.isGridCell && anyDisabledInGrid && !c.existing.is_disabled).length
+                : 0;
+            let msg = `確定要處理選取的 ${selectedCells.length} 筆組合嗎？`;
+            if (toDisableCount) {
+                msg += `\n其中 ${toDisableCount} 筆是表格自動列出的可選組合，這種格子刪了會被自動補回來，所以會改成標記「停用（不能選）」。`;
+            }
+            if (!confirm(msg)) return;
+
+            // 整批一次處理完才畫面重畫一次——一筆一筆刪、每筆都重畫的話，前面幾筆
+            // 觸發的重畫會用「還沒處理完的當下狀態」重新跑一次自動補齊，結果後面
+            // 幾筆的判斷基準就跟一開始算好的不一樣了。
+            const removeTempIds = [];
+            selectedCells.forEach(cell => {
+                if (survivingDisabledInGrid && cell.isGridCell && anyDisabledInGrid && !cell.existing.is_disabled) {
+                    cell.existing.is_disabled = true;
+                } else {
+                    removeTempIds.push(cell.existing.tempId);
+                }
             });
-            localVariantRows = localVariantRows.filter(r => !idSet.has(r.tempId));
+            if (removeTempIds.length) {
+                const idSet = new Set(removeTempIds);
+                localVariantRows.forEach(r => { if (idSet.has(r.tempId) && r.id) deletedVariantIds.push(r.id); });
+                localVariantRows = localVariantRows.filter(r => !idSet.has(r.tempId));
+            }
             modalDirty = true;
             renderVariantSection();
         });
@@ -1254,8 +1297,12 @@ function renderComboList(combos, axisOptions, axisNames) {
         const delBtn = rowEl.querySelector('.combo-delete-btn');
         if (delBtn) {
             delBtn.addEventListener('click', () => {
-                if (!confirm('確定要刪除這筆組合嗎？')) return;
-                removeVariantRow(cell.existing.tempId);
+                const willJustDisable = cell.isGridCell && anyDisabledInGrid && !cell.existing.is_disabled;
+                const msg = willJustDisable
+                    ? '這筆是表格自動列出的可選組合，刪了會被自動補回來，所以會改成標記「停用（不能選）」，確定嗎？'
+                    : '確定要刪除這筆組合嗎？';
+                if (!confirm(msg)) return;
+                deleteCell(cell);
             });
         }
 
