@@ -1169,11 +1169,23 @@ function renderComboList(combos, axisOptions, axisNames) {
         return;
     }
 
-    container.innerHTML = cells.map((cell, i) => {
+    const hasAnyExisting = cells.some(c => c.existing);
+
+    const bulkBarHtml = hasAnyExisting ? `
+        <div class="flex items-center gap-2 mb-2 pb-2 border-b">
+            <label class="flex items-center gap-1 text-xs text-gray-600">
+                <input type="checkbox" id="combo-select-all">
+                全選
+            </label>
+            <button type="button" id="combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
+        </div>` : '';
+
+    container.innerHTML = bulkBarHtml + cells.map((cell, i) => {
         const existing = cell.existing;
         const isDisabled = !!(existing && existing.is_disabled);
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
+                ${existing ? '<input type="checkbox" class="combo-select-checkbox">' : '<span style="width:16px;display:inline-block;"></span>'}
                 <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
                 <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
@@ -1190,6 +1202,51 @@ function renderComboList(combos, axisOptions, axisNames) {
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
     }).join('');
+
+    if (hasAnyExisting) {
+        const selectAllCb = document.getElementById('combo-select-all');
+        const deleteSelectedBtn = document.getElementById('combo-delete-selected-btn');
+        const itemCheckboxes = () => Array.from(container.querySelectorAll('.combo-select-checkbox'));
+
+        function refreshDeleteSelectedBtn() {
+            const anyChecked = itemCheckboxes().some(cb => cb.checked);
+            deleteSelectedBtn.disabled = !anyChecked;
+        }
+
+        selectAllCb.addEventListener('change', () => {
+            itemCheckboxes().forEach(cb => { cb.checked = selectAllCb.checked; });
+            refreshDeleteSelectedBtn();
+        });
+
+        itemCheckboxes().forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (!cb.checked) selectAllCb.checked = false;
+                else if (itemCheckboxes().every(c => c.checked)) selectAllCb.checked = true;
+                refreshDeleteSelectedBtn();
+            });
+        });
+
+        deleteSelectedBtn.addEventListener('click', () => {
+            const selectedTempIds = [];
+            container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
+                const cb = rowEl.querySelector('.combo-select-checkbox');
+                if (cb && cb.checked) {
+                    const cell = cells[Number(rowEl.dataset.cellIdx)];
+                    if (cell.existing) selectedTempIds.push(cell.existing.tempId);
+                }
+            });
+            if (!selectedTempIds.length) return;
+            if (!confirm(`確定要刪除選取的 ${selectedTempIds.length} 筆組合嗎？`)) return;
+
+            const idSet = new Set(selectedTempIds);
+            localVariantRows.forEach(r => {
+                if (idSet.has(r.tempId) && r.id) deletedVariantIds.push(r.id);
+            });
+            localVariantRows = localVariantRows.filter(r => !idSet.has(r.tempId));
+            modalDirty = true;
+            renderVariantSection();
+        });
+    }
 
     container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
         const cell = cells[Number(rowEl.dataset.cellIdx)];
