@@ -176,4 +176,5 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     renderResults(allOrders);
 });
 
+initScrollRestoration('orders');
 initAdminAuth('orders', loadOrders);

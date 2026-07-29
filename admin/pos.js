@@ -18,6 +18,15 @@ let browseCategory = null; // 目前瀏覽的分類名稱；搜尋結果時為 n
 let browseItems = [];      // products 模式下要顯示的商品清單
 let browseProduct = null;  // variant 模式下選中的商品
 
+// 點進分類／商品之前，各自畫面捲到哪裡了——按「← 返回」回去的時候用這個復原捲動位置，
+// 不然每次都會跳回最上面，選購清單長的話很不方便。
+let browseScrollY = { categories: 0, products: 0 };
+
+function restoreScrollSoon(y) {
+    // 等這次重畫完、瀏覽器把新內容的高度算出來之後才捲，不然畫面還是舊的高度，捲不到。
+    requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
 const newCustomerToggle  = document.getElementById('new-customer-toggle');
 const newCustomerPanel   = document.getElementById('new-customer-panel');
 const searchInput        = document.getElementById('product-search-input');
@@ -330,13 +339,17 @@ searchInput.addEventListener('input', () => {
 });
 
 backBtn.addEventListener('click', () => {
+    let restoreY;
     if (browseMode === 'variant') {
         browseMode = 'products';
+        restoreY = browseScrollY.products;
     } else {
         browseMode = 'categories';
         searchInput.value = '';
+        restoreY = browseScrollY.categories;
     }
     renderBrowseArea();
+    restoreScrollSoon(restoreY);
 });
 
 homeBtn.addEventListener('click', () => {
@@ -344,6 +357,7 @@ homeBtn.addEventListener('click', () => {
     browseCategory = null;
     searchInput.value = '';
     renderBrowseArea();
+    restoreScrollSoon(0); // 「主分類」是重新開始瀏覽，回到最上面才看得到完整的分類列表
 });
 
 function renderCategoryGridHtml() {
@@ -462,6 +476,7 @@ function renderBrowseArea() {
         browseArea.innerHTML = renderCategoryGridHtml();
         browseArea.querySelectorAll('[data-cat]').forEach(el => {
             el.addEventListener('click', () => {
+                browseScrollY.categories = window.scrollY;
                 browseCategory = el.dataset.cat;
                 browseItems = products.filter(p => (p.category_name_zh || '').trim() === browseCategory);
                 browseMode = 'products';
@@ -481,6 +496,7 @@ function renderBrowseArea() {
         browseArea.innerHTML = renderProductGridHtml(browseItems);
         browseArea.querySelectorAll('[data-erp]').forEach(el => {
             el.addEventListener('click', () => {
+                browseScrollY.products = window.scrollY;
                 browseProduct = products.find(p => p.erp_code === el.dataset.erp);
                 browseMode = 'variant';
                 renderBrowseArea();
@@ -1103,4 +1119,5 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+initScrollRestoration('pos');
 initAdminAuth('pos', initPos);

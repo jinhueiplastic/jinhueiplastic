@@ -1787,4 +1787,5 @@ async function initProductsPage() {
     await Promise.all([loadProducts(), loadKnownUnits(), loadKnownAxisNames()]);
 }
 
+initScrollRestoration('products');
 initAdminAuth('products', initProductsPage);

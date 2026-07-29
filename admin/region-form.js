@@ -142,4 +142,5 @@ async function initRegionForm() {
     statusMsg.textContent = '請先選擇區域';
 }
 
+initScrollRestoration('region');
 initAdminAuth('region', initRegionForm);

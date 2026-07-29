@@ -133,4 +133,5 @@ customerForm.addEventListener('submit', async (e) => {
     loadCustomers();
 });
 
+initScrollRestoration('customers');
 initAdminAuth('customers', loadCustomers);

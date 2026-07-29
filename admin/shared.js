@@ -192,6 +192,30 @@ function fillTodayAsMinguo(yyyId, mmId, ddId) {
     document.getElementById(ddId).value = today.getDate();
 }
 
+// 讓「重新整理」之後，網頁捲動位置盡量停在原本的地方。瀏覽器內建的捲動還原
+// 常常來不及等非同步資料（商品、訂單…）載入完、畫面還很短的時候就先還原了，
+// 等資料進來、頁面變高之後，位置就對不上了。改用 sessionStorage 自己記住捲動
+// 位置，資料真正渲染完之後再手動捲過去；每個頁面用自己的 pageKey 分開記錄。
+function initScrollRestoration(pageKey) {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    const storageKey = 'scrollPos:' + pageKey;
+
+    const saved = Number(sessionStorage.getItem(storageKey) || 0);
+    if (saved) {
+        setTimeout(() => window.scrollTo(0, saved), 400);
+    }
+
+    let ticking = false;
+    window.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+            sessionStorage.setItem(storageKey, String(window.scrollY));
+            ticking = false;
+        });
+    });
+}
+
 // 西元 'YYYY-MM-DD' 轉成「YYY/MM/DD」（民國年）顯示用文字。
 function isoDateToRocLabel(isoDate) {
     if (!isoDate) return '';
