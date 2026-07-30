@@ -30,6 +30,7 @@ function hideLoader() {
 /* --- Supabase 核心請求函數 --- */
 async function supabaseFetch(path) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+        cache: 'no-store',
         headers: {
             'apikey': SUPABASE_KEY,
             'Authorization': `Bearer ${SUPABASE_KEY}`
