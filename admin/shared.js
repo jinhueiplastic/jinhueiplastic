@@ -216,6 +216,13 @@ function initScrollRestoration(pageKey) {
     });
 }
 
+// 比例數字盡量顯示乾淨：整數就不要小數點，小數最多留 4 位、去掉多餘的尾端 0。
+function formatRatioNumber(n) {
+    if (!Number.isFinite(n)) return '';
+    if (Number.isInteger(n)) return String(n);
+    return String(Math.round(n * 10000) / 10000);
+}
+
 // 西元 'YYYY-MM-DD' 轉成「YYY/MM/DD」（民國年）顯示用文字。
 function isoDateToRocLabel(isoDate) {
     if (!isoDate) return '';

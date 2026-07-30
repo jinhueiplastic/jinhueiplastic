@@ -1682,17 +1682,32 @@ function addLocalUnit(name) {
         erp_code: currentUnitErp,
         name,
         sort_order: localUnitRows.length,
+        ratio: 1,
     });
     modalDirty = true;
     renderUnitSection();
 }
 
+// 有 2 個以上單位時才需要知道換算關係（例如一箱是幾個），只有 1 個單位的話比例沒有意義。
+// 比例基準用目前數值最小的那個單位當「1」，其他單位顯示成「這個單位＝多少基準單位」。
+function unitRatioBase() {
+    if (localUnitRows.length < 2) return null;
+    return localUnitRows.reduce((min, r) => (Number(r.ratio) < Number(min.ratio) ? r : min), localUnitRows[0]);
+}
+
 function renderUnitSection() {
     const chipsEl = document.getElementById('unit-chips');
+    const baseUnit = unitRatioBase();
+
     chipsEl.innerHTML = localUnitRows.length
         ? localUnitRows.map(r => `
             <span class="unit-chip">
                 ${escapeHtml(r.name)}
+                ${baseUnit ? `
+                    <span>＝</span>
+                    <input type="number" class="unit-ratio-input" data-temp-id="${r.tempId}" value="${r.ratio ?? 1}" min="0.0001" step="any" style="width:3.5rem;border:1px solid #bfdbfe;border-radius:0.25rem;padding:0 4px;color:#1e40af;background:#fff;">
+                    <span>${escapeHtml(baseUnit.name)}</span>
+                ` : ''}
                 <button type="button" data-temp-id="${r.tempId}" class="unit-chip-del">×</button>
             </span>`).join('')
         : '<p class="text-xs text-gray-400">這項商品還沒有設定單位。</p>';
@@ -1707,6 +1722,19 @@ function renderUnitSection() {
             localUnitRows = localUnitRows.filter(r => r.tempId !== tempId);
             modalDirty = true;
             renderUnitSection();
+        });
+    });
+
+    chipsEl.querySelectorAll('.unit-ratio-input').forEach(input => {
+        input.addEventListener('change', () => {
+            const tempId = Number(input.dataset.tempId);
+            const row = localUnitRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            const val = Number(input.value);
+            if (!val || val <= 0) { input.value = row.ratio ?? 1; return; }
+            row.ratio = val;
+            modalDirty = true;
+            renderUnitSection(); // 重畫，讓基準單位跟著換算數字一起更新
         });
     });
 
@@ -1770,7 +1798,7 @@ async function saveUnitChanges() {
     }
 
     if (localUnitRows.length) {
-        const rows = localUnitRows.map(r => ({ erp_code: r.erp_code, name: r.name, sort_order: r.sort_order || 0 }));
+        const rows = localUnitRows.map(r => ({ erp_code: r.erp_code, name: r.name, sort_order: r.sort_order || 0, ratio: r.ratio || 1 }));
         const { error } = await sb.from('pos_item_units').upsert(rows, { onConflict: 'erp_code,name' });
         if (error) throw error;
 

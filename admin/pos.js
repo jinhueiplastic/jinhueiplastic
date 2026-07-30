@@ -8,7 +8,7 @@ let variantOptionsByErp = {}; // erp_code -> { 軸名稱: [{value,image_url}], .
 let selectedVariant = {}; // 目前規格畫面上，用按鈕/打字選到的值，key 是軸名稱
 let combosByErp = {}; // erp_code -> [{ values: {軸名:值,...}, image_url }]，同一列記錄好幾個軸的完整組合
 let allUnits = []; // 所有出現過的單位（來自 pos_units），商品自己沒設定過單位時的備援清單
-let unitsByErp = {}; // erp_code -> [單位名稱]，每個商品各自記住自己常用的單位
+let unitsByErp = {}; // erp_code -> [{name, ratio}]，每個商品各自記住自己常用的單位跟換算比例
 let selectedUnit = ''; // 目前規格畫面上，用按鈕點選的單位
 let selectedRegionFilter = new URLSearchParams(location.search).get('region') || null; // 依區域篩選客戶，null＝全部
 
@@ -67,7 +67,7 @@ async function initPos() {
     unitsByErp = {};
     (itemUnitData || []).forEach(u => {
         if (!unitsByErp[u.erp_code]) unitsByErp[u.erp_code] = [];
-        unitsByErp[u.erp_code].push(u.name);
+        unitsByErp[u.erp_code].push({ name: u.name, ratio: Number(u.ratio) || 1 });
     });
 
     // pos_item_variants 一列可能是「單一選項按鈕」（只填一個軸）
@@ -484,6 +484,7 @@ function renderVariantPickerHtml(p) {
                         </div>
                         <div id="unit-tiles" class="flex flex-wrap items-center gap-2"></div>
                     </div>
+                    <p id="unit-ratio-hint" class="text-xs text-gray-400"></p>
                 </div>
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
                     加入已選購商品
@@ -734,7 +735,7 @@ async function learnNewUnits(itemsPayload) {
         const unit = String(item.unit || '').trim();
         if (!erp || !unit) return;
         const known = unitsByErp[erp] || [];
-        if (known.includes(unit)) return;
+        if (known.some(u => u.name === unit)) return;
         if (newItemUnitRows.some(r => r.erp_code === erp && r.name === unit)) return;
         newItemUnitRows.push({ erp_code: erp, name: unit, sort_order: known.length });
     });
@@ -743,7 +744,7 @@ async function learnNewUnits(itemsPayload) {
         if (error) { console.error('自動學習商品單位失敗：', error); return; }
         newItemUnitRows.forEach(row => {
             if (!unitsByErp[row.erp_code]) unitsByErp[row.erp_code] = [];
-            unitsByErp[row.erp_code].push(row.name);
+            unitsByErp[row.erp_code].push({ name: row.name, ratio: 1 });
         });
     }
 }
@@ -777,12 +778,22 @@ function resetVariantPicker(p) {
 // 打完按 Enter 或點掉就送出、變回按鈕（新單位也會馬上存進 pos_units，之後就有按鈕可以點）。
 let unitAddMode = false;
 
-// 商品自己有設定過單位就只顯示那些；還沒設定過的話，退回顯示所有出現過的單位，
-// 不會讓還沒設定的商品完全沒有單位可選。
+// 商品自己有設定過單位就只顯示那些（有比例資料）；還沒設定過的話，退回顯示所有出現過的單位名稱
+// （pos_units 是全店共用的參考清單，沒有針對這項商品的比例資料，所以 ratio 給 null）。
 function currentUnitOptions() {
-    if (!browseProduct) return allUnits;
+    if (!browseProduct) return [];
     const productUnits = unitsByErp[browseProduct.erp_code];
-    return (productUnits && productUnits.length) ? productUnits : allUnits;
+    if (productUnits && productUnits.length) return productUnits;
+    return allUnits.map(name => ({ name, ratio: null }));
+}
+
+// 商品有 2 個以上「有比例資料」的單位時，才知道換算關係，顯示成一行灰字提示
+// （例如 1個＝1個，1箱＝12個），比例基準用數值最小的那個單位當「1」。
+function unitRatioHintText() {
+    const options = currentUnitOptions().filter(u => Number.isFinite(u.ratio));
+    if (options.length < 2) return '';
+    const base = options.reduce((min, u) => (u.ratio < min.ratio ? u : min), options[0]);
+    return options.map(u => `1${u.name}＝${formatRatioNumber(u.ratio / base.ratio)}${base.name}`).join('，');
 }
 
 function renderUnitTiles() {
@@ -790,8 +801,8 @@ function renderUnitTiles() {
     if (!container) return;
 
     const unitBtnsHtml = currentUnitOptions().map(u => `
-        <button type="button" class="category-filter-btn unit-btn${selectedUnit === u ? ' active' : ''}" data-unit="${escapeHtml(u)}">
-            ${escapeHtml(u)}
+        <button type="button" class="category-filter-btn unit-btn${selectedUnit === u.name ? ' active' : ''}" data-unit="${escapeHtml(u.name)}">
+            ${escapeHtml(u.name)}
         </button>`).join('');
 
     const addHtml = unitAddMode
@@ -821,6 +832,9 @@ function renderUnitTiles() {
             renderUnitTiles();
         });
     }
+
+    const hintEl = document.getElementById('unit-ratio-hint');
+    if (hintEl) hintEl.textContent = unitRatioHintText();
 }
 
 async function commitNewUnit(rawValue) {
@@ -838,11 +852,11 @@ async function commitNewUnit(rawValue) {
     if (browseProduct) {
         const erp = browseProduct.erp_code;
         const known = unitsByErp[erp] || [];
-        if (!known.includes(value)) {
+        if (!known.some(u => u.name === value)) {
             const { error } = await sb.from('pos_item_units').insert({ erp_code: erp, name: value, sort_order: known.length });
             if (!error) {
                 if (!unitsByErp[erp]) unitsByErp[erp] = [];
-                unitsByErp[erp].push(value);
+                unitsByErp[erp].push({ name: value, ratio: 1 });
             }
         }
     }
