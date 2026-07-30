@@ -53,10 +53,14 @@ function setStatus(msg) {
 
 async function loadProducts() {
     setStatus('載入商品資料中…');
+    // row_index 是 Google Sheet「POS items」分頁同步過來的列順序，跟 POS 下單頁面
+    // 排序邏輯一致，讓這裡的商品清單同分類底下的順序也跟 Sheet 由上到下一致。
     const { data, error } = await sb
         .from('pos_items')
         .select('*')
-        .order('id', { ascending: true });
+        .order('category_name_zh', { ascending: true })
+        .order('row_index', { ascending: true })
+        .order('erp_code', { ascending: true });
 
     if (error) {
         setStatus('');
