@@ -291,6 +291,8 @@ function syncPosItems() {
         item[key] = String(raw || '').trim();
       }
     });
+    // POS 下單頁面同分類底下的商品排列，照這個欄位排序，維持跟 Sheet 上到下一樣的順序。
+    item.row_index = i;
     items.push(item);
   }
 

@@ -42,7 +42,10 @@ async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
     const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }, { data: itemUnitData, error: iuErr }] = await Promise.all([
-        sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }).order('erp_code', { ascending: true }),
+        // row_index 是 Google Sheet「POS items」分頁同步過來的列順序，讓同分類底下的商品
+        // 排列跟 Sheet 上到下的順序一致；沒跑過同步、手動新增的商品 row_index 預設 0，
+        // 排在同分類最前面。
+        sb.from('pos_items').select('*').order('category_name_zh', { ascending: true }).order('row_index', { ascending: true }).order('erp_code', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
         // pos_item_variants 累積很多商品的規格資料後很容易超過 Supabase 一次查詢 1000 筆的上限，
