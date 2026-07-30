@@ -108,22 +108,39 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('🔄 Supabase 同步')
     .addItem('同步所有資料（推送到 Supabase）', 'syncAll')
     .addItem('只同步網站內容', 'syncSiteContent')
-    .addItem('只推送產品資料到 Supabase', 'syncProducts')
+    .addItem('只推送產品資料到 Supabase', 'syncProductsWithAlert')
     .addSeparator()
     .addItem('⬇️ 從 Supabase 拉回產品資料', 'pullProductsFromSupabase')
     .addSeparator()
-    .addItem('只推送 POS items 到 Supabase', 'syncPosItems')
+    .addItem('只推送 POS items 到 Supabase', 'syncPosItemsWithAlert')
     .addItem('⬇️ 從 Supabase 拉回 POS items', 'pullPosItemsFromSupabase')
     .addSeparator()
-    .addItem('只推送 POS variants 到 Supabase', 'syncPosVariants')
+    .addItem('只推送 POS variants 到 Supabase', 'syncPosVariantsWithAlert')
     .addItem('⬇️ 從 Supabase 拉回 POS variants', 'pullPosVariantsFromSupabase')
     .addToUi();
 }
 
 function syncAll() {
   syncSiteContent();
-  syncProducts();
+  try {
+    syncProducts();
+  } catch (err) {
+    safeAlert('❌ 產品同步失敗，網站不會看到這次的異動：\n' + err.message);
+    return;
+  }
   safeAlert('✅ 全部同步完成！');
+}
+
+// 選單「只推送產品資料到 Supabase」用這個，跟 syncAll 分開包一層是因為 syncAll
+// 要跟網站內容合併顯示一個結果，這裡則是單獨推送就該有自己單獨的成功/失敗訊息。
+function syncProductsWithAlert() {
+  try {
+    syncProducts();
+  } catch (err) {
+    safeAlert('❌ 產品同步失敗：\n' + err.message);
+    return;
+  }
+  safeAlert('✅ 產品同步完成！');
 }
 
 // ===== 同步 Sheet 1：網站內容（未改動，仍是整批清空重寫） =====
@@ -169,7 +186,14 @@ function syncProducts() {
   )];
 
   const catRows = uniqueCats.map((name, i) => ({ name_zh: name, sort_order: i }));
-  let catResult = batchUpsertOnConflict('/rest/v1/categories', catRows, 'name_zh');
+  // 分類 upsert 失敗（例如 RLS 政策擋住新增）不擋主流程，因為下面 GET 這條路還是能拿到
+  // 既有分類的 id，先把商品推送完，只是新分類這次沒建成，之後 RLS 修好再跑一次就會補上。
+  let catResult = [];
+  try {
+    catResult = batchUpsertOnConflict('/rest/v1/categories', catRows, 'name_zh');
+  } catch (err) {
+    Logger.log('分類同步失敗，改用現有分類繼續（新分類這次不會建立）：' + err.message);
+  }
 
   const categoryMap = {};
   catResult.forEach(c => { categoryMap[c.name_zh] = c.id; });
@@ -296,6 +320,16 @@ function syncPosItems() {
 
   batchUpsertOnConflict('/rest/v1/pos_items', items, 'erp_code,category_name_zh');
   Logger.log('POS items 同步完成，共 ' + items.length + ' 筆');
+}
+
+function syncPosItemsWithAlert() {
+  try {
+    syncPosItems();
+  } catch (err) {
+    safeAlert('❌ POS items 同步失敗：\n' + err.message);
+    return;
+  }
+  safeAlert('✅ POS items 同步完成！');
 }
 
 // ===== 拉回 Supabase pos_items → Sheet 2「POS items」 =====
@@ -429,6 +463,16 @@ function syncPosVariants() {
   Logger.log('POS variants 同步完成，共 ' + rows.length + ' 筆');
 }
 
+function syncPosVariantsWithAlert() {
+  try {
+    syncPosVariants();
+  } catch (err) {
+    safeAlert('❌ POS variants 同步失敗：\n' + err.message);
+    return;
+  }
+  safeAlert('✅ POS variants 同步完成！');
+}
+
 // ===== 拉回 Supabase pos_item_variants → Sheet 2「POS variants」 =====
 // 軸欄位可能會變多變少，所以這裡是整份重新產生（表頭＋所有列），不是像其他分頁那樣只補差異，
 // 這樣才能保證表頭一定跟 Supabase 目前的軸完全對得上，不會有欄位對不齊的問題。
@@ -508,6 +552,8 @@ function batchInsert(path, rows, batchSize = 500) {
 }
 
 // upsert：依指定欄位比對，存在就更新、不存在就新增，不會刪除其他既有資料
+// 失敗（RLS 擋住、on_conflict 對應不到唯一鍵…）直接 throw，不能只靜靜寫進 Logger——
+// 不然呼叫端會誤以為推送成功，明明資料庫完全沒被更新到。
 function supabaseUpsert(path, rows, onConflictCol) {
   if (!rows.length) return [];
   const options = {
@@ -525,17 +571,26 @@ function supabaseUpsert(path, rows, onConflictCol) {
   const res = UrlFetchApp.fetch(url, options);
   const code = res.getResponseCode();
   if (code >= 400) {
-    Logger.log('Upsert 錯誤 ' + code + ': ' + res.getContentText());
-    return [];
+    const msg = 'Upsert 錯誤（' + path + '）' + code + ': ' + res.getContentText();
+    Logger.log(msg);
+    throw new Error(msg);
   }
   try { return JSON.parse(res.getContentText()); } catch (e) { return []; }
 }
 
+// 逐批呼叫 supabaseUpsert；先把每批都跑過（後面的批次不會因為前面失敗就整個放棄），
+// 全部跑完後如果有任何一批失敗，最後統一 throw 一個彙整訊息出來。
 function batchUpsertOnConflict(path, rows, onConflictCol, batchSize = 500) {
   let all = [];
+  const errors = [];
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
-    all = all.concat(supabaseUpsert(path, batch, onConflictCol));
+    try {
+      all = all.concat(supabaseUpsert(path, batch, onConflictCol));
+    } catch (err) {
+      errors.push(err.message);
+    }
   }
+  if (errors.length) throw new Error(errors.join('\n'));
   return all;
 }
