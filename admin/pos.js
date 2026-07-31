@@ -568,6 +568,16 @@ function manualVariantValues() {
     return values;
 }
 
+// 使用者自己動手選／打了某個軸之後（呼叫前要先把那個軸從 autoSelectedAxes 移除），
+// 把「其他軸之前自動帶出來的值」全部清掉，讓 updateDisabledTiles 用最新的手動選擇
+// 重新判斷一次——不然換了型號之後，舊型號自動帶出來的規格／顏色會卡著不放
+// （即使剛好對新型號來說也還算有效），而不是重新根據現在真正選的型號判斷。
+// 還是唯一選項的話會馬上被重新帶出來，不是唯一的話就維持沒有選，讓使用者自己選。
+function clearAutoSelectedAxes() {
+    autoSelectedAxes.forEach(axis => { selectedVariant[axis] = ''; });
+    autoSelectedAxes.clear();
+}
+
 // 找出「目前選到的每個軸都對得上」的完整組合裡，比對到的軸最多（最具體）的那一筆；
 // 這樣即使組合裡還帶著使用者沒有直接選的其他軸（例如型號帶出來的 W/H/L），也能找到。
 function findBestCombo(erp, selectedValues) {
@@ -936,6 +946,7 @@ function wireVariantPicker(p) {
         textEl.addEventListener('input', () => {
             // 打字的話以打字為準，把按鈕選取取消，避免兩邊同時生效搞不清楚是哪個。
             autoSelectedAxes.delete(axis); // 使用者自己打字了，這個軸就不是自動帶的了
+            clearAutoSelectedAxes(); // 其他軸之前自動帶的值也一併清掉，用最新的手動選擇重新判斷
             if (textEl.value.trim() && selectedVariant[axis]) {
                 selectedVariant[axis] = '';
                 document.querySelectorAll('.variant-tile').forEach(b => {
@@ -952,6 +963,7 @@ function wireVariantPicker(p) {
             const value = btn.dataset.value;
             selectedVariant[axis] = (selectedVariant[axis] === value) ? '' : value; // 再點一次取消選取
             autoSelectedAxes.delete(axis); // 使用者自己點了，這個軸就不是自動帶的了
+            clearAutoSelectedAxes(); // 其他軸之前自動帶的值也一併清掉，用最新的手動選擇重新判斷
             document.querySelectorAll('.variant-tile').forEach(b => {
                 if (b.dataset.axis === axis) b.classList.toggle('selected', b.dataset.value === selectedVariant[axis]);
             });
