@@ -975,6 +975,23 @@ function axisChipHtml(r, name, isFirst, isLast) {
         </div>`;
 }
 
+// 把「單位=數字，多個用，分開」格式的文字解析成 {單位名稱: 數字}；格式不對或單位名稱
+// 不存在的話，跳警告並回傳 null（呼叫端看到 null 就直接放棄，不要繼續往下套用）。
+function parseUnitRatiosInput(trimmed, unitNames) {
+    const parsed = {};
+    if (!trimmed) return parsed;
+    for (const part of trimmed.split(/[,，]/)) {
+        const [rawName, rawVal] = part.split('=').map(s => (s || '').trim());
+        const num = Number(rawVal);
+        if (!rawName || !unitNames.includes(rawName) || !num || num <= 0) {
+            alert(`格式不對，或是單位名稱不存在：「${part}」。請用「單位=正數」的格式，單位要是這個商品已經有的（${unitNames.join('、')}）。`);
+            return null;
+        }
+        parsed[rawName] = num;
+    }
+    return parsed;
+}
+
 // 幫某一筆完整組合（例如 型號：PF-16／規格：½"／長度：50米/丸）設定專屬的單位比例，
 // 覆蓋商品層級的預設值；留空的話這筆組合就會退回用商品預設的比例（在下面「訂單單位」設定）。
 // 這筆組合原本沒有底層資料列的話（純展示用的格子），設定成功才會真的新增一筆。
@@ -999,18 +1016,8 @@ function editComboUnitRatios(cell) {
     const trimmed = raw.trim();
     if (!trimmed && !cell.existing) return; // 本來就沒有底層資料列，清空成沒有覆蓋等於沒異動
 
-    let parsed = {};
-    if (trimmed) {
-        for (const part of trimmed.split(/[,，]/)) {
-            const [rawName, rawVal] = part.split('=').map(s => (s || '').trim());
-            const num = Number(rawVal);
-            if (!rawName || !unitNames.includes(rawName) || !num || num <= 0) {
-                alert(`格式不對，或是單位名稱不存在：「${part}」。請用「單位=正數」的格式，單位要是這個商品已經有的（${unitNames.join('、')}）。`);
-                return;
-            }
-            parsed[rawName] = num;
-        }
-    }
+    const parsed = parseUnitRatiosInput(trimmed, unitNames);
+    if (parsed === null) return;
 
     let row = cell.existing;
     if (!row) {
@@ -1346,6 +1353,10 @@ function renderComboList(combos, axisOptions, axisNames) {
         renderVariantSection();
     }
 
+    // 未停用（可以選）的排在最上面，停用的沉到下面，方便掃過去看還剩哪些可以選——
+    // 用穩定排序，同一組（都可以選或都停用）裡面還是維持原本 axisNames 那個規律的順序。
+    cells.sort((a, b) => Number(!!(a.existing && a.existing.is_disabled)) - Number(!!(b.existing && b.existing.is_disabled)));
+
     if (!cells.length) {
         container.innerHTML = axisNames.length < 2
             ? '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才會自動列出組合；也可以用下面「手動新增一筆完整組合」直接建立。</p>'
@@ -1361,6 +1372,7 @@ function renderComboList(combos, axisOptions, axisNames) {
                 <input type="checkbox" id="combo-select-all">
                 全選
             </label>
+            <button type="button" id="combo-ratio-selected-btn" class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100" disabled>修改已選取的單位比例</button>
             <button type="button" id="combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
         </div>` : '';
 
@@ -1391,24 +1403,62 @@ function renderComboList(combos, axisOptions, axisNames) {
     if (hasAnyExisting) {
         const selectAllCb = document.getElementById('combo-select-all');
         const deleteSelectedBtn = document.getElementById('combo-delete-selected-btn');
+        const ratioSelectedBtn = document.getElementById('combo-ratio-selected-btn');
         const itemCheckboxes = () => Array.from(container.querySelectorAll('.combo-select-checkbox'));
 
-        function refreshDeleteSelectedBtn() {
+        function refreshBulkButtons() {
             const anyChecked = itemCheckboxes().some(cb => cb.checked);
             deleteSelectedBtn.disabled = !anyChecked;
+            ratioSelectedBtn.disabled = !anyChecked;
+        }
+
+        function getSelectedCells() {
+            const selectedCells = [];
+            container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
+                const cb = rowEl.querySelector('.combo-select-checkbox');
+                if (cb && cb.checked) {
+                    const cell = cells[Number(rowEl.dataset.cellIdx)];
+                    if (cell.existing) selectedCells.push(cell);
+                }
+            });
+            return selectedCells;
         }
 
         selectAllCb.addEventListener('change', () => {
             itemCheckboxes().forEach(cb => { cb.checked = selectAllCb.checked; });
-            refreshDeleteSelectedBtn();
+            refreshBulkButtons();
         });
 
         itemCheckboxes().forEach(cb => {
             cb.addEventListener('change', () => {
                 if (!cb.checked) selectAllCb.checked = false;
                 else if (itemCheckboxes().every(c => c.checked)) selectAllCb.checked = true;
-                refreshDeleteSelectedBtn();
+                refreshBulkButtons();
             });
+        });
+
+        ratioSelectedBtn.addEventListener('click', () => {
+            const selectedCells = getSelectedCells();
+            if (!selectedCells.length) return;
+
+            if (localUnitRows.length < 2) {
+                alert('這個商品要有 2 個以上的單位，才需要另外設定比例覆蓋——請先到下面「訂單單位」新增第二個單位。');
+                return;
+            }
+            const unitNames = localUnitRows.map(u => u.name);
+            const raw = prompt(
+                `幫選取的 ${selectedCells.length} 筆組合統一設定專屬的單位比例（留空＝用商品預設的比例）。\n` +
+                `格式：單位=數字，多個用，分開，例如 箱=24。\n` +
+                `這個商品的單位：${unitNames.join('、')}`,
+                ''
+            );
+            if (raw === null) return;
+            const parsed = parseUnitRatiosInput(raw.trim(), unitNames);
+            if (parsed === null) return;
+
+            selectedCells.forEach(cell => { cell.existing.unit_ratios = parsed; });
+            modalDirty = true;
+            renderVariantSection();
         });
 
         deleteSelectedBtn.addEventListener('click', () => {
