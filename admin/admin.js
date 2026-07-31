@@ -679,6 +679,7 @@ let variantTempCounter = 0;
 let localVariantRows = [];
 let deletedVariantIds = [];
 let knownAxisNames = []; // 全部商品出現過的軸名稱，純粹給「新增選項」自動完成用
+let lastComboDisableIndex = null; // 上一次點的「停用」勾選框在完整組合列表裡的位置，shift+點用來算範圍
 
 // 把「整個值」前後包住的括號拿掉（例如貼上「（紅）」想要的其實是「紅」）。
 // 只有第一個字跟最後一個字剛好是配對的括號才拆，不然像「1" x 1" (25mm)」
@@ -912,6 +913,7 @@ async function loadKnownAxisNames() {
 async function loadVariantSection(product) {
     const section = document.getElementById('variant-section');
     deletedVariantIds = [];
+    lastComboDisableIndex = null;
 
     if (!product || !product.erp_code) {
         currentVariantErp = null;
@@ -1309,6 +1311,41 @@ function renderComboList(combos, axisOptions, axisNames) {
         removeVariantRow(cell.existing.tempId);
     }
 
+    // 一次幫好幾格套用同一個「停用」勾選狀態（shift 範圍選取用）。整批一次處理完才
+    // 重畫一次——不然一格一格處理、每格都重畫的話，前面幾格觸發的重畫會用「還沒處理完
+    // 的當下狀態」重新跑一次自動補齊，後面幾格拿到的 cells 陣列就跟一開始算好的不一樣了。
+    function applyComboDisable(targetCells, checked) {
+        const toRemoveIds = [];
+        targetCells.forEach(c => {
+            if (c.existing) {
+                c.existing.is_disabled = checked;
+                const hasUnitRatios = Object.keys(c.existing.unit_ratios || {}).length > 0;
+                if (!checked && !c.existing.image_url && !hasUnitRatios) {
+                    toRemoveIds.push(c.existing.tempId);
+                }
+            } else if (checked) {
+                const row = {
+                    tempId: ++variantTempCounter,
+                    id: null,
+                    erp_code: currentVariantErp,
+                    axis_values: c.values,
+                    image_url: null,
+                    is_disabled: true,
+                    sort_order: 0,
+                };
+                localVariantRows.push(row);
+                c.existing = row;
+            }
+        });
+        if (toRemoveIds.length) {
+            const idSet = new Set(toRemoveIds);
+            localVariantRows.forEach(r => { if (idSet.has(r.tempId) && r.id) deletedVariantIds.push(r.id); });
+            localVariantRows = localVariantRows.filter(r => !idSet.has(r.tempId));
+        }
+        modalDirty = true;
+        renderVariantSection();
+    }
+
     if (!cells.length) {
         container.innerHTML = axisNames.length < 2
             ? '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才會自動列出組合；也可以用下面「手動新增一筆完整組合」直接建立。</p>'
@@ -1453,30 +1490,20 @@ function renderComboList(combos, axisOptions, axisNames) {
         if (unitRatioBtn) unitRatioBtn.addEventListener('click', () => editComboUnitRatios(cell));
 
         // 「停用（不能選）」勾起來＝這個組合在 POS 下單會讓其中一個軸的選項變灰色點不到。
-        // 沒有圖片、也沒有設定專屬單位比例，純粹只是拿來標記停用的組合，取消勾選時
-        // 直接刪掉這筆資料，避免留下沒用的空紀錄。
-        rowEl.querySelector('.combo-disable-checkbox').addEventListener('change', (e) => {
-            const checked = e.target.checked;
-            if (cell.existing) {
-                cell.existing.is_disabled = checked;
-                const hasUnitRatios = Object.keys(cell.existing.unit_ratios || {}).length > 0;
-                if (!checked && !cell.existing.image_url && !hasUnitRatios) {
-                    removeVariantRow(cell.existing.tempId);
-                    return;
-                }
-            } else if (checked) {
-                localVariantRows.push({
-                    tempId: ++variantTempCounter,
-                    id: null,
-                    erp_code: currentVariantErp,
-                    axis_values: cell.values,
-                    image_url: null,
-                    is_disabled: true,
-                    sort_order: 0,
-                });
+        // 按住 shift 點的話，從上一次點的那一格到這一格之間全部一起套用同一個勾選狀態，
+        // 不用一格一格點——用 click（不是 change）才拿得到 shiftKey。
+        rowEl.querySelector('.combo-disable-checkbox').addEventListener('click', (e) => {
+            const checked = e.target.checked; // 瀏覽器已經先把這一格切好了
+            const cellIdx = Number(rowEl.dataset.cellIdx);
+
+            let targets = [cell];
+            if (e.shiftKey && lastComboDisableIndex !== null && cells[lastComboDisableIndex]) {
+                const [start, end] = [lastComboDisableIndex, cellIdx].sort((a, b) => a - b);
+                targets = cells.slice(start, end + 1);
             }
-            modalDirty = true;
-            renderVariantSection();
+            lastComboDisableIndex = cellIdx;
+
+            applyComboDisable(targets, checked);
         });
 
         const uploadInput = rowEl.querySelector('.combo-upload-input');
