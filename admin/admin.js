@@ -1227,8 +1227,10 @@ function comboKeyOf(values) {
 // 軸數不多、選項也不多時（例如規格3種×顏色2種＝6種），自動列出「每個軸都對應到」的所有組合，
 // 不用一筆一筆手動建立；軸太多、選項太多時（組合數量爆炸，例如型號/W/H/L/A排水孔位/備註 6 個軸）
 // 就不自動列，只顯示已經存的組合，改用下面「手動新增一筆完整組合」的下拉選單自己建立。
+// 上限訂在 1000：像 3 個軸、每個軸 8 個選項（512 種）這種常見情況還是要能自動列出來，
+// 同時避免軸數/選項數異常多的商品（例如 6 個軸各自 10 幾種）一次跑出破萬筆卡住畫面。
 const COMBO_GRID_MAX_AXES = 4;
-const COMBO_GRID_MAX_TOTAL = 300;
+const COMBO_GRID_MAX_TOTAL = 1000;
 
 function renderComboList(combos, axisOptions, axisNames) {
     const container = document.getElementById('variant-combo-list');
