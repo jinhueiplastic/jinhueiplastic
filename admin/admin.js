@@ -680,6 +680,10 @@ let localVariantRows = [];
 let deletedVariantIds = [];
 let knownAxisNames = []; // 全部商品出現過的軸名稱，純粹給「新增選項」自動完成用
 let lastComboDisableIndex = null; // 上一次點的「停用」勾選框在完整組合列表裡的位置，shift+點用來算範圍
+// 完整組合的顯示順序（未停用排最上面）只在「剛從資料庫載入」的當下決定一次，存成快照；
+// 編輯過程中不管勾了幾次停用，排列順序都不會變，不然勾一格馬上跳位置，shift range 選取
+// 會選到不對的東西。快照只在下一次載入商品（也就是儲存後重新打開）時才會更新。
+let comboSortSnapshot = null; // Map: comboKeyOf(axis_values) -> 載入當下的 is_disabled
 
 // 把「整個值」前後包住的括號拿掉（例如貼上「（紅）」想要的其實是「紅」）。
 // 只有第一個字跟最後一個字剛好是配對的括號才拆，不然像「1" x 1" (25mm)」
@@ -943,6 +947,14 @@ async function loadVariantSection(product) {
     }
 
     localVariantRows = (data || []).map(r => ({ ...r, axis_values: r.axis_values || {}, tempId: ++variantTempCounter }));
+
+    comboSortSnapshot = new Map();
+    localVariantRows.forEach(r => {
+        if (Object.keys(r.axis_values).length >= 2) {
+            comboSortSnapshot.set(comboKeyOf(r.axis_values), !!r.is_disabled);
+        }
+    });
+
     renderVariantSection();
 }
 
@@ -975,69 +987,100 @@ function axisChipHtml(r, name, isFirst, isLast) {
         </div>`;
 }
 
-// 把「單位=數字，多個用，分開」格式的文字解析成 {單位名稱: 數字}；格式不對或單位名稱
-// 不存在的話，跳警告並回傳 null（呼叫端看到 null 就直接放棄，不要繼續往下套用）。
-function parseUnitRatiosInput(trimmed, unitNames) {
-    const parsed = {};
-    if (!trimmed) return parsed;
-    for (const part of trimmed.split(/[,，]/)) {
-        const [rawName, rawVal] = part.split('=').map(s => (s || '').trim());
-        const num = Number(rawVal);
-        if (!rawName || !unitNames.includes(rawName) || !num || num <= 0) {
-            alert(`格式不對，或是單位名稱不存在：「${part}」。請用「單位=正數」的格式，單位要是這個商品已經有的（${unitNames.join('、')}）。`);
-            return null;
+// 單位比例表單：每個單位一行，基準單位（比例最小的那個）直接顯示「1個＝1個」不能改，
+// 其他單位是一個輸入框，只要打數字——輸入框留空的話輸入框上會用灰字提示商品預設的比例是多少，
+// 存的時候也會直接當作「用預設」（不寫進覆蓋）。
+function unitRatioFormRowsHtml(currentRatios) {
+    const base = unitRatioBase();
+    if (!base) return '';
+    return localUnitRows.map(u => {
+        if (u === base) {
+            return `<div class="text-xs text-gray-500 py-1">1${escapeHtml(base.name)}＝1${escapeHtml(base.name)}</div>`;
         }
-        parsed[rawName] = num;
-    }
-    return parsed;
+        const override = currentRatios && currentRatios[u.name];
+        const defaultRatio = formatRatioNumber(Number(u.ratio) / Number(base.ratio));
+        return `
+            <div class="flex items-center gap-1 text-xs py-0.5">
+                <span class="whitespace-nowrap">1${escapeHtml(u.name)}＝</span>
+                <input type="number" class="combo-ratio-input field-input" style="width:5rem" min="0.0001" step="any"
+                    data-unit="${escapeHtml(u.name)}" value="${override != null ? override : ''}" placeholder="${defaultRatio}（預設）">
+                <span class="whitespace-nowrap">${escapeHtml(base.name)}</span>
+            </div>`;
+    }).join('');
 }
 
-// 幫某一筆完整組合（例如 型號：PF-16／規格：½"／長度：50米/丸）設定專屬的單位比例，
-// 覆蓋商品層級的預設值；留空的話這筆組合就會退回用商品預設的比例（在下面「訂單單位」設定）。
-// 這筆組合原本沒有底層資料列的話（純展示用的格子），設定成功才會真的新增一筆。
-function editComboUnitRatios(cell) {
+// 讀出單位比例表單目前填的值：{單位名稱: 數字}，留空的單位不會出現在結果裡（代表用預設）；
+// 有填但不是正數的話回傳 null，呼叫端看到 null 就不要繼續套用。
+function readUnitRatioForm(panelEl) {
+    const parsed = {};
+    let ok = true;
+    panelEl.querySelectorAll('.combo-ratio-input').forEach(input => {
+        input.classList.remove('border-red-400');
+        const raw = input.value.trim();
+        if (!raw) return;
+        const num = Number(raw);
+        if (!num || num <= 0) { ok = false; input.classList.add('border-red-400'); return; }
+        parsed[input.dataset.unit] = num;
+    });
+    return ok ? parsed : null;
+}
+
+function unitRatioPanelActionsHtml(saveLabel) {
+    return `
+        <div class="flex gap-2 pt-1">
+            <button type="button" class="combo-ratio-save px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">${escapeHtml(saveLabel)}</button>
+            <button type="button" class="combo-ratio-cancel px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100">取消</button>
+        </div>`;
+}
+
+// 幫某一筆完整組合（例如 型號：PF-16／規格：½"／長度：50米/丸）打開單位比例表單，
+// 覆蓋商品層級的預設值；輸入框留空的話這筆組合就會退回用商品預設的比例。
+// 這筆組合原本沒有底層資料列的話（純展示用的格子），存了才會真的新增一筆。
+function openComboRatioPanel(cell, rowEl, container) {
+    const existingPanel = rowEl.nextElementSibling;
+    if (existingPanel && existingPanel.classList.contains('combo-ratio-panel')) {
+        existingPanel.remove();
+        return;
+    }
+    container.querySelectorAll('.combo-ratio-panel').forEach(p => p.remove()); // 同時間只開一個
+
     if (localUnitRows.length < 2) {
         alert('這個商品要有 2 個以上的單位，才需要另外設定比例覆蓋——請先到下面「訂單單位」新增第二個單位。');
         return;
     }
-    const unitNames = localUnitRows.map(u => u.name);
+
     const currentRatios = (cell.existing && cell.existing.unit_ratios) || {};
-    const current = Object.entries(currentRatios)
-        .filter(([n]) => unitNames.includes(n))
-        .map(([n, v]) => `${n}=${v}`).join('，');
+    const panel = document.createElement('div');
+    panel.className = 'combo-ratio-panel border rounded-lg p-2 mt-1 mb-1 bg-gray-50';
+    panel.innerHTML = unitRatioFormRowsHtml(currentRatios) + unitRatioPanelActionsHtml('儲存');
+    rowEl.insertAdjacentElement('afterend', panel);
 
-    const raw = prompt(
-        `幫「${cell.label}」這筆組合設定專屬的單位比例（留空＝用商品預設的比例）。\n` +
-        `格式：單位=數字，多個用，分開，例如 箱=24。\n` +
-        `這個商品的單位：${unitNames.join('、')}`,
-        current
-    );
-    if (raw === null) return;
-    const trimmed = raw.trim();
-    if (!trimmed && !cell.existing) return; // 本來就沒有底層資料列，清空成沒有覆蓋等於沒異動
+    panel.querySelector('.combo-ratio-cancel').addEventListener('click', () => panel.remove());
+    panel.querySelector('.combo-ratio-save').addEventListener('click', () => {
+        const parsed = readUnitRatioForm(panel);
+        if (parsed === null) return; // 有欄位填了非正數，錯誤提示已經用紅框標出來了
+        if (!Object.keys(parsed).length && !cell.existing) { panel.remove(); return; }
 
-    const parsed = parseUnitRatiosInput(trimmed, unitNames);
-    if (parsed === null) return;
+        let row = cell.existing;
+        if (!row) {
+            row = {
+                tempId: ++variantTempCounter,
+                id: null,
+                erp_code: currentVariantErp,
+                axis_values: cell.values,
+                image_url: null,
+                sort_order: 0,
+                is_disabled: false,
+                unit_ratios: {},
+            };
+            localVariantRows.push(row);
+            cell.existing = row;
+        }
+        row.unit_ratios = parsed;
 
-    let row = cell.existing;
-    if (!row) {
-        row = {
-            tempId: ++variantTempCounter,
-            id: null,
-            erp_code: currentVariantErp,
-            axis_values: cell.values,
-            image_url: null,
-            sort_order: 0,
-            is_disabled: false,
-            unit_ratios: {},
-        };
-        localVariantRows.push(row);
-        cell.existing = row;
-    }
-    row.unit_ratios = parsed;
-
-    modalDirty = true;
-    renderVariantSection();
+        modalDirty = true;
+        renderVariantSection();
+    });
 }
 
 function wireAxisChips(scopeEl) {
@@ -1353,9 +1396,17 @@ function renderComboList(combos, axisOptions, axisNames) {
         renderVariantSection();
     }
 
-    // 未停用（可以選）的排在最上面，停用的沉到下面，方便掃過去看還剩哪些可以選——
+    // 未停用（可以選）的排在最上面，停用的沉到下面，方便掃過去看還剩哪些可以選；
     // 用穩定排序，同一組（都可以選或都停用）裡面還是維持原本 axisNames 那個規律的順序。
-    cells.sort((a, b) => Number(!!(a.existing && a.existing.is_disabled)) - Number(!!(b.existing && b.existing.is_disabled)));
+    // 排序依據是「載入商品當下」的快照，不是即時的勾選狀態——不然邊勾邊跳位置，
+    // shift 範圍選取會選到不對的格子。要等儲存後重新打開這個商品，順序才會更新。
+    if (comboSortSnapshot) {
+        cells.sort((a, b) => {
+            const disabledA = a.existing ? comboSortSnapshot.get(comboKeyOf(a.values)) : undefined;
+            const disabledB = b.existing ? comboSortSnapshot.get(comboKeyOf(b.values)) : undefined;
+            return Number(!!disabledA) - Number(!!disabledB);
+        });
+    }
 
     if (!cells.length) {
         container.innerHTML = axisNames.length < 2
@@ -1367,7 +1418,7 @@ function renderComboList(combos, axisOptions, axisNames) {
     const hasAnyExisting = cells.some(c => c.existing);
 
     const bulkBarHtml = hasAnyExisting ? `
-        <div class="flex items-center gap-2 mb-2 pb-2 border-b">
+        <div id="combo-bulk-bar" class="flex items-center gap-2 mb-2 pb-2 border-b">
             <label class="flex items-center gap-1 text-xs text-gray-600">
                 <input type="checkbox" id="combo-select-all">
                 全選
@@ -1441,24 +1492,36 @@ function renderComboList(combos, axisOptions, axisNames) {
             const selectedCells = getSelectedCells();
             if (!selectedCells.length) return;
 
+            const bulkBar = document.getElementById('combo-bulk-bar');
+            const existingPanel = bulkBar.nextElementSibling;
+            if (existingPanel && existingPanel.classList.contains('combo-ratio-panel')) {
+                existingPanel.remove();
+                return;
+            }
+            container.querySelectorAll('.combo-ratio-panel').forEach(p => p.remove());
+
             if (localUnitRows.length < 2) {
                 alert('這個商品要有 2 個以上的單位，才需要另外設定比例覆蓋——請先到下面「訂單單位」新增第二個單位。');
                 return;
             }
-            const unitNames = localUnitRows.map(u => u.name);
-            const raw = prompt(
-                `幫選取的 ${selectedCells.length} 筆組合統一設定專屬的單位比例（留空＝用商品預設的比例）。\n` +
-                `格式：單位=數字，多個用，分開，例如 箱=24。\n` +
-                `這個商品的單位：${unitNames.join('、')}`,
-                ''
-            );
-            if (raw === null) return;
-            const parsed = parseUnitRatiosInput(raw.trim(), unitNames);
-            if (parsed === null) return;
 
-            selectedCells.forEach(cell => { cell.existing.unit_ratios = parsed; });
-            modalDirty = true;
-            renderVariantSection();
+            const panel = document.createElement('div');
+            panel.className = 'combo-ratio-panel border rounded-lg p-2 mb-2 bg-gray-50';
+            panel.innerHTML = `
+                <p class="text-xs text-gray-500 mb-1">幫選取的 ${selectedCells.length} 筆組合統一設定：</p>
+                ${unitRatioFormRowsHtml({})}
+                ${unitRatioPanelActionsHtml('套用到選取的組合')}`;
+            bulkBar.insertAdjacentElement('afterend', panel);
+
+            panel.querySelector('.combo-ratio-cancel').addEventListener('click', () => panel.remove());
+            panel.querySelector('.combo-ratio-save').addEventListener('click', () => {
+                const parsed = readUnitRatioForm(panel);
+                if (parsed === null) return;
+
+                selectedCells.forEach(cell => { cell.existing.unit_ratios = parsed; });
+                modalDirty = true;
+                renderVariantSection();
+            });
         });
 
         deleteSelectedBtn.addEventListener('click', () => {
@@ -1537,7 +1600,7 @@ function renderComboList(combos, axisOptions, axisNames) {
         }
 
         const unitRatioBtn = rowEl.querySelector('.combo-unit-ratio-btn');
-        if (unitRatioBtn) unitRatioBtn.addEventListener('click', () => editComboUnitRatios(cell));
+        if (unitRatioBtn) unitRatioBtn.addEventListener('click', () => openComboRatioPanel(cell, rowEl, container));
 
         // 「停用（不能選）」勾起來＝這個組合在 POS 下單會讓其中一個軸的選項變灰色點不到。
         // 按住 shift 點的話，從上一次點的那一格到這一格之間全部一起套用同一個勾選狀態，
