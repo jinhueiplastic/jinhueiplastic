@@ -53,12 +53,12 @@ function setStatus(msg) {
 
 async function loadProducts() {
     setStatus('載入商品資料中…');
-    // row_index 是 Google Sheet「POS items」分頁同步過來的列順序，跟 POS 下單頁面
-    // 排序邏輯一致，讓這裡的商品清單同分類底下的順序也跟 Sheet 由上到下一致。
+    // row_index 是 Google Sheet「POS items」分頁同步過來的列順序。改成主要排序依據
+    // （不先照分類排），這樣分類本身出現的順序、還有同分類底下商品的順序，
+    // 才會一起跟著 Sheet 由上到下一致（哪個分類的商品先出現在 Sheet 上面，那個分類就排前面）。
     const { data, error } = await sb
         .from('pos_items')
         .select('*')
-        .order('category_name_zh', { ascending: true })
         .order('row_index', { ascending: true })
         .order('erp_code', { ascending: true });
 
@@ -81,8 +81,9 @@ function renderCategoryFilterTiles() {
     const select = document.getElementById('category-filter-select');
     if (!container && !select) return;
 
-    const categories = [...new Set(allProducts.map(p => (p.category_name_zh || '').trim()).filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    // allProducts 已經照 Google Sheet 的 row_index 排過序了，Set 保留第一次出現的順序，
+    // 篩選按鈕的分類順序才會跟下面商品清單的分類順序一致。
+    const categories = [...new Set(allProducts.map(p => (p.category_name_zh || '').trim()).filter(Boolean))];
 
     if (container) {
         const allBtn = `
@@ -133,6 +134,9 @@ function applyFilters() {
     renderTable(filtered);
 }
 
+// 分類本身出現的順序，跟著傳進來的 products 陣列裡「第一次遇到這個分類」的順序走
+// （products 已經照 Google Sheet 的 row_index 排過序了，所以分類順序也會是 Sheet 由上到下、
+// 哪個分類的商品先出現在 Sheet 上面，那個分類就排前面），不再另外照分類名稱字母排序。
 function groupByCategory(products) {
     const groups = new Map();
     products.forEach(p => {
@@ -140,7 +144,7 @@ function groupByCategory(products) {
         if (!groups.has(cat)) groups.set(cat, []);
         groups.get(cat).push(p);
     });
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+    return [...groups.entries()];
 }
 
 function productRowHtml(p) {
