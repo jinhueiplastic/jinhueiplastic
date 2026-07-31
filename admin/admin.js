@@ -961,7 +961,6 @@ function axisChipHtml(r, name, isFirst, isLast) {
             <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
             <button type="button" class="axis-value-edit-btn flex-1 text-sm text-left hover:underline hover:text-blue-600" title="點一下改這個選項的值">${escapeHtml(rawValue)} ✎</button>
             <span class="axis-upload-status text-xs text-gray-400"></span>
-            <button type="button" class="axis-unit-ratio-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="這個選項專屬的單位比例，留空就用商品預設的比例">${escapeHtml(unitRatioSummary(r.unit_ratios))}</button>
             <button type="button" class="axis-insert-before-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之前插入新選項">＋前</button>
             <button type="button" class="axis-insert-after-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之後插入新選項">＋後</button>
             <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
@@ -974,31 +973,32 @@ function axisChipHtml(r, name, isFirst, isLast) {
         </div>`;
 }
 
-// 幫某個選項（例如 尺寸：4"）設定專屬的單位比例，覆蓋商品層級的預設值；
-// 留空的話這個選項就會退回用商品預設的比例（在下面「訂單單位」設定）。
-function editRowUnitRatios(row, label) {
+// 幫某一筆完整組合（例如 型號：PF-16／規格：½"／長度：50米/丸）設定專屬的單位比例，
+// 覆蓋商品層級的預設值；留空的話這筆組合就會退回用商品預設的比例（在下面「訂單單位」設定）。
+// 這筆組合原本沒有底層資料列的話（純展示用的格子），設定成功才會真的新增一筆。
+function editComboUnitRatios(cell) {
     if (localUnitRows.length < 2) {
         alert('這個商品要有 2 個以上的單位，才需要另外設定比例覆蓋——請先到下面「訂單單位」新增第二個單位。');
         return;
     }
     const unitNames = localUnitRows.map(u => u.name);
-    const current = Object.entries(row.unit_ratios || {})
+    const currentRatios = (cell.existing && cell.existing.unit_ratios) || {};
+    const current = Object.entries(currentRatios)
         .filter(([n]) => unitNames.includes(n))
         .map(([n, v]) => `${n}=${v}`).join('，');
 
     const raw = prompt(
-        `幫「${label}」設定專屬的單位比例（留空＝用商品預設的比例）。\n` +
+        `幫「${cell.label}」這筆組合設定專屬的單位比例（留空＝用商品預設的比例）。\n` +
         `格式：單位=數字，多個用，分開，例如 箱=24。\n` +
         `這個商品的單位：${unitNames.join('、')}`,
         current
     );
     if (raw === null) return;
     const trimmed = raw.trim();
+    if (!trimmed && !cell.existing) return; // 本來就沒有底層資料列，清空成沒有覆蓋等於沒異動
 
-    if (!trimmed) {
-        row.unit_ratios = {};
-    } else {
-        const parsed = {};
+    let parsed = {};
+    if (trimmed) {
         for (const part of trimmed.split(/[,，]/)) {
             const [rawName, rawVal] = part.split('=').map(s => (s || '').trim());
             const num = Number(rawVal);
@@ -1008,8 +1008,24 @@ function editRowUnitRatios(row, label) {
             }
             parsed[rawName] = num;
         }
-        row.unit_ratios = parsed;
     }
+
+    let row = cell.existing;
+    if (!row) {
+        row = {
+            tempId: ++variantTempCounter,
+            id: null,
+            erp_code: currentVariantErp,
+            axis_values: cell.values,
+            image_url: null,
+            sort_order: 0,
+            is_disabled: false,
+            unit_ratios: {},
+        };
+        localVariantRows.push(row);
+        cell.existing = row;
+    }
+    row.unit_ratios = parsed;
 
     modalDirty = true;
     renderVariantSection();
@@ -1020,17 +1036,6 @@ function wireAxisChips(scopeEl) {
         btn.addEventListener('click', () => {
             const rowEl = btn.closest('[data-temp-id]');
             editAxisOptionValue(rowEl.dataset.axisName, Number(rowEl.dataset.tempId));
-        });
-    });
-
-    scopeEl.querySelectorAll('.axis-unit-ratio-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const rowEl = btn.closest('[data-temp-id]');
-            const tempId = Number(rowEl.dataset.tempId);
-            const axisName = rowEl.dataset.axisName;
-            const row = localVariantRows.find(r => r.tempId === tempId);
-            if (!row) return;
-            editRowUnitRatios(row, row.axis_values[axisName]);
         });
     });
 
@@ -1339,6 +1344,7 @@ function renderComboList(combos, axisOptions, axisNames) {
                     <input type="file" accept="image/*" class="hidden combo-upload-input">
                 </label>`}
                 ${!isDisabled && existing && existing.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
+                ${isDisabled ? '' : `<button type="button" class="combo-unit-ratio-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="這筆組合專屬的單位比例，留空就用商品預設的比例">${escapeHtml(unitRatioSummary(existing ? existing.unit_ratios : null))}</button>`}
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
     }).join('');
@@ -1441,13 +1447,18 @@ function renderComboList(combos, axisOptions, axisNames) {
             });
         }
 
+        const unitRatioBtn = rowEl.querySelector('.combo-unit-ratio-btn');
+        if (unitRatioBtn) unitRatioBtn.addEventListener('click', () => editComboUnitRatios(cell));
+
         // 「停用（不能選）」勾起來＝這個組合在 POS 下單會讓其中一個軸的選項變灰色點不到。
-        // 沒有圖片、純粹只是拿來標記停用的組合，取消勾選時直接刪掉這筆資料，避免留下沒用的空紀錄。
+        // 沒有圖片、也沒有設定專屬單位比例，純粹只是拿來標記停用的組合，取消勾選時
+        // 直接刪掉這筆資料，避免留下沒用的空紀錄。
         rowEl.querySelector('.combo-disable-checkbox').addEventListener('change', (e) => {
             const checked = e.target.checked;
             if (cell.existing) {
                 cell.existing.is_disabled = checked;
-                if (!checked && !cell.existing.image_url) {
+                const hasUnitRatios = Object.keys(cell.existing.unit_ratios || {}).length > 0;
+                if (!checked && !cell.existing.image_url && !hasUnitRatios) {
                     removeVariantRow(cell.existing.tempId);
                     return;
                 }

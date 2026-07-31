@@ -90,10 +90,10 @@ async function initPos() {
             const [name, value] = entries[0];
             if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = {};
             if (!variantOptionsByErp[v.erp_code][name]) variantOptionsByErp[v.erp_code][name] = [];
-            variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url, unit_ratios: v.unit_ratios || {} });
+            variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url });
         } else {
             if (!combosByErp[v.erp_code]) combosByErp[v.erp_code] = [];
-            combosByErp[v.erp_code].push({ values: v.axis_values, image_url: v.image_url, is_disabled: !!v.is_disabled });
+            combosByErp[v.erp_code].push({ values: v.axis_values, image_url: v.image_url, is_disabled: !!v.is_disabled, unit_ratios: v.unit_ratios || {} });
         }
     });
 
@@ -827,19 +827,14 @@ function currentUnitOptions() {
     return allUnits.map(name => ({ name, ratio: null }));
 }
 
-// 目前選到的規格/尺寸…裡，只要有一個選項對這個單位設定了專屬比例就用那個，
-// 找不到才退回商品層級（pos_item_units）的預設比例。
+// 目前選到的軸剛好對到一筆完整組合、而且那筆組合對這個單位設定了專屬比例的話就用那個
+// （找最具體、比對到的軸最多的那一筆，跟找組合照片用的邏輯一樣），找不到才退回商品層級
+// （pos_item_units）的預設比例。
 function effectiveUnitRatio(unitName, productRatio) {
     if (!browseProduct) return productRatio;
-    const opts = variantOptionsByErp[browseProduct.erp_code] || {};
-    for (const axis of Object.keys(selectedVariant)) {
-        const value = selectedVariant[axis];
-        if (!value) continue;
-        const match = (opts[axis] || []).find(o => o.value === value);
-        const override = match && match.unit_ratios && match.unit_ratios[unitName];
-        if (Number.isFinite(override)) return override;
-    }
-    return productRatio;
+    const combo = findBestCombo(browseProduct.erp_code, currentVariantValues());
+    const override = combo && combo.unit_ratios && combo.unit_ratios[unitName];
+    return Number.isFinite(override) ? override : productRatio;
 }
 
 // 商品有 2 個以上「有比例資料」的單位時，才知道換算關係，顯示成一行灰字提示
