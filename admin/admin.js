@@ -944,6 +944,11 @@ async function loadVariantSection(product) {
     renderVariantSection();
 }
 
+function unitRatioSummary(unitRatios) {
+    const entries = Object.entries(unitRatios || {});
+    return entries.length ? `比例：${entries.map(([n, v]) => `${n}=${v}`).join('、')}` : '單位比例';
+}
+
 function axisChipHtml(r, name, isFirst, isLast) {
     const rawValue = r.axis_values[name];
     const splitCount = splitBulkValues(rawValue).length;
@@ -956,6 +961,7 @@ function axisChipHtml(r, name, isFirst, isLast) {
             <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
             <button type="button" class="axis-value-edit-btn flex-1 text-sm text-left hover:underline hover:text-blue-600" title="點一下改這個選項的值">${escapeHtml(rawValue)} ✎</button>
             <span class="axis-upload-status text-xs text-gray-400"></span>
+            <button type="button" class="axis-unit-ratio-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="這個選項專屬的單位比例，留空就用商品預設的比例">${escapeHtml(unitRatioSummary(r.unit_ratios))}</button>
             <button type="button" class="axis-insert-before-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之前插入新選項">＋前</button>
             <button type="button" class="axis-insert-after-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之後插入新選項">＋後</button>
             <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
@@ -968,11 +974,63 @@ function axisChipHtml(r, name, isFirst, isLast) {
         </div>`;
 }
 
+// 幫某個選項（例如 尺寸：4"）設定專屬的單位比例，覆蓋商品層級的預設值；
+// 留空的話這個選項就會退回用商品預設的比例（在下面「訂單單位」設定）。
+function editRowUnitRatios(row, label) {
+    if (localUnitRows.length < 2) {
+        alert('這個商品要有 2 個以上的單位，才需要另外設定比例覆蓋——請先到下面「訂單單位」新增第二個單位。');
+        return;
+    }
+    const unitNames = localUnitRows.map(u => u.name);
+    const current = Object.entries(row.unit_ratios || {})
+        .filter(([n]) => unitNames.includes(n))
+        .map(([n, v]) => `${n}=${v}`).join('，');
+
+    const raw = prompt(
+        `幫「${label}」設定專屬的單位比例（留空＝用商品預設的比例）。\n` +
+        `格式：單位=數字，多個用，分開，例如 箱=24。\n` +
+        `這個商品的單位：${unitNames.join('、')}`,
+        current
+    );
+    if (raw === null) return;
+    const trimmed = raw.trim();
+
+    if (!trimmed) {
+        row.unit_ratios = {};
+    } else {
+        const parsed = {};
+        for (const part of trimmed.split(/[,，]/)) {
+            const [rawName, rawVal] = part.split('=').map(s => (s || '').trim());
+            const num = Number(rawVal);
+            if (!rawName || !unitNames.includes(rawName) || !num || num <= 0) {
+                alert(`格式不對，或是單位名稱不存在：「${part}」。請用「單位=正數」的格式，單位要是這個商品已經有的（${unitNames.join('、')}）。`);
+                return;
+            }
+            parsed[rawName] = num;
+        }
+        row.unit_ratios = parsed;
+    }
+
+    modalDirty = true;
+    renderVariantSection();
+}
+
 function wireAxisChips(scopeEl) {
     scopeEl.querySelectorAll('.axis-value-edit-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const rowEl = btn.closest('[data-temp-id]');
             editAxisOptionValue(rowEl.dataset.axisName, Number(rowEl.dataset.tempId));
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-unit-ratio-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            const tempId = Number(rowEl.dataset.tempId);
+            const axisName = rowEl.dataset.axisName;
+            const row = localVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            editRowUnitRatios(row, row.axis_values[axisName]);
         });
     });
 
@@ -1607,6 +1665,7 @@ async function saveVariantChanges() {
             image_url: r.image_url || null,
             sort_order: r.sort_order || 0,
             is_disabled: !!r.is_disabled,
+            unit_ratios: r.unit_ratios || {},
         }));
         const { error } = await sb.from('pos_item_variants').upsert(rows, { onConflict: 'erp_code,axis_values' });
         if (error) throw error;

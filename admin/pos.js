@@ -86,7 +86,7 @@ async function initPos() {
             const [name, value] = entries[0];
             if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = {};
             if (!variantOptionsByErp[v.erp_code][name]) variantOptionsByErp[v.erp_code][name] = [];
-            variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url });
+            variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url, unit_ratios: v.unit_ratios || {} });
         } else {
             if (!combosByErp[v.erp_code]) combosByErp[v.erp_code] = [];
             combosByErp[v.erp_code].push({ values: v.axis_values, image_url: v.image_url, is_disabled: !!v.is_disabled });
@@ -678,6 +678,7 @@ function updateVariantPreviewImage(p) {
     updateDisabledTiles(p);
     const img = document.getElementById('variant-preview-img');
     if (img) img.src = currentComboImage(p);
+    refreshUnitRatioHint(); // 選到的規格/尺寸可能有自己專屬的單位比例，換選項就要重算提示文字
 }
 
 // 訂單存檔後，把這次用到、但還沒被登記過的值自動存成新的可點選項目
@@ -790,13 +791,34 @@ function currentUnitOptions() {
     return allUnits.map(name => ({ name, ratio: null }));
 }
 
+// 目前選到的規格/尺寸…裡，只要有一個選項對這個單位設定了專屬比例就用那個，
+// 找不到才退回商品層級（pos_item_units）的預設比例。
+function effectiveUnitRatio(unitName, productRatio) {
+    if (!browseProduct) return productRatio;
+    const opts = variantOptionsByErp[browseProduct.erp_code] || {};
+    for (const axis of Object.keys(selectedVariant)) {
+        const value = selectedVariant[axis];
+        if (!value) continue;
+        const match = (opts[axis] || []).find(o => o.value === value);
+        const override = match && match.unit_ratios && match.unit_ratios[unitName];
+        if (Number.isFinite(override)) return override;
+    }
+    return productRatio;
+}
+
 // 商品有 2 個以上「有比例資料」的單位時，才知道換算關係，顯示成一行灰字提示
 // （例如 1個＝1個，1箱＝12個），比例基準用數值最小的那個單位當「1」。
 function unitRatioHintText() {
     const options = currentUnitOptions().filter(u => Number.isFinite(u.ratio));
     if (options.length < 2) return '';
-    const base = options.reduce((min, u) => (u.ratio < min.ratio ? u : min), options[0]);
-    return options.map(u => `1${u.name}＝${formatRatioNumber(u.ratio / base.ratio)}${base.name}`).join('，');
+    const effective = options.map(u => ({ name: u.name, ratio: effectiveUnitRatio(u.name, u.ratio) }));
+    const base = effective.reduce((min, u) => (u.ratio < min.ratio ? u : min), effective[0]);
+    return effective.map(u => `1${u.name}＝${formatRatioNumber(u.ratio / base.ratio)}${base.name}`).join('，');
+}
+
+function refreshUnitRatioHint() {
+    const hintEl = document.getElementById('unit-ratio-hint');
+    if (hintEl) hintEl.textContent = unitRatioHintText();
 }
 
 function renderUnitTiles() {
@@ -836,8 +858,7 @@ function renderUnitTiles() {
         });
     }
 
-    const hintEl = document.getElementById('unit-ratio-hint');
-    if (hintEl) hintEl.textContent = unitRatioHintText();
+    refreshUnitRatioHint();
 }
 
 async function commitNewUnit(rawValue) {
