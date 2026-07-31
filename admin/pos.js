@@ -6,6 +6,10 @@ let categoryCards = [];      // 官網「商品目錄」頁用的分類卡片：
 let categoryNameById = {};   // catId -> 中文分類顯示名稱
 let variantOptionsByErp = {}; // erp_code -> { 軸名稱: [{value,image_url}], ... }，各軸各自有哪些可點選項目
 let selectedVariant = {}; // 目前規格畫面上，用按鈕/打字選到的值，key 是軸名稱
+// 哪些軸目前的值是系統自動幫忙選的（不是使用者自己點的）。自動選起來的值只是「方便」，
+// 不能拿去限制別的軸還能選什麼——不然選完型號、規格跟長度被自動帶出來之後，
+// 這兩個軸反過來把型號自己的其他選項也鎖住了，使用者會沒辦法換選別的型號。
+let autoSelectedAxes = new Set();
 let combosByErp = {}; // erp_code -> [{ values: {軸名:值,...}, image_url }]，同一列記錄好幾個軸的完整組合
 let allUnits = []; // 所有出現過的單位（來自 pos_units），商品自己沒設定過單位時的備援清單
 let unitsByErp = {}; // erp_code -> [{name, ratio}]，每個商品各自記住自己常用的單位跟換算比例
@@ -556,6 +560,14 @@ function currentVariantValues() {
     return values;
 }
 
+// 跟 currentVariantValues 一樣，但不含系統自動幫忙選的軸——判斷「別的軸還能不能選」
+// 只看使用者自己真的選過／打過的值，不能被自動帶出來的值反過來鎖住。
+function manualVariantValues() {
+    const values = currentVariantValues();
+    autoSelectedAxes.forEach(axis => { delete values[axis]; });
+    return values;
+}
+
 // 找出「目前選到的每個軸都對得上」的完整組合裡，比對到的軸最多（最具體）的那一筆；
 // 這樣即使組合裡還帶著使用者沒有直接選的其他軸（例如型號帶出來的 W/H/L），也能找到。
 function findBestCombo(erp, selectedValues) {
@@ -644,31 +656,54 @@ function isValueDisabled(erp, axis, value, otherSelectedValues) {
 
 // 依照目前選到的值，把每個規格按鈕該不該變灰色（不能點）算出來；
 // 如果目前選到的值剛好因為別的軸也選了而變成不能選的組合，自動取消選取，避免送出無效組合。
+// 另外，還沒選的軸如果因為別的軸已經選了，只剩下唯一一個可以選的值
+// （例如型號決定了唯一一組規格＋長度），直接幫忙選起來，不用使用者自己點。
 function updateDisabledTiles(p) {
+    const axisNames = productAxisNames(p);
     let changed = true;
     while (changed) {
         changed = false;
-        const current = currentVariantValues();
+        const manual = manualVariantValues();
+
+        // 自動選起來的值，只要是使用者自己選的其他軸（manual）判斷已經不成立了，就清掉
+        // （不管它本來是使用者自己點的還是系統自動帶的），讓下面重新用最新的狀態補回來。
         Object.keys(selectedVariant).forEach(axis => {
             const value = selectedVariant[axis];
             if (!value) return;
-            const others = { ...current };
+            const others = { ...manual };
             delete others[axis];
             if (isValueDisabled(p.erp_code, axis, value, others)) {
                 selectedVariant[axis] = '';
-                document.querySelectorAll('.variant-tile').forEach(b => {
-                    if (b.dataset.axis === axis && b.dataset.value === value) b.classList.remove('selected');
-                });
+                autoSelectedAxes.delete(axis);
+                changed = true;
+            }
+        });
+
+        const manualAfterClear = manualVariantValues();
+        axisNames.forEach(axis => {
+            if (selectedVariant[axis]) return;
+            const options = (variantOptionsByErp[p.erp_code] && variantOptionsByErp[p.erp_code][axis]) || [];
+            const others = { ...manualAfterClear };
+            const enabledValues = options.filter(o => !isValueDisabled(p.erp_code, axis, o.value, others));
+            if (enabledValues.length === 1) {
+                selectedVariant[axis] = enabledValues[0].value;
+                autoSelectedAxes.add(axis);
                 changed = true;
             }
         });
     }
 
-    const current = currentVariantValues();
+    document.querySelectorAll('.variant-tile').forEach(b => {
+        b.classList.toggle('selected', b.dataset.value === selectedVariant[b.dataset.axis]);
+    });
+
+    // 灰色（不能選）的判斷一樣只看使用者自己選的軸，不然自動帶出來的值會反過來
+    // 把驅動它的那個軸（例如型號）自己的其他選項也鎖住，換不了型號。
+    const manual = manualVariantValues();
     document.querySelectorAll('.variant-tile').forEach(btn => {
         const axis = btn.dataset.axis;
         const value = btn.dataset.value;
-        const others = { ...current };
+        const others = { ...manual };
         delete others[axis];
         btn.disabled = isValueDisabled(p.erp_code, axis, value, others);
     });
@@ -767,6 +802,7 @@ function applyDefaultVariantSelections(p) {
 
 function resetVariantPicker(p) {
     selectedVariant = {};
+    autoSelectedAxes = new Set();
     document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
     document.querySelectorAll('.variant-text-input').forEach(t => { t.value = ''; });
     if (p) applyDefaultVariantSelections(p);
@@ -894,6 +930,7 @@ function wireVariantPicker(p) {
     if (nameEditBtn) nameEditBtn.addEventListener('click', () => editProductOrderDisplayName(p));
 
     selectedVariant = {};
+    autoSelectedAxes = new Set();
     selectedUnit = '';
     unitAddMode = false;
     renderUnitTiles();
@@ -903,6 +940,7 @@ function wireVariantPicker(p) {
         const axis = textEl.dataset.axis;
         textEl.addEventListener('input', () => {
             // 打字的話以打字為準，把按鈕選取取消，避免兩邊同時生效搞不清楚是哪個。
+            autoSelectedAxes.delete(axis); // 使用者自己打字了，這個軸就不是自動帶的了
             if (textEl.value.trim() && selectedVariant[axis]) {
                 selectedVariant[axis] = '';
                 document.querySelectorAll('.variant-tile').forEach(b => {
@@ -918,6 +956,7 @@ function wireVariantPicker(p) {
             const axis = btn.dataset.axis;
             const value = btn.dataset.value;
             selectedVariant[axis] = (selectedVariant[axis] === value) ? '' : value; // 再點一次取消選取
+            autoSelectedAxes.delete(axis); // 使用者自己點了，這個軸就不是自動帶的了
             document.querySelectorAll('.variant-tile').forEach(b => {
                 if (b.dataset.axis === axis) b.classList.toggle('selected', b.dataset.value === selectedVariant[axis]);
             });
