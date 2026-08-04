@@ -297,6 +297,26 @@ function syncPosItems() {
   }
 
   batchUpsertOnConflict('/rest/v1/pos_items', items, 'erp_code,category_name_zh');
+
+  // 已經在「修改 POS 商品」頁面下架、而且這次 Sheet 上也沒有的商品，代表是真的不要了，
+  // 直接從 Supabase 刪掉；還留在 Sheet 上的話，就算目前是下架狀態也先不刪
+  // （可能只是暫時關閉，之後還會重新上架），避免誤刪。
+  // 注意：這個規則假設下架的商品原本就是從 Sheet 同步過來的——如果是完全只在
+  // 「修改 POS 商品」頁面手動新增、從來沒放進這張 Sheet 過的商品，一旦被下架，
+  // 下次推送也會被當成「不要了」一併刪掉，要留意。
+  const sheetKeys = {};
+  items.forEach(it => { sheetKeys[it.erp_code + '||' + it.category_name_zh] = true; });
+
+  const inactiveItems = supabaseRequest('GET', '/rest/v1/pos_items?select=id,erp_code,category_name_zh&is_active=eq.false', null) || [];
+  const idsToDelete = inactiveItems
+    .filter(p => !sheetKeys[String(p.erp_code || '').trim() + '||' + String(p.category_name_zh || '').trim()])
+    .map(p => p.id);
+
+  if (idsToDelete.length) {
+    supabaseRequest('DELETE', '/rest/v1/pos_items?id=in.(' + idsToDelete.join(',') + ')', null);
+    Logger.log('已刪除 ' + idsToDelete.length + ' 筆下架且已從 Sheet 移除的商品');
+  }
+
   Logger.log('POS items 同步完成，共 ' + items.length + ' 筆');
 }
 
