@@ -301,12 +301,16 @@ function syncPosItems() {
 }
 
 // ===== 拉回 Supabase pos_items → Sheet 2「POS items」 =====
+// 只拉「上架中」（is_active=true）的商品：已經在「修改 POS 商品」頁面下架的商品，
+// 就當作使用者不想再讓它出現在這張表——不然在 Sheet 上刪掉那一列之後，只要有任何
+// 異動觸發 webhook 自動拉回（或手動按「⬇️ 拉回」），Supabase 裡沒被真的刪除的資料
+// 又會被拉回來，看起來像是「刪不掉」。
 function pullPosItemsFromSupabase() {
   const ss = SpreadsheetApp.openById(SHEET2_ID);
   const sheet = ss.getSheetByName(POS_ITEMS_TAB);
   if (!sheet) { safeAlert('找不到 ' + POS_ITEMS_TAB + ' 分頁'); return; }
 
-  const items = supabaseRequest('GET', '/rest/v1/pos_items?select=*&order=erp_code.asc', null);
+  const items = supabaseRequest('GET', '/rest/v1/pos_items?select=*&is_active=eq.true&order=erp_code.asc', null);
   if (!items) {
     safeAlert('讀取 Supabase 失敗，詳情請看「執行項目」的紀錄');
     return;
