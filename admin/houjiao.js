@@ -2044,7 +2044,7 @@ function renderBoxThumbRow() {
     if (!boxPickerStates.length) { row.innerHTML = ''; return; }
     row.innerHTML = boxPickerStates.map((state, i) => `
         <div class="flex flex-col items-center gap-0.5" data-thumb-index="${i}">
-            <canvas class="box-preview-canvas hidden rounded border" width="64" height="64" style="width:56px;height:56px;"></canvas>
+            <canvas class="box-preview-canvas hidden rounded border" width="100" height="75" style="width:100px;height:75px;"></canvas>
             <span class="text-[10px] text-gray-400">盒${i + 1}</span>
         </div>`).join('');
 }
@@ -2430,8 +2430,8 @@ function renderBoxCompositeToDataUrl(boxValues) {
         if (!layerUrls.length) { resolve(null); return; }
 
         const canvas = document.createElement('canvas');
-        canvas.width = 160;
-        canvas.height = 160;
+        canvas.width = 2000;
+        canvas.height = 1500;
         const ctx = canvas.getContext('2d');
         Promise.all(layerUrls.map(loadImageEl))
             .then(imgs => {
