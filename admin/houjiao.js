@@ -2254,11 +2254,20 @@ async function renderCombinedCompositeToDataUrl(layerUrls, width, height) {
     return canvas.toDataURL('image/png');
 }
 
+// 架構這邊「完整組合」本身也可以上傳一張圖（在「編輯架構」彈窗裡）——如果目前選到的架構軸
+// 剛好對到一筆有上傳圖片的完整組合，就直接用那張（代表已經手動排好版的圖），不用再疊每個軸
+// 自己的小圖；沒有對到才退回疊圖（含借圖規則）。
+function resolveArchitectureLayerUrls(values) {
+    const combo = findBestCombo(values);
+    if (combo && combo.image_url) return [combo.image_url];
+    const axisNames = sortedAxisNames(pickerAxisOptions);
+    return resolveAxisLayerUrls(axisNames, pickerAxisOptions, values);
+}
+
 // 目前畫面上「架構＋所有接線盒」實際要疊的圖層網址，攤平成一份清單：架構的軸排最前面，
 // 接下來照 boxPickerStates 的順序，每個接線盒自己的軸接在後面。
 function currentCombinedLayerUrls() {
-    const archAxisNames = sortedAxisNames(pickerAxisOptions);
-    const archLayers = resolveAxisLayerUrls(archAxisNames, pickerAxisOptions, currentVariantValues());
+    const archLayers = resolveArchitectureLayerUrls(currentVariantValues());
 
     const boxAxisNames = sortedAxisNames(boxAxisOptions);
     const boxLayers = boxPickerStates.flatMap((state, i) => {
@@ -2424,8 +2433,7 @@ function localDayRangeUtc(dateStr) {
 // 跟畫面上即時預覽用的 currentCombinedLayerUrls() 是同一套規則，只是這裡讀的是存好的
 // 資料（record.variant_values／record.box_values），不是使用者正在選的狀態。
 function combinedLayerUrlsForRecord(record) {
-    const archAxisNames = sortedAxisNames(pickerAxisOptions);
-    const archLayers = resolveAxisLayerUrls(archAxisNames, pickerAxisOptions, record.variant_values || {});
+    const archLayers = resolveArchitectureLayerUrls(record.variant_values || {});
 
     const boxAxisNames = sortedAxisNames(boxAxisOptions);
     const boxLayers = (record.box_values || []).flatMap(bv => resolveAxisLayerUrls(boxAxisNames, boxAxisOptions, bv));
