@@ -15,7 +15,7 @@ const ADMIN_PAGES = [
     { key: 'region',    href: '/admin/region-form.html', label: '區域表單' },
     { key: 'customers', href: '/admin/customers.html',   label: '客戶資訊' },
     { key: 'products',  href: '/admin/',                 label: '修改 POS 商品' },
-    { key: 'houjiao',   href: '/admin/houjiao.html',     label: '打腳通知' },
+    { key: 'houjiao',   href: '/admin/metalstud.html',   label: '打腳通知' },
 ];
 
 function renderAdminNav(activeKey) {

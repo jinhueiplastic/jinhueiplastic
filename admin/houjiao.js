@@ -2032,13 +2032,26 @@ function boxPickerBlockHtml(i, state) {
                     與接線盒 1 一樣
                 </label>` : ''}
             </div>
-            <canvas class="box-preview-canvas hidden rounded border mb-2" width="240" height="240"></canvas>
             <div class="box-variant-fields space-y-2 ${state.linkedToFirst ? 'hidden' : ''}"></div>
         </div>`;
 }
 
+// 每個接線盒的合成示意圖集中放在表單最下面那排縮圖（跟各自的規格選擇區分開），
+// 順序、數量都跟 boxPickerStates 對齊。
+function renderBoxThumbRow() {
+    const row = document.getElementById('box-thumb-row');
+    if (!row) return;
+    if (!boxPickerStates.length) { row.innerHTML = ''; return; }
+    row.innerHTML = boxPickerStates.map((state, i) => `
+        <div class="flex flex-col items-center gap-0.5" data-thumb-index="${i}">
+            <canvas class="box-preview-canvas hidden rounded border" width="64" height="64" style="width:56px;height:56px;"></canvas>
+            <span class="text-[10px] text-gray-400">盒${i + 1}</span>
+        </div>`).join('');
+}
+
 function renderBoxPickersDom() {
     const container = document.getElementById('box-picker-container');
+    renderBoxThumbRow();
     if (!boxPickerStates.length) { container.innerHTML = ''; return; }
     container.innerHTML = boxPickerStates.map((state, i) => boxPickerBlockHtml(i, state)).join('');
     boxPickerStates.forEach((state, i) => wireBoxPicker(i));
@@ -2231,16 +2244,28 @@ function drawImageContain(ctx, img, canvasW, canvasH) {
     ctx.drawImage(img, (canvasW - w) / 2, (canvasH - h) / 2, w, h);
 }
 
+// 有選值但那個選項本身還沒設定圖片的軸，就借用「排序後第一個有圖的軸」的照片頂著疊上去
+// （寧可同一張圖被畫好幾層看起來怪，也不要那一層整個開天窗）。真的完全没有任何軸有圖的話，
+// 就沒有東西可以借，回傳空陣列（跟原本「完全沒圖就不合成」的行為一樣）。
+function resolveBoxCompositeLayerUrls(axisNames, axisOptions, selectedValues) {
+    const ownImageByAxis = {};
+    axisNames.forEach(name => {
+        const value = selectedValues[name];
+        if (!value) return;
+        const opt = (axisOptions[name] || []).find(o => o.value === value);
+        if (opt && opt.image_url) ownImageByAxis[name] = opt.image_url;
+    });
+    const fallbackUrl = axisNames.map(name => ownImageByAxis[name]).find(Boolean) || null;
+
+    return axisNames
+        .filter(name => selectedValues[name])
+        .map(name => ownImageByAxis[name] || fallbackUrl)
+        .filter(Boolean);
+}
+
 function compositeBoxImage(canvasEl, selectedValues, tokenKey) {
     const axisNames = sortedAxisNames(boxAxisOptions);
-    const layerUrls = axisNames
-        .map(name => {
-            const value = selectedValues[name];
-            if (!value) return null;
-            const opt = (boxAxisOptions[name] || []).find(o => o.value === value);
-            return opt && opt.image_url ? opt.image_url : null;
-        })
-        .filter(Boolean);
+    const layerUrls = resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, selectedValues);
 
     const ctx = canvasEl.getContext('2d');
     if (!layerUrls.length) {
@@ -2259,8 +2284,8 @@ function compositeBoxImage(canvasEl, selectedValues, tokenKey) {
 }
 
 function refreshBoxCanvas(i) {
-    const scopeEl = document.querySelector(`[data-box-index="${i}"]`);
-    const canvasEl = scopeEl && scopeEl.querySelector('.box-preview-canvas');
+    const thumbEl = document.querySelector(`#box-thumb-row [data-thumb-index="${i}"]`);
+    const canvasEl = thumbEl && thumbEl.querySelector('.box-preview-canvas');
     if (!canvasEl) return;
     const state = boxPickerStates[i];
     const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
@@ -2401,14 +2426,7 @@ function localDayRangeUtc(dateStr) {
 function renderBoxCompositeToDataUrl(boxValues) {
     return new Promise(resolve => {
         const axisNames = sortedAxisNames(boxAxisOptions);
-        const layerUrls = axisNames
-            .map(name => {
-                const value = boxValues[name];
-                if (!value) return null;
-                const opt = (boxAxisOptions[name] || []).find(o => o.value === value);
-                return opt && opt.image_url ? opt.image_url : null;
-            })
-            .filter(Boolean);
+        const layerUrls = resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, boxValues);
         if (!layerUrls.length) { resolve(null); return; }
 
         const canvas = document.createElement('canvas');
