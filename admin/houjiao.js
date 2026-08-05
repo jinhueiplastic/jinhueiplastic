@@ -10,8 +10,9 @@
    這樣兩邊雖然同一頁，行為上還是跟 admin.js／pos.js 分開兩個頁面時一樣，不會互相干擾。 */
 
 let modalDirty = false;
+let boxModalDirty = false;
 
-/* ===================== 編輯區：軸／完整組合（port 自 admin.js） ===================== */
+/* ===================== 編輯區：架構的軸／完整組合（port 自 admin.js） ===================== */
 
 let variantTempCounter = 0;
 let localVariantRows = [];
@@ -877,6 +878,766 @@ async function saveVariantChanges() {
     }
 }
 
+/* ===================== 編輯區：接線盒規格的軸／完整組合 =====================
+   跟上面架構的編輯區是同一套邏輯（軸/選項/完整組合、shift 範圍停用、貼表格匯入），
+   只是存到另一張表（houjiao_box_variants），而且完整組合不需要自己的照片——
+   選好之後的示意圖是把每個軸選到的那個選項的小圖疊在一起「合成」出來的（見下面選規格區），
+   所以這裡的完整組合列表沒有上傳/移除圖片的按鈕，其餘（stripWrappingBrackets、
+   splitBulkValues、categorizeVariantRows、axisChipHtml…等純函式）直接沿用上面架構那份。 */
+
+let boxVariantTempCounter = 0;
+let boxLocalVariantRows = [];
+let boxDeletedVariantIds = [];
+let boxLastComboDisableIndex = null;
+let boxComboSortSnapshot = null;
+
+function boxMoveAxisGroup(name, direction) {
+    const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    const idx = axisNames.indexOf(name);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= axisNames.length) return;
+
+    [axisNames[idx], axisNames[swapIdx]] = [axisNames[swapIdx], axisNames[idx]];
+    renumberVariantSortOrders(axisNames, axisOptions);
+
+    boxModalDirty = true;
+    renderBoxVariantSection();
+}
+
+function boxRenameAxis(oldName) {
+    const newName = prompt(`把「${oldName}」改名成？`, oldName);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+
+    const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
+    if (axisOptions[trimmed]) {
+        alert(`已經有「${trimmed}」這個軸了，換一個名字，或是先刪掉其中一個再改名。`);
+        return;
+    }
+
+    boxLocalVariantRows.forEach(row => {
+        if (!(oldName in row.axis_values)) return;
+        const value = row.axis_values[oldName];
+        const newValues = { ...row.axis_values };
+        delete newValues[oldName];
+        newValues[trimmed] = value;
+
+        if (row.id) boxDeletedVariantIds.push(row.id);
+        row.id = null;
+        row.axis_values = newValues;
+    });
+
+    boxModalDirty = true;
+    renderBoxVariantSection();
+}
+
+function boxEditAxisOptionValue(name, tempId) {
+    const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
+    const rows = axisOptions[name] || [];
+    const row = rows.find(r => r.tempId === tempId);
+    if (!row) return;
+
+    const currentValue = row.axis_values[name];
+    const raw = prompt(`把「${currentValue}」改成？`, currentValue);
+    if (raw === null) return;
+    const trimmed = stripWrappingBrackets(raw.trim()).trim();
+    if (!trimmed || trimmed === currentValue) return;
+
+    if (rows.some(r => r.tempId !== tempId && r.axis_values[name] === trimmed)) {
+        alert(`「${name}」已經有「${trimmed}」這個選項了，換一個值，或是先刪掉其中一個再改。`);
+        return;
+    }
+
+    boxLocalVariantRows.forEach(r => {
+        if (!(name in r.axis_values) || r.axis_values[name] !== currentValue) return;
+        const newValues = { ...r.axis_values, [name]: trimmed };
+
+        if (r.id) boxDeletedVariantIds.push(r.id);
+        r.id = null;
+        r.axis_values = newValues;
+    });
+
+    boxModalDirty = true;
+    renderBoxVariantSection();
+}
+
+function boxMoveAxisOption(name, tempId, direction) {
+    const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
+    const rows = axisOptions[name] || [];
+    const idx = rows.findIndex(r => r.tempId === tempId);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= rows.length) return;
+
+    [rows[idx], rows[swapIdx]] = [rows[swapIdx], rows[idx]];
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    renumberVariantSortOrders(axisNames, axisOptions);
+
+    boxModalDirty = true;
+    renderBoxVariantSection();
+}
+
+function boxInsertAxisOptionAt(name, tempId, position) {
+    const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
+    const rows = axisOptions[name] || [];
+    const idx = rows.findIndex(r => r.tempId === tempId);
+    if (idx === -1) return;
+
+    const raw = prompt(`要在「${rows[idx].axis_values[name]}」${position === 'before' ? '前面' : '後面'}插入什麼值？（可以用 / 、 , ， 一次加多個）`);
+    if (!raw) return;
+    const values = splitBulkValues(raw);
+    if (!values.length) return;
+
+    const existingSet = new Set(rows.map(r => r.axis_values[name]));
+    const newValues = values.filter(v => !existingSet.has(v));
+    if (!newValues.length) return;
+
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+
+    const newRows = newValues.map(v => ({
+        tempId: ++boxVariantTempCounter,
+        id: null,
+        axis_values: { [name]: v },
+        image_url: null,
+        sort_order: 0,
+        is_disabled: false,
+    }));
+
+    const insertAt = position === 'before' ? idx : idx + 1;
+    axisOptions[name] = [...rows.slice(0, insertAt), ...newRows, ...rows.slice(insertAt)];
+    boxLocalVariantRows.push(...newRows);
+
+    renumberVariantSortOrders(axisNames, axisOptions);
+
+    boxModalDirty = true;
+    renderBoxVariantSection();
+}
+
+async function loadBoxEditorSection() {
+    boxDeletedVariantIds = [];
+    boxLastComboDisableIndex = null;
+    document.getElementById('box-variant-combo-list').innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
+
+    const { data, error } = await fetchAllRows(() => sb.from('houjiao_box_variants').select('*').order('sort_order', { ascending: true }).order('id', { ascending: true }));
+    if (error) {
+        document.getElementById('box-variant-combo-list').innerHTML = `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
+        return;
+    }
+
+    boxLocalVariantRows = (data || []).map(r => ({ ...r, axis_values: r.axis_values || {}, tempId: ++boxVariantTempCounter }));
+
+    boxComboSortSnapshot = new Map();
+    boxLocalVariantRows.forEach(r => {
+        if (Object.keys(r.axis_values).length >= 2) {
+            boxComboSortSnapshot.set(comboKeyOf(r.axis_values), !!r.is_disabled);
+        }
+    });
+
+    renderBoxVariantSection();
+}
+
+function wireBoxAxisChips(scopeEl) {
+    scopeEl.querySelectorAll('.axis-value-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            boxEditAxisOptionValue(rowEl.dataset.axisName, Number(rowEl.dataset.tempId));
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-chip-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!confirm('確定要刪除這個選項嗎？')) return;
+            boxRemoveVariantRow(Number(btn.closest('[data-temp-id]').dataset.tempId));
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-chip-split').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            boxSplitVariantRow(rowEl.dataset.axisName, Number(rowEl.dataset.tempId));
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-move-up-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            boxMoveAxisOption(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), -1);
+        });
+    });
+    scopeEl.querySelectorAll('.axis-move-down-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            boxMoveAxisOption(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 1);
+        });
+    });
+    scopeEl.querySelectorAll('.axis-insert-before-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            boxInsertAxisOptionAt(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 'before');
+        });
+    });
+    scopeEl.querySelectorAll('.axis-insert-after-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rowEl = btn.closest('[data-temp-id]');
+            boxInsertAxisOptionAt(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 'after');
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-image-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
+            if (!confirm('確定要移除這個選項的圖片嗎？')) return;
+            const row = boxLocalVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            row.image_url = null;
+            boxModalDirty = true;
+            renderBoxVariantSection();
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-upload-input').forEach(input => {
+        input.addEventListener('change', async () => {
+            const file = input.files[0];
+            if (!file) return;
+
+            const rowEl = input.closest('[data-temp-id]');
+            const tempId = Number(rowEl.dataset.tempId);
+            const row = boxLocalVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+
+            const thumbImg = rowEl.querySelector('.axis-option-thumb');
+            const statusEl = rowEl.querySelector('.axis-upload-status');
+            statusEl.textContent = '上傳中…';
+            try {
+                const url = await uploadImageToCloudinary(file);
+                row.image_url = url;
+                boxModalDirty = true;
+                thumbImg.src = url;
+                statusEl.textContent = '';
+                renderBoxVariantSection();
+            } catch (e) {
+                statusEl.textContent = '';
+                alert('上傳失敗：' + e.message);
+            } finally {
+                input.value = '';
+            }
+        });
+    });
+}
+
+function renderBoxVariantSection() {
+    const { axisOptions, combos } = categorizeVariantRows(boxLocalVariantRows);
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+
+    const groupsEl = document.getElementById('box-axis-groups');
+    if (!axisNames.length) {
+        groupsEl.innerHTML = '<p class="text-xs text-gray-400">還沒有任何軸，在下面新增第一個軸吧（例如「規格」）。</p>';
+    } else {
+        groupsEl.innerHTML = axisNames.map((name, axisIdx) => `
+            <div>
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-1">
+                        <button type="button" class="axis-group-move-up-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸上移（也決定合成圖層的順序，越上面越底層）">▲</button>
+                        <button type="button" class="axis-group-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === axisNames.length - 1 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸下移（也決定合成圖層的順序，越下面越上層）">▼</button>
+                        <button type="button" class="axis-rename-btn field-label mb-0 hover:underline hover:text-blue-600" data-axis-name="${escapeHtml(name)}" title="點一下改軸名稱">${escapeHtml(name)} ✎</button>
+                    </div>
+                    <button type="button" class="axis-delete-all-btn text-xs text-red-600 hover:underline" data-axis-name="${escapeHtml(name)}">刪除整個軸</button>
+                </div>
+                <div class="space-y-1">${axisOptions[name].map((r, i) => axisChipHtml(r, name, i === 0, i === axisOptions[name].length - 1)).join('')}</div>
+            </div>`).join('');
+    }
+    wireBoxAxisChips(groupsEl);
+
+    groupsEl.querySelectorAll('.axis-group-move-up-btn').forEach(btn => {
+        btn.addEventListener('click', () => boxMoveAxisGroup(btn.dataset.axisName, -1));
+    });
+    groupsEl.querySelectorAll('.axis-group-move-down-btn').forEach(btn => {
+        btn.addEventListener('click', () => boxMoveAxisGroup(btn.dataset.axisName, 1));
+    });
+    groupsEl.querySelectorAll('.axis-rename-btn').forEach(btn => {
+        btn.addEventListener('click', () => boxRenameAxis(btn.dataset.axisName));
+    });
+
+    groupsEl.querySelectorAll('.axis-delete-all-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const name = btn.dataset.axisName;
+            const rows = (axisOptions[name] || []);
+            if (!confirm(`確定要刪除「${name}」這整個軸嗎？底下 ${rows.length} 個選項都會一起刪掉。`)) return;
+            rows.forEach(r => {
+                if (r.id) boxDeletedVariantIds.push(r.id);
+            });
+            const tempIds = new Set(rows.map(r => r.tempId));
+            boxLocalVariantRows = boxLocalVariantRows.filter(r => !tempIds.has(r.tempId));
+            boxModalDirty = true;
+            renderBoxVariantSection();
+        });
+    });
+
+    renderBoxComboList(combos, axisOptions, axisNames);
+    renderBoxComboBuilder(axisOptions);
+}
+
+function boxRemoveVariantRow(tempId) {
+    const row = boxLocalVariantRows.find(r => r.tempId === tempId);
+    if (!row) return;
+    if (row.id) boxDeletedVariantIds.push(row.id);
+    boxLocalVariantRows = boxLocalVariantRows.filter(r => r.tempId !== tempId);
+    boxModalDirty = true;
+    renderBoxVariantSection();
+}
+
+function boxSplitVariantRow(axisName, tempId) {
+    const row = boxLocalVariantRows.find(r => r.tempId === tempId);
+    if (!row) return;
+    const rawValue = row.axis_values[axisName];
+    const values = splitBulkValues(rawValue);
+    if (values.length < 2) return;
+    if (!confirm(`要把「${rawValue}」分割成 ${values.length} 個選項嗎？`)) return;
+
+    if (row.id) boxDeletedVariantIds.push(row.id);
+    boxLocalVariantRows = boxLocalVariantRows.filter(r => r.tempId !== tempId);
+
+    const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    if (!axisNames.includes(axisName)) axisNames.push(axisName);
+
+    const existingRows = axisOptions[axisName] || [];
+    const existing = new Set(existingRows.map(r => r.axis_values[axisName]));
+    const newRows = [];
+    values.filter(v => !existing.has(v)).forEach(v => {
+        newRows.push({
+            tempId: ++boxVariantTempCounter,
+            id: null,
+            axis_values: { [axisName]: v },
+            image_url: null,
+            sort_order: 0,
+        });
+    });
+    axisOptions[axisName] = [...existingRows, ...newRows];
+    boxLocalVariantRows.push(...newRows);
+
+    renumberVariantSortOrders(axisNames, axisOptions);
+
+    boxModalDirty = true;
+    renderBoxVariantSection();
+}
+
+// 接線盒規格的完整組合只用來標記「不能選」，不用管圖片（示意圖是疊圖合成的），
+// 所以這裡沒有上傳/移除圖片、combo-thumb，比架構那份簡單一點。
+function renderBoxComboList(combos, axisOptions, axisNames) {
+    const container = document.getElementById('box-variant-combo-list');
+
+    const comboByKey = {};
+    combos.forEach(c => { comboByKey[comboKeyOf(c.axis_values)] = c; });
+
+    const cells = [];
+    const matchedKeys = new Set();
+    let anyDisabledInGrid = false;
+
+    const totalGridCombos = axisNames.length >= 2
+        ? axisNames.reduce((acc, name) => acc * axisOptions[name].length, 1)
+        : 0;
+
+    if (axisNames.length >= 2 && axisNames.length <= COMBO_GRID_MAX_AXES && totalGridCombos <= COMBO_GRID_MAX_TOTAL) {
+        let gridCombos = [{}];
+        axisNames.forEach(name => {
+            const next = [];
+            gridCombos.forEach(c => {
+                axisOptions[name].forEach(r => next.push({ ...c, [name]: r.axis_values[name] }));
+            });
+            gridCombos = next;
+        });
+
+        anyDisabledInGrid = gridCombos.some(values => {
+            const c = comboByKey[comboKeyOf(values)];
+            return c && c.is_disabled;
+        });
+
+        gridCombos.forEach(values => {
+            const key = comboKeyOf(values);
+            let existing = comboByKey[key] || null;
+            if (!existing && anyDisabledInGrid) {
+                existing = {
+                    tempId: ++boxVariantTempCounter,
+                    id: null,
+                    axis_values: values,
+                    image_url: null,
+                    sort_order: 0,
+                    is_disabled: false,
+                };
+                boxLocalVariantRows.push(existing);
+                comboByKey[key] = existing;
+            }
+            if (existing) matchedKeys.add(key);
+            cells.push({ values, existing, isGridCell: true, label: axisNames.map(n => values[n]).join('　') });
+        });
+    }
+
+    combos.filter(c => !matchedKeys.has(comboKeyOf(c.axis_values))).forEach(r => {
+        cells.push({ values: r.axis_values, existing: r, isGridCell: false, label: rowAxisEntries(r).map(([k, v]) => `${k}：${v}`).join('　') });
+    });
+
+    function deleteCell(cell) {
+        if (cell.isGridCell && anyDisabledInGrid && cell.existing && !cell.existing.is_disabled) {
+            cell.existing.is_disabled = true;
+            boxModalDirty = true;
+            renderBoxVariantSection();
+            return;
+        }
+        boxRemoveVariantRow(cell.existing.tempId);
+    }
+
+    function applyComboDisable(targetCells, checked) {
+        const toRemoveIds = [];
+        targetCells.forEach(c => {
+            if (c.existing) {
+                c.existing.is_disabled = checked;
+                if (!checked) toRemoveIds.push(c.existing.tempId);
+            } else if (checked) {
+                const row = {
+                    tempId: ++boxVariantTempCounter,
+                    id: null,
+                    axis_values: c.values,
+                    image_url: null,
+                    is_disabled: true,
+                    sort_order: 0,
+                };
+                boxLocalVariantRows.push(row);
+                c.existing = row;
+            }
+        });
+        if (toRemoveIds.length) {
+            const idSet = new Set(toRemoveIds);
+            boxLocalVariantRows.forEach(r => { if (idSet.has(r.tempId) && r.id) boxDeletedVariantIds.push(r.id); });
+            boxLocalVariantRows = boxLocalVariantRows.filter(r => !idSet.has(r.tempId));
+        }
+        boxModalDirty = true;
+        renderBoxVariantSection();
+    }
+
+    if (boxComboSortSnapshot) {
+        cells.sort((a, b) => {
+            const disabledA = a.existing ? boxComboSortSnapshot.get(comboKeyOf(a.values)) : undefined;
+            const disabledB = b.existing ? boxComboSortSnapshot.get(comboKeyOf(b.values)) : undefined;
+            return Number(!!disabledA) - Number(!!disabledB);
+        });
+    }
+
+    if (!cells.length) {
+        container.innerHTML = axisNames.length < 2
+            ? '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才會自動列出組合；也可以用下面「手動新增一筆完整組合」直接建立。</p>'
+            : '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
+        return;
+    }
+
+    const hasAnyExisting = cells.some(c => c.existing);
+
+    const bulkBarHtml = hasAnyExisting ? `
+        <div id="box-combo-bulk-bar" class="flex items-center gap-2 mb-2 pb-2 border-b">
+            <label class="flex items-center gap-1 text-xs text-gray-600">
+                <input type="checkbox" id="box-combo-select-all">
+                全選
+            </label>
+            <button type="button" id="box-combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
+        </div>` : '';
+
+    container.innerHTML = bulkBarHtml + cells.map((cell, i) => {
+        const existing = cell.existing;
+        const isDisabled = !!(existing && existing.is_disabled);
+        return `
+            <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
+                ${existing ? '<input type="checkbox" class="combo-select-checkbox">' : '<span style="width:16px;display:inline-block;"></span>'}
+                <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
+                <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
+                    <input type="checkbox" class="combo-disable-checkbox" ${isDisabled ? 'checked' : ''}>
+                    停用（不能選）
+                </label>
+                ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
+            </div>`;
+    }).join('');
+
+    if (hasAnyExisting) {
+        const selectAllCb = document.getElementById('box-combo-select-all');
+        const deleteSelectedBtn = document.getElementById('box-combo-delete-selected-btn');
+        const itemCheckboxes = () => Array.from(container.querySelectorAll('.combo-select-checkbox'));
+
+        function refreshBulkButtons() {
+            const anyChecked = itemCheckboxes().some(cb => cb.checked);
+            deleteSelectedBtn.disabled = !anyChecked;
+        }
+
+        selectAllCb.addEventListener('change', () => {
+            itemCheckboxes().forEach(cb => { cb.checked = selectAllCb.checked; });
+            refreshBulkButtons();
+        });
+
+        itemCheckboxes().forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (!cb.checked) selectAllCb.checked = false;
+                else if (itemCheckboxes().every(c => c.checked)) selectAllCb.checked = true;
+                refreshBulkButtons();
+            });
+        });
+
+        deleteSelectedBtn.addEventListener('click', () => {
+            const selectedCells = [];
+            container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
+                const cb = rowEl.querySelector('.combo-select-checkbox');
+                if (cb && cb.checked) {
+                    const cell = cells[Number(rowEl.dataset.cellIdx)];
+                    if (cell.existing) selectedCells.push(cell);
+                }
+            });
+            if (!selectedCells.length) return;
+
+            const selectedTempIdSet = new Set(selectedCells.map(c => c.existing.tempId));
+            const survivingDisabledInGrid = cells.some(
+                c => c.isGridCell && c.existing && c.existing.is_disabled && !selectedTempIdSet.has(c.existing.tempId)
+            );
+
+            const toDisableCount = survivingDisabledInGrid
+                ? selectedCells.filter(c => c.isGridCell && anyDisabledInGrid && !c.existing.is_disabled).length
+                : 0;
+            let msg = `確定要處理選取的 ${selectedCells.length} 筆組合嗎？`;
+            if (toDisableCount) {
+                msg += `\n其中 ${toDisableCount} 筆是表格自動列出的可選組合，這種格子刪了會被自動補回來，所以會改成標記「停用（不能選）」。`;
+            }
+            if (!confirm(msg)) return;
+
+            const removeTempIds = [];
+            selectedCells.forEach(cell => {
+                if (survivingDisabledInGrid && cell.isGridCell && anyDisabledInGrid && !cell.existing.is_disabled) {
+                    cell.existing.is_disabled = true;
+                } else {
+                    removeTempIds.push(cell.existing.tempId);
+                }
+            });
+            if (removeTempIds.length) {
+                const idSet = new Set(removeTempIds);
+                boxLocalVariantRows.forEach(r => { if (idSet.has(r.tempId) && r.id) boxDeletedVariantIds.push(r.id); });
+                boxLocalVariantRows = boxLocalVariantRows.filter(r => !idSet.has(r.tempId));
+            }
+            boxModalDirty = true;
+            renderBoxVariantSection();
+        });
+    }
+
+    container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
+        const cell = cells[Number(rowEl.dataset.cellIdx)];
+
+        const delBtn = rowEl.querySelector('.combo-delete-btn');
+        if (delBtn) {
+            delBtn.addEventListener('click', () => {
+                const willJustDisable = cell.isGridCell && anyDisabledInGrid && !cell.existing.is_disabled;
+                const msg = willJustDisable
+                    ? '這筆是表格自動列出的可選組合，刪了會被自動補回來，所以會改成標記「停用（不能選）」，確定嗎？'
+                    : '確定要刪除這筆組合嗎？';
+                if (!confirm(msg)) return;
+                deleteCell(cell);
+            });
+        }
+
+        rowEl.querySelector('.combo-disable-checkbox').addEventListener('click', (e) => {
+            const checked = e.target.checked;
+            const cellIdx = Number(rowEl.dataset.cellIdx);
+
+            let targets = [cell];
+            if (e.shiftKey && boxLastComboDisableIndex !== null && cells[boxLastComboDisableIndex]) {
+                const [start, end] = [boxLastComboDisableIndex, cellIdx].sort((a, b) => a - b);
+                targets = cells.slice(start, end + 1);
+            }
+            boxLastComboDisableIndex = cellIdx;
+
+            applyComboDisable(targets, checked);
+        });
+    });
+}
+
+function renderBoxComboBuilder(axisOptions) {
+    const el = document.getElementById('box-combo-builder');
+    const axisNames = Object.keys(axisOptions).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+    if (axisNames.length < 2) {
+        el.innerHTML = '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才能在這裡手動組合。</p>';
+        return;
+    }
+
+    el.innerHTML = `
+        <div class="border rounded-lg p-3">
+            <p class="text-xs text-gray-500 mb-1">
+                手動新增一筆完整組合（至少選兩個軸；沒選的軸留「不指定」代表那個軸選什麼值都適用）：
+            </p>
+            <div class="flex flex-wrap gap-2 mb-2">
+                ${axisNames.map(name => `
+                    <div>
+                        <label class="field-label">${escapeHtml(name)}</label>
+                        <select class="field-input combo-builder-select" data-axis="${escapeHtml(name)}" style="width:auto">
+                            <option value="">（不指定）</option>
+                            ${axisOptions[name].map(r => {
+                                const v = r.axis_values[name];
+                                return `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
+                            }).join('')}
+                        </select>
+                    </div>`).join('')}
+            </div>
+            <div class="flex gap-2">
+                <button type="button" id="box-combo-builder-submit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">新增這筆組合</button>
+                <button type="button" id="box-combo-builder-submit-disabled" class="px-3 py-1.5 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">新增並停用（不能選）</button>
+            </div>
+        </div>`;
+
+    function createComboFromBuilder(isDisabled) {
+        const values = {};
+        el.querySelectorAll('.combo-builder-select').forEach(sel => {
+            if (sel.value) values[sel.dataset.axis] = sel.value;
+        });
+        if (Object.keys(values).length < 2) { alert('至少要選兩個軸才算一筆組合'); return; }
+
+        boxLocalVariantRows.push({
+            tempId: ++boxVariantTempCounter,
+            id: null,
+            axis_values: values,
+            image_url: null,
+            sort_order: 0,
+            is_disabled: isDisabled,
+        });
+        boxModalDirty = true;
+        renderBoxVariantSection();
+    }
+
+    document.getElementById('box-combo-builder-submit').addEventListener('click', () => createComboFromBuilder(false));
+    document.getElementById('box-combo-builder-submit-disabled').addEventListener('click', () => createComboFromBuilder(true));
+}
+
+document.getElementById('box-add-axis-value-btn').addEventListener('click', () => {
+    const nameInput = document.getElementById('box-axis-name-input');
+    const valueInput = document.getElementById('box-axis-value-input');
+    const axisName = nameInput.value.trim();
+    if (!axisName) { nameInput.focus(); return; }
+    const values = splitBulkValues(valueInput.value);
+    if (!values.length) { valueInput.focus(); return; }
+
+    const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
+    const existingRows = axisOptions[axisName] || [];
+    const existing = new Set(existingRows.map(r => r.axis_values[axisName]));
+    const newValues = values.filter(v => !existing.has(v));
+    if (!newValues.length) { valueInput.value = ''; return; }
+
+    const axisNames = currentAxisNamesInOrder(axisOptions);
+    if (!axisNames.includes(axisName)) axisNames.push(axisName);
+
+    const newRows = newValues.map(v => ({
+        tempId: ++boxVariantTempCounter,
+        id: null,
+        axis_values: { [axisName]: v },
+        image_url: null,
+        sort_order: 0,
+        is_disabled: false,
+    }));
+    axisOptions[axisName] = [...existingRows, ...newRows];
+    boxLocalVariantRows.push(...newRows);
+    renumberVariantSortOrders(axisNames, axisOptions);
+
+    boxModalDirty = true;
+    nameInput.value = '';
+    valueInput.value = '';
+    renderBoxVariantSection();
+});
+
+document.getElementById('box-combo-table-import-btn').addEventListener('click', () => {
+    const statusEl = document.getElementById('box-combo-table-import-status');
+    const textarea = document.getElementById('box-combo-table-paste');
+    const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.startsWith('|'));
+    if (lines.length < 2) { statusEl.textContent = '至少要有標題列＋一列資料，而且每列要用 | 分隔。'; return; }
+
+    const parseRow = (line) => line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    const headers = parseRow(lines[0]);
+    if (headers.filter(Boolean).length < 2) { statusEl.textContent = '標題列至少要有兩欄（兩個軸）。'; return; }
+
+    let added = 0, skipped = 0;
+    for (let i = 1; i < lines.length; i++) {
+        if (/^[|:\s-]+$/.test(lines[i])) continue;
+        const cells = parseRow(lines[i]);
+        const values = {};
+        headers.forEach((h, idx) => {
+            const v = (cells[idx] || '').trim();
+            if (h && v) values[h] = v;
+        });
+        if (Object.keys(values).length < 2) { skipped++; continue; }
+        boxLocalVariantRows.push({
+            tempId: ++boxVariantTempCounter,
+            id: null,
+            axis_values: values,
+            image_url: null,
+            sort_order: 0,
+        });
+        added++;
+    }
+
+    if (added) boxModalDirty = true;
+    statusEl.textContent = `已新增 ${added} 筆組合${skipped ? `，略過 ${skipped} 筆（欄位不足兩個）` : ''}。記得最下面按「儲存」才會真正生效。`;
+    textarea.value = '';
+    renderBoxVariantSection();
+});
+
+async function saveBoxVariantChanges() {
+    if (boxDeletedVariantIds.length) {
+        const { error } = await sb.from('houjiao_box_variants').delete().in('id', boxDeletedVariantIds);
+        if (error) throw error;
+        boxDeletedVariantIds = [];
+    }
+
+    if (boxLocalVariantRows.length) {
+        const rows = boxLocalVariantRows.map(r => ({
+            axis_values: r.axis_values || {},
+            image_url: r.image_url || null,
+            sort_order: r.sort_order || 0,
+            is_disabled: !!r.is_disabled,
+        }));
+        const { error } = await sb.from('houjiao_box_variants').upsert(rows, { onConflict: 'axis_values' });
+        if (error) throw error;
+    }
+}
+
+const editBoxModal = document.getElementById('edit-box-modal');
+
+function openEditBoxModal() {
+    editBoxModal.classList.remove('hidden');
+    editBoxModal.classList.add('flex');
+    document.getElementById('box-form-error').classList.add('hidden');
+    boxModalDirty = false;
+    loadBoxEditorSection();
+}
+
+function closeEditBoxModal() {
+    if (boxModalDirty && !confirm('您有尚未儲存的修改，確定要離開嗎？')) return;
+    editBoxModal.classList.add('hidden');
+    editBoxModal.classList.remove('flex');
+    boxModalDirty = false;
+}
+
+document.getElementById('edit-box-axes-btn').addEventListener('click', openEditBoxModal);
+document.getElementById('box-modal-close-btn').addEventListener('click', closeEditBoxModal);
+document.getElementById('box-modal-cancel-btn').addEventListener('click', closeEditBoxModal);
+
+document.getElementById('box-modal-save-btn').addEventListener('click', async () => {
+    const formError = document.getElementById('box-form-error');
+    formError.classList.add('hidden');
+    try {
+        await saveBoxVariantChanges();
+    } catch (e) {
+        formError.textContent = '儲存失敗：' + e.message;
+        formError.classList.remove('hidden');
+        return;
+    }
+    boxModalDirty = false;
+    editBoxModal.classList.add('hidden');
+    editBoxModal.classList.remove('flex');
+    await loadBoxVariants(); // 重新整理下面每個接線盒的選擇區
+    ensureBoxPickerCountForce();
+});
+
 const editModal = document.getElementById('edit-modal');
 
 function openEditModal() {
@@ -918,7 +1679,7 @@ let leavingConfirmed = false;
 
 document.querySelectorAll('.admin-nav-link').forEach(link => {
     link.addEventListener('click', (e) => {
-        if (modalDirty) {
+        if (modalDirty || boxModalDirty) {
             if (confirm('您有尚未儲存的修改，確定要離開嗎？')) {
                 leavingConfirmed = true;
             } else {
@@ -928,7 +1689,7 @@ document.querySelectorAll('.admin-nav-link').forEach(link => {
     });
 });
 window.addEventListener('beforeunload', (e) => {
-    if (modalDirty && !leavingConfirmed) {
+    if ((modalDirty || boxModalDirty) && !leavingConfirmed) {
         e.preventDefault();
         e.returnValue = '';
     }
@@ -960,27 +1721,38 @@ function buildPickerData(rows) {
     return { axisOptions, combos };
 }
 
+// 選規格區用的軸資料（pickerAxisOptions / boxAxisOptions）每個選項都記著自己的 sort_order，
+// 用這個明確排出軸的順序（軸序＝該軸選項裡最小的 sort_order），不要依賴 JS 物件 key
+// 的插入順序這種隱含行為——接線盒規格那邊還要拿這個順序當作疊圖合成時的圖層順序，
+// 排序邏輯一定要是明確、看得到規則的。
+function sortedAxisNames(axisOptions) {
+    return Object.keys(axisOptions).sort((a, b) => {
+        const orderA = axisOptions[a].length ? Math.min(...axisOptions[a].map(o => o.sort_order || 0)) : 0;
+        const orderB = axisOptions[b].length ? Math.min(...axisOptions[b].map(o => o.sort_order || 0)) : 0;
+        return orderA - orderB;
+    });
+}
+
 function pickerAxisNames() {
-    return Object.keys(pickerAxisOptions);
+    return sortedAxisNames(pickerAxisOptions);
 }
 
 function variantFieldHtml(axisName) {
     const options = pickerAxisOptions[axisName] || [];
 
-    const tilesHtml = options.length ? `
-        <div class="flex flex-wrap gap-2 mb-2">
-            ${options.map(o => `
-                <button type="button" class="variant-tile" data-axis="${escapeHtml(axisName)}" data-value="${escapeHtml(o.value)}">
-                    ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
-                    <span>${escapeHtml(o.value)}</span>
-                </button>`).join('')}
-        </div>` : '';
+    const tilesHtml = options.map(o => `
+        <button type="button" class="variant-tile" data-axis="${escapeHtml(axisName)}" data-value="${escapeHtml(o.value)}">
+            ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
+            <span>${escapeHtml(o.value)}</span>
+        </button>`).join('');
 
     return `
         <div>
             <label class="field-label">${escapeHtml(axisName)}</label>
-            ${tilesHtml}
-            <input type="text" class="field-input variant-text-input" data-axis="${escapeHtml(axisName)}" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+                ${tilesHtml}
+                <input type="text" class="variant-text-input-inline variant-text-input" data-axis="${escapeHtml(axisName)}" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
+            </div>
         </div>`;
 }
 
@@ -1141,6 +1913,7 @@ function updateVariantPreviewImage() {
             img.classList.add('hidden');
         }
     }
+    ensureBoxPickerCount(); // 架構的「接線盒數量」選了幾個，下面就要對應出現幾組接線盒規格選擇區
 }
 
 function applyDefaultVariantSelections() {
@@ -1218,18 +1991,382 @@ async function loadHoujiaoVariants() {
     renderMainPicker();
 }
 
+/* ===================== 選規格區：接線盒規格（每個接線盒各自獨立選一組） =====================
+   架構選到的「接線盒數量」（例如「2個」）決定下面出現幾組接線盒規格選擇區，每組的軸/選項/
+   完整組合都是同一份資料（boxAxisOptions/boxCombos），但各自有自己的選取狀態
+   （boxPickerStates[i]），彼此互相獨立、不共用選擇——除非勾了「與接線盒 1 一樣」。
+   選好之後不是用一張事先準備好的照片，是把每個軸選到的那個選項自己的小圖，
+   照軸的順序（跟編輯畫面「整個軸上移/下移」是同一個順序）疊在畫布上合成一張示意圖。 */
+
+let boxAxisOptions = {};
+let boxCombos = [];
+let boxPickerStates = []; // [{ selectedVariant, autoSelectedAxes, linkedToFirst }, ...]，索引 0 永遠不會是 linkedToFirst
+
+async function loadBoxVariants() {
+    const { data, error } = await fetchAllRows(() => sb.from('houjiao_box_variants').select('*').order('sort_order', { ascending: true }).order('id', { ascending: true }));
+    if (error) {
+        console.error('讀取接線盒規格失敗：', error);
+        return;
+    }
+    const built = buildPickerData(data || []);
+    boxAxisOptions = built.axisOptions;
+    boxCombos = built.combos;
+}
+
+// 架構那個軸「接線盒數量」的選項值是「1個」「2個」…這種文字，取開頭的數字當作要出現幾組。
+function boxCountFromStructureSelection() {
+    const values = currentVariantValues();
+    const raw = values['接線盒數量'];
+    if (!raw) return 0;
+    const m = String(raw).match(/\d+/);
+    return m ? Math.max(0, parseInt(m[0], 10)) : 0;
+}
+
+function boxPickerBlockHtml(i, state) {
+    return `
+        <div class="border rounded-lg p-3" data-box-index="${i}">
+            <div class="flex items-center justify-between mb-2">
+                <h4 class="font-bold text-sm">接線盒 ${i + 1}</h4>
+                ${i > 0 ? `<label class="flex items-center gap-1 text-xs text-gray-600">
+                    <input type="checkbox" class="box-link-first-checkbox" ${state.linkedToFirst ? 'checked' : ''}>
+                    與接線盒 1 一樣
+                </label>` : ''}
+            </div>
+            <canvas class="box-preview-canvas hidden rounded border mb-2" width="240" height="240"></canvas>
+            <div class="box-variant-fields space-y-2 ${state.linkedToFirst ? 'hidden' : ''}"></div>
+        </div>`;
+}
+
+function renderBoxPickersDom() {
+    const container = document.getElementById('box-picker-container');
+    if (!boxPickerStates.length) { container.innerHTML = ''; return; }
+    container.innerHTML = boxPickerStates.map((state, i) => boxPickerBlockHtml(i, state)).join('');
+    boxPickerStates.forEach((state, i) => wireBoxPicker(i));
+}
+
+// 「接線盒數量」實際有變的時候才重新整個畫過（畫過會照目前的選擇重新排版），
+// 數量沒變的話什麼都不做，保留使用者已經選好的東西——不然架構隨便點別的軸
+// （例如顏色），下面每個接線盒已經選好的規格都會被清空重來，體驗會很差。
+function ensureBoxPickerCount() {
+    const count = boxCountFromStructureSelection();
+    if (count === boxPickerStates.length) return;
+    while (boxPickerStates.length < count) boxPickerStates.push({ selectedVariant: {}, autoSelectedAxes: new Set(), linkedToFirst: false });
+    boxPickerStates.length = count;
+    renderBoxPickersDom();
+}
+
+// 跟 ensureBoxPickerCount 不同：不管數量有沒有變都強制重新整個畫過，用在「接線盒規格」
+// 剛儲存完、或頁面剛載入完成的時候——這兩種情況畫面需要的是最新的軸/選項資料，
+// 不能因為數量剛好沒變就跳過重畫。
+function ensureBoxPickerCountForce() {
+    const count = boxCountFromStructureSelection();
+    while (boxPickerStates.length < count) boxPickerStates.push({ selectedVariant: {}, autoSelectedAxes: new Set(), linkedToFirst: false });
+    boxPickerStates.length = count;
+    renderBoxPickersDom();
+}
+
+function boxFieldHtml(axisName) {
+    const options = boxAxisOptions[axisName] || [];
+    const tilesHtml = options.map(o => `
+        <button type="button" class="variant-tile box-variant-tile" data-axis="${escapeHtml(axisName)}" data-value="${escapeHtml(o.value)}">
+            ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
+            <span>${escapeHtml(o.value)}</span>
+        </button>`).join('');
+    return `
+        <div>
+            <label class="field-label">${escapeHtml(axisName)}</label>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+                ${tilesHtml}
+                <input type="text" class="variant-text-input-inline box-variant-text-input" data-axis="${escapeHtml(axisName)}" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
+            </div>
+        </div>`;
+}
+
+function currentBoxVariantValues(i) {
+    const state = boxPickerStates[i];
+    if (!state) return {};
+    const values = {};
+    Object.keys(state.selectedVariant).forEach(axis => {
+        if (state.selectedVariant[axis]) values[axis] = state.selectedVariant[axis];
+    });
+    const scopeEl = document.querySelector(`[data-box-index="${i}"]`);
+    if (scopeEl) {
+        scopeEl.querySelectorAll('.box-variant-text-input').forEach(inp => {
+            const axis = inp.dataset.axis;
+            if (!values[axis] && inp.value.trim()) values[axis] = inp.value.trim();
+        });
+    }
+    return values;
+}
+
+function manualBoxVariantValues(i) {
+    const values = currentBoxVariantValues(i);
+    boxPickerStates[i].autoSelectedAxes.forEach(axis => { delete values[axis]; });
+    return values;
+}
+
+function clearAutoSelectedBoxAxes(i) {
+    const state = boxPickerStates[i];
+    state.autoSelectedAxes.forEach(axis => { state.selectedVariant[axis] = ''; });
+    state.autoSelectedAxes.clear();
+}
+
+function findBestBoxCombo(selectedValues) {
+    const selectedEntries = Object.entries(selectedValues);
+    if (!selectedEntries.length) return null;
+    let best = null, bestScore = 0;
+    boxCombos.forEach(combo => {
+        const matches = selectedEntries.every(([k, v]) => combo.values[k] === v);
+        if (!matches) return;
+        const score = Object.keys(combo.values).length;
+        if (score > bestScore) { best = combo; bestScore = score; }
+    });
+    return best;
+}
+
+function fullyTrackedBoxAxisSet(axis) {
+    let best = null;
+    boxCombos.forEach(c => {
+        const keys = Object.keys(c.values);
+        if (!keys.includes(axis)) return;
+        if (!best || keys.length > best.length) best = keys;
+    });
+    return best;
+}
+
+function isBoxValueDisabled(axis, value, otherSelectedValues) {
+    const explicitlyDisabled = boxCombos.some(combo => {
+        if (!combo.is_disabled) return false;
+        if (combo.values[axis] !== value) return false;
+        return Object.entries(combo.values).every(([k, v]) => k === axis || otherSelectedValues[k] === v);
+    });
+    if (explicitlyDisabled) return true;
+
+    const trackedAxes = fullyTrackedBoxAxisSet(axis);
+    if (!trackedAxes) return false;
+
+    const sameShapeCombos = boxCombos.filter(c => {
+        const keys = Object.keys(c.values);
+        return keys.length === trackedAxes.length && trackedAxes.every(a => keys.includes(a));
+    });
+    const enabledSameShapeCombos = sameShapeCombos.filter(c => !c.is_disabled);
+    if (!enabledSameShapeCombos.length) return false;
+
+    const pinned = { ...otherSelectedValues, [axis]: value };
+    const pinnedKeys = trackedAxes.filter(a => a in pinned);
+    const anyMatch = enabledSameShapeCombos.some(c => pinnedKeys.every(a => c.values[a] === pinned[a]));
+    return !anyMatch;
+}
+
+function updateBoxDisabledTiles(i) {
+    const state = boxPickerStates[i];
+    const scopeEl = document.querySelector(`[data-box-index="${i}"]`);
+    if (!state || !scopeEl) return;
+    const axisNames = sortedAxisNames(boxAxisOptions);
+
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const manual = manualBoxVariantValues(i);
+
+        Object.keys(state.selectedVariant).forEach(axis => {
+            const value = state.selectedVariant[axis];
+            if (!value) return;
+            const others = { ...manual };
+            delete others[axis];
+            if (isBoxValueDisabled(axis, value, others)) {
+                state.selectedVariant[axis] = '';
+                state.autoSelectedAxes.delete(axis);
+                changed = true;
+            }
+        });
+
+        const manualAfterClear = manualBoxVariantValues(i);
+        axisNames.forEach(axis => {
+            if (state.selectedVariant[axis]) return;
+            const options = boxAxisOptions[axis] || [];
+            const others = { ...manualAfterClear };
+            const enabledValues = options.filter(o => !isBoxValueDisabled(axis, o.value, others));
+            if (enabledValues.length === 1) {
+                state.selectedVariant[axis] = enabledValues[0].value;
+                state.autoSelectedAxes.add(axis);
+                changed = true;
+            }
+        });
+    }
+
+    scopeEl.querySelectorAll('.box-variant-tile').forEach(b => {
+        b.classList.toggle('selected', b.dataset.value === state.selectedVariant[b.dataset.axis]);
+    });
+
+    const manual = manualBoxVariantValues(i);
+    scopeEl.querySelectorAll('.box-variant-tile').forEach(btn => {
+        const axis = btn.dataset.axis;
+        const value = btn.dataset.value;
+        const others = { ...manual };
+        delete others[axis];
+        btn.disabled = isBoxValueDisabled(axis, value, others);
+    });
+}
+
+// 疊圖合成：照軸的順序（跟編輯畫面上下移動排出來的順序一樣），把每個軸目前選到的
+// 那個選項自己的小圖依序疊上去（先疊的在底層，後疊的蓋在上面），合成一張示意圖。
+// 用一個遞增的 token 擋住「圖片還在下載時使用者又改了選擇」這種情況下畫面被舊結果蓋掉。
+let boxCanvasRenderTokens = {};
+
+function loadImageEl(url) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+    });
+}
+
+function drawImageContain(ctx, img, canvasW, canvasH) {
+    const scale = Math.min(canvasW / img.naturalWidth, canvasH / img.naturalHeight);
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    ctx.drawImage(img, (canvasW - w) / 2, (canvasH - h) / 2, w, h);
+}
+
+function compositeBoxImage(canvasEl, selectedValues, tokenKey) {
+    const axisNames = sortedAxisNames(boxAxisOptions);
+    const layerUrls = axisNames
+        .map(name => {
+            const value = selectedValues[name];
+            if (!value) return null;
+            const opt = (boxAxisOptions[name] || []).find(o => o.value === value);
+            return opt && opt.image_url ? opt.image_url : null;
+        })
+        .filter(Boolean);
+
+    const ctx = canvasEl.getContext('2d');
+    if (!layerUrls.length) {
+        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        canvasEl.classList.add('hidden');
+        return;
+    }
+
+    const myToken = (boxCanvasRenderTokens[tokenKey] = (boxCanvasRenderTokens[tokenKey] || 0) + 1);
+    Promise.all(layerUrls.map(loadImageEl)).then(imgs => {
+        if (boxCanvasRenderTokens[tokenKey] !== myToken) return; // 選擇又變了，這次結果過期了，不要蓋上去
+        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        imgs.forEach(img => drawImageContain(ctx, img, canvasEl.width, canvasEl.height));
+        canvasEl.classList.remove('hidden');
+    }).catch(() => {});
+}
+
+function refreshBoxCanvas(i) {
+    const scopeEl = document.querySelector(`[data-box-index="${i}"]`);
+    const canvasEl = scopeEl && scopeEl.querySelector('.box-preview-canvas');
+    if (!canvasEl) return;
+    const state = boxPickerStates[i];
+    const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
+    const combo = findBestBoxCombo(selected);
+    const finalValues = combo ? { ...selected, ...combo.values } : selected;
+    compositeBoxImage(canvasEl, finalValues, 'box-' + i);
+}
+
+function updateBoxPreview(i) {
+    if (!boxPickerStates[i].linkedToFirst) updateBoxDisabledTiles(i);
+    refreshBoxCanvas(i);
+    // 改的是接線盒 1 的話，順便刷新所有勾了「與接線盒 1 一樣」的其他盒子的合成圖。
+    if (i === 0) {
+        boxPickerStates.forEach((s, idx) => { if (idx !== 0 && s.linkedToFirst) refreshBoxCanvas(idx); });
+    }
+}
+
+function applyDefaultBoxSelections(i) {
+    const state = boxPickerStates[i];
+    sortedAxisNames(boxAxisOptions).forEach(axis => {
+        const options = boxAxisOptions[axis] || [];
+        if (options.length === 1) state.selectedVariant[axis] = options[0].value;
+    });
+}
+
+function wireBoxPicker(i) {
+    const scopeEl = document.querySelector(`[data-box-index="${i}"]`);
+    if (!scopeEl) return;
+    const state = boxPickerStates[i];
+
+    const linkCb = scopeEl.querySelector('.box-link-first-checkbox');
+    if (linkCb) {
+        linkCb.addEventListener('change', () => {
+            state.linkedToFirst = linkCb.checked;
+            renderBoxPickersDom(); // 顯示/隱藏這個盒子自己的選擇區，整組重畫一次
+        });
+    }
+
+    if (!state.linkedToFirst) {
+        const fieldsEl = scopeEl.querySelector('.box-variant-fields');
+        const names = sortedAxisNames(boxAxisOptions);
+        fieldsEl.innerHTML = names.length
+            ? names.map(name => boxFieldHtml(name)).join('')
+            : '<p class="text-xs text-gray-400">還沒有設定接線盒規格，請按上面「編輯接線盒規格」新增。</p>';
+
+        applyDefaultBoxSelections(i);
+
+        scopeEl.querySelectorAll('.box-variant-text-input').forEach(textEl => {
+            const axis = textEl.dataset.axis;
+            textEl.addEventListener('input', () => {
+                state.autoSelectedAxes.delete(axis);
+                clearAutoSelectedBoxAxes(i);
+                if (textEl.value.trim() && state.selectedVariant[axis]) {
+                    state.selectedVariant[axis] = '';
+                    scopeEl.querySelectorAll('.box-variant-tile').forEach(b => {
+                        if (b.dataset.axis === axis) b.classList.remove('selected');
+                    });
+                }
+                updateBoxPreview(i);
+            });
+        });
+
+        scopeEl.querySelectorAll('.box-variant-tile').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const axis = btn.dataset.axis;
+                const value = btn.dataset.value;
+                state.selectedVariant[axis] = (state.selectedVariant[axis] === value) ? '' : value;
+                state.autoSelectedAxes.delete(axis);
+                clearAutoSelectedBoxAxes(i);
+                scopeEl.querySelectorAll('.box-variant-tile').forEach(b => {
+                    if (b.dataset.axis === axis) b.classList.toggle('selected', b.dataset.value === state.selectedVariant[axis]);
+                });
+                scopeEl.querySelectorAll('.box-variant-text-input').forEach(t => {
+                    if (t.dataset.axis === axis) t.value = '';
+                });
+                updateBoxPreview(i);
+            });
+        });
+    }
+
+    updateBoxPreview(i);
+}
+
 document.getElementById('notif-submit-btn').addEventListener('click', async () => {
     const selected = currentVariantValues();
-    if (!Object.keys(selected).length) { alert('請先選擇規格'); return; }
+    if (!Object.keys(selected).length) { alert('請先選擇架構'); return; }
 
     const combo = findBestCombo(selected);
     const variantValues = combo ? { ...selected, ...combo.values } : selected;
+
+    if (boxPickerStates.length) {
+        const emptyBoxIdx = boxPickerStates.findIndex((state, i) => !Object.keys(currentBoxVariantValues(i)).length);
+        if (emptyBoxIdx !== -1) { alert(`接線盒 ${emptyBoxIdx + 1} 還沒有選規格`); return; }
+    }
+    const boxValues = boxPickerStates.map((state, i) => {
+        const boxSelected = currentBoxVariantValues(i);
+        const boxCombo = findBestBoxCombo(boxSelected);
+        return boxCombo ? { ...boxSelected, ...boxCombo.values } : boxSelected;
+    });
 
     const qty = Number(document.getElementById('notif-qty').value) || 1;
     const note = document.getElementById('notif-note').value.trim();
 
     const { error } = await sb.from('houjiao_notifications').insert({
         variant_values: variantValues,
+        box_values: boxValues,
         qty,
         note: note || null,
         created_by: currentUserDisplayName || currentUserEmail,
@@ -1283,15 +2420,21 @@ function renderNotifList(records) {
         listEl.innerHTML = '<p class="text-xs text-gray-400">這天沒有通知紀錄。</p>';
         return;
     }
-    listEl.innerHTML = records.map(r => `
+    listEl.innerHTML = records.map(r => {
+        const boxLines = (r.box_values || []).map((bv, i) =>
+            `<div>接線盒 ${i + 1}：${escapeHtml(formatVariantSummary({ variant_values: bv }))}</div>`
+        ).join('');
+        return `
         <div class="border rounded-lg p-3 mb-2">
             <div class="flex justify-between items-start gap-2">
                 <div class="text-sm">${escapeHtml(formatVariantSummary(r))}　<span class="font-bold">x${escapeHtml(String(r.qty))}</span></div>
                 <div class="text-xs text-gray-400 whitespace-nowrap">${escapeHtml(new Date(r.created_at).toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit' }))}</div>
             </div>
+            ${boxLines ? `<div class="text-xs text-gray-600 mt-1 space-y-0.5">${boxLines}</div>` : ''}
             ${r.note ? `<div class="text-xs text-gray-500 mt-1">備註：${escapeHtml(r.note)}</div>` : ''}
             <div class="text-xs text-gray-400 mt-1">建立人：${escapeHtml(r.created_by || '')}</div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
 document.getElementById('notif-date-filter').addEventListener('change', (e) => {
@@ -1304,7 +2447,8 @@ document.getElementById('notif-date-today-btn').addEventListener('click', () => 
 });
 
 async function initHoujiao() {
-    await loadHoujiaoVariants();
+    await Promise.all([loadHoujiaoVariants(), loadBoxVariants()]);
+    ensureBoxPickerCountForce(); // 架構跟接線盒規格都載入完了，確保接線盒選擇區數量/內容是最新的
     const t = todayIso();
     document.getElementById('notif-date-filter').value = t;
     await loadNotifList(t);

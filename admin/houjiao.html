@@ -49,12 +49,17 @@
         <main class="container mx-auto px-4 py-6 max-w-3xl">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-bold">打腳通知</h2>
-                <button type="button" id="edit-axes-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯規格</button>
+                <div class="flex gap-2">
+                    <button type="button" id="edit-box-axes-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯接線盒規格</button>
+                    <button type="button" id="edit-axes-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯架構</button>
+                </div>
             </div>
 
             <div class="bg-white border rounded-lg p-4 mb-6">
                 <img id="variant-preview-img" class="hidden mb-3 rounded border max-h-64 object-contain" alt="">
                 <div id="variant-fields" class="space-y-3"></div>
+
+                <div id="box-picker-container" class="space-y-3 mt-4"></div>
 
                 <div class="flex flex-wrap items-end gap-2 mt-3">
                     <div>
@@ -88,13 +93,14 @@
     <div id="edit-modal" class="fixed inset-0 bg-black/40 hidden items-start justify-center z-50 p-4 overflow-y-auto">
         <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[calc(100vh-4rem)] overflow-y-auto">
             <div class="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white">
-                <h2 class="font-bold text-lg">編輯「打腳通知」規格</h2>
+                <h2 class="font-bold text-lg">編輯「打腳通知」架構</h2>
                 <button id="modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
             </div>
             <div class="px-6 py-4 space-y-3">
                 <p class="text-xs text-gray-400">
                     每個軸（例如「規格」「顏色」，或自己命名的其他軸）底下可以新增好幾個可以點選的值，每個值都能各自上傳圖片。
                     如果好幾種軸要「綁在一起」，在下面「完整組合」新增；用法跟「修改 POS 商品」的軸/組合編輯一樣。
+                    其中「接線盒數量」這個軸的選項值（例如「2個」）決定下面主頁面會出現幾組「接線盒規格」選擇區。
                 </p>
 
                 <div id="axis-groups" class="space-y-2 mb-3"></div>
@@ -131,6 +137,60 @@
                         取消
                     </button>
                     <button type="button" id="modal-save-btn" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+                        儲存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-box-modal" class="fixed inset-0 bg-black/40 hidden items-start justify-center z-50 p-4 overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[calc(100vh-4rem)] overflow-y-auto">
+            <div class="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white">
+                <h2 class="font-bold text-lg">編輯「接線盒規格」</h2>
+                <button id="box-modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <div class="px-6 py-4 space-y-3">
+                <p class="text-xs text-gray-400">
+                    這裡的軸/選項用法跟「編輯架構」一樣，但每個選項的圖片是拿來「疊圖合成」用的：
+                    使用者選好每個軸各自的值之後，系統會照這裡軸的上下順序（上面的軸在底層，下面的軸疊在上面），
+                    把每個選到的選項的圖片疊在一起，自動合成一張示意圖——不用每一種組合都準備一張照片。
+                    完整組合這裡只用來標記「這個組合不能選」，不需要另外上傳組合照片。
+                </p>
+
+                <div id="box-axis-groups" class="space-y-2 mb-3"></div>
+
+                <div class="flex flex-wrap gap-2 items-end border-t pt-3">
+                    <div class="flex-1 min-w-[8rem]">
+                        <label class="field-label">軸名稱</label>
+                        <input type="text" id="box-axis-name-input" class="field-input" placeholder="例如：規格、內外耳">
+                    </div>
+                    <div class="flex-1 min-w-[8rem]">
+                        <label class="field-label">值（用 / 分隔，可一次加多個）</label>
+                        <input type="text" id="box-axis-value-input" class="field-input" placeholder="例如 一聯/二聯">
+                    </div>
+                    <button type="button" id="box-add-axis-value-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增選項</button>
+                </div>
+
+                <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">完整組合（標記哪些軸的組合不能選；至少要填兩個軸）</h4>
+                <div id="box-variant-combo-list" class="space-y-2 mb-2"></div>
+                <div id="box-combo-builder"></div>
+
+                <div class="border-t pt-3 mt-3">
+                    <p class="text-xs text-gray-500 mb-1">
+                        從表格貼上快速新增多筆完整組合（第一列是軸名稱，之後每一列是一筆組合）：
+                    </p>
+                    <textarea id="box-combo-table-paste" class="field-input" rows="3" placeholder="|規格|內外耳|&#10;|一聯|外耳|"></textarea>
+                    <button type="button" id="box-combo-table-import-btn" class="mt-1 px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">解析並新增組合</button>
+                    <p id="box-combo-table-import-status" class="text-xs text-gray-400 mt-1"></p>
+                </div>
+
+                <p id="box-form-error" class="text-sm text-red-600 hidden"></p>
+                <div class="flex justify-end gap-2 pt-2 border-t mt-3">
+                    <button type="button" id="box-modal-cancel-btn" class="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50">
+                        取消
+                    </button>
+                    <button type="button" id="box-modal-save-btn" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
                         儲存
                     </button>
                 </div>
