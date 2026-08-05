@@ -2280,7 +2280,14 @@ function compositeBoxImage(canvasEl, selectedValues, tokenKey) {
         ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
         imgs.forEach(img => drawImageContain(ctx, img, canvasEl.width, canvasEl.height));
         canvasEl.classList.remove('hidden');
-    }).catch(() => {});
+    }).catch(err => {
+        if (boxCanvasRenderTokens[tokenKey] !== myToken) return;
+        // 之前這裡是靜默吞掉錯誤，畫面會留著上一次成功疊出來的舊圖，看起來就像「疊不上去」，
+        // 但實際上是某張圖下載失敗（例如 CORS）。先印出來，不要留著誤導人的舊畫面。
+        console.error('[打腳通知] 接線盒合成圖有一層讀取失敗，圖層網址：', layerUrls, err);
+        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        canvasEl.classList.add('hidden');
+    });
 }
 
 function refreshBoxCanvas(i) {
@@ -2438,7 +2445,10 @@ function renderBoxCompositeToDataUrl(boxValues) {
                 imgs.forEach(img => drawImageContain(ctx, img, canvas.width, canvas.height));
                 resolve(canvas.toDataURL('image/png'));
             })
-            .catch(() => resolve(null));
+            .catch(err => {
+                console.error('[打腳通知] PDF 合成圖有一層讀取失敗，圖層網址：', layerUrls, err);
+                resolve(null);
+            });
     });
 }
 
