@@ -232,6 +232,61 @@ async function loadEditorSection() {
     renderVariantSection();
 }
 
+// 「選用已上傳的圖片」：不用每次都重新選檔案上傳，同一個編輯彈窗裡（架構或接線盒規格，
+// 各自的軸選項＋完整組合）只要有任何一筆已經有圖，都可以直接挑來重複用在別的選項/組合上。
+function distinctImageUrls(rows) {
+    const seen = new Set();
+    const urls = [];
+    rows.forEach(r => {
+        if (r.image_url && !seen.has(r.image_url)) {
+            seen.add(r.image_url);
+            urls.push(r.image_url);
+        }
+    });
+    return urls;
+}
+
+// 回傳 Promise<string|null>：選了就 resolve 那張圖的網址，取消就 resolve null。
+function promptPickExistingImage(rows) {
+    return new Promise(resolve => {
+        const urls = distinctImageUrls(rows);
+        if (!urls.length) {
+            alert('目前這裡還沒有任何已上傳的圖片可以選，請先用「上傳圖片」上傳至少一張。');
+            resolve(null);
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        const panel = document.createElement('div');
+        panel.style.cssText = 'background:#fff;border-radius:8px;padding:16px;max-width:32rem;width:100%;max-height:80vh;overflow-y:auto;';
+        panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 style="font-weight:700;font-size:14px;">選用已上傳的圖片</h3>
+                <button type="button" class="picker-cancel-btn" style="font-size:12px;color:#6b7280;cursor:pointer;">取消</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;">
+                ${urls.map(u => `
+                <button type="button" class="picker-thumb-btn" data-url="${escapeHtml(u)}"
+                        style="border:1px solid #e5e7eb;border-radius:6px;padding:2px;cursor:pointer;background:#fff;">
+                    <img src="${escapeHtml(u)}" style="width:100%;aspect-ratio:1;object-fit:contain;display:block;">
+                </button>`).join('')}
+            </div>`;
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+
+        function close(result) {
+            document.body.removeChild(overlay);
+            resolve(result);
+        }
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+        panel.querySelector('.picker-cancel-btn').addEventListener('click', () => close(null));
+        panel.querySelectorAll('.picker-thumb-btn').forEach(btn => {
+            btn.addEventListener('click', () => close(btn.dataset.url));
+        });
+    });
+}
+
 function axisChipHtml(r, name, isFirst, isLast) {
     const rawValue = r.axis_values[name];
     const splitCount = splitBulkValues(rawValue).length;
@@ -250,6 +305,7 @@ function axisChipHtml(r, name, isFirst, isLast) {
                 上傳圖片
                 <input type="file" accept="image/*" class="hidden axis-upload-input">
             </label>
+            <button type="button" class="axis-pick-existing-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap">選用已上傳</button>
             ${r.image_url ? `<button type="button" class="axis-image-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
             ${splitCount > 1 ? `<button type="button" class="axis-chip-split px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="分割成 ${splitCount} 個選項">⇥ 分割</button>` : ''}
             <button type="button" class="axis-chip-del px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap" title="刪除選項">刪除</button>
@@ -300,6 +356,19 @@ function wireAxisChips(scopeEl) {
         btn.addEventListener('click', () => {
             const rowEl = btn.closest('[data-temp-id]');
             insertAxisOptionAt(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 'after');
+        });
+    });
+
+    scopeEl.querySelectorAll('.axis-pick-existing-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
+            const row = localVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            const url = await promptPickExistingImage(localVariantRows);
+            if (!url) return;
+            row.image_url = url;
+            modalDirty = true;
+            renderVariantSection();
         });
     });
 
@@ -585,7 +654,8 @@ function renderComboList(combos, axisOptions, axisNames) {
                 <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
                     上傳圖片
                     <input type="file" accept="image/*" class="hidden combo-upload-input">
-                </label>`}
+                </label>
+                <button type="button" class="combo-pick-existing-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap">選用已上傳</button>`}
                 ${!isDisabled && existing && existing.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
@@ -728,6 +798,25 @@ function renderComboList(combos, axisOptions, axisNames) {
             } finally {
                 input.value = '';
             }
+        });
+
+        const pickExistingBtn = rowEl.querySelector('.combo-pick-existing-btn');
+        if (pickExistingBtn) pickExistingBtn.addEventListener('click', async () => {
+            const url = await promptPickExistingImage(localVariantRows);
+            if (!url) return;
+            if (cell.existing) {
+                cell.existing.image_url = url;
+            } else {
+                localVariantRows.push({
+                    tempId: ++variantTempCounter,
+                    id: null,
+                    axis_values: cell.values,
+                    image_url: url,
+                    sort_order: 0,
+                });
+            }
+            modalDirty = true;
+            renderVariantSection();
         });
     });
 }
@@ -1084,6 +1173,19 @@ function wireBoxAxisChips(scopeEl) {
         });
     });
 
+    scopeEl.querySelectorAll('.axis-pick-existing-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
+            const row = boxLocalVariantRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            const url = await promptPickExistingImage(boxLocalVariantRows);
+            if (!url) return;
+            row.image_url = url;
+            boxModalDirty = true;
+            renderBoxVariantSection();
+        });
+    });
+
     scopeEl.querySelectorAll('.axis-image-remove-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const tempId = Number(btn.closest('[data-temp-id]').dataset.tempId);
@@ -1362,7 +1464,8 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
                 <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
                     上傳圖片
                     <input type="file" accept="image/*" class="hidden combo-upload-input">
-                </label>`}
+                </label>
+                <button type="button" class="combo-pick-existing-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap">選用已上傳</button>`}
                 ${!isDisabled && existing && existing.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
@@ -1505,6 +1608,25 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             } finally {
                 input.value = '';
             }
+        });
+
+        const pickExistingBtn = rowEl.querySelector('.combo-pick-existing-btn');
+        if (pickExistingBtn) pickExistingBtn.addEventListener('click', async () => {
+            const url = await promptPickExistingImage(boxLocalVariantRows);
+            if (!url) return;
+            if (cell.existing) {
+                cell.existing.image_url = url;
+            } else {
+                boxLocalVariantRows.push({
+                    tempId: ++boxVariantTempCounter,
+                    id: null,
+                    axis_values: cell.values,
+                    image_url: url,
+                    sort_order: 0,
+                });
+            }
+            boxModalDirty = true;
+            renderBoxVariantSection();
         });
     });
 }
