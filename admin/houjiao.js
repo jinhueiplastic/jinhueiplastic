@@ -1803,8 +1803,9 @@ function findBestCombo(selectedValues) {
     return best;
 }
 
-function currentComboImage() {
-    const values = currentVariantValues();
+// values 可以是目前畫面上正在選的（currentVariantValues()），也可以是一筆已經存好的
+// 通知紀錄的 variant_values——兩種情況共用同一套「找完整組合圖、退而求其次找單一軸圖」的規則。
+function resolveArchitectureImageUrl(values) {
     const combo = findBestCombo(values);
     if (combo && combo.image_url) return combo.image_url;
 
@@ -1902,18 +1903,8 @@ function updateDisabledTiles() {
 
 function updateVariantPreviewImage() {
     updateDisabledTiles();
-    const img = document.getElementById('variant-preview-img');
-    if (img) {
-        const url = currentComboImage();
-        if (url) {
-            img.src = url;
-            img.classList.remove('hidden');
-        } else {
-            img.src = '';
-            img.classList.add('hidden');
-        }
-    }
     ensureBoxPickerCount(); // 架構的「接線盒數量」選了幾個，下面就要對應出現幾組接線盒規格選擇區
+    updateCombinedLivePreview(); // 架構圖＋接線盒合成圖是同一張，架構這邊的選擇一變也要重畫
 }
 
 function applyDefaultVariantSelections() {
@@ -2036,22 +2027,8 @@ function boxPickerBlockHtml(i, state) {
         </div>`;
 }
 
-// 每個接線盒的合成示意圖集中放在表單最下面那排縮圖（跟各自的規格選擇區分開），
-// 順序、數量都跟 boxPickerStates 對齊。
-function renderBoxThumbRow() {
-    const row = document.getElementById('box-thumb-row');
-    if (!row) return;
-    if (!boxPickerStates.length) { row.innerHTML = ''; return; }
-    row.innerHTML = boxPickerStates.map((state, i) => `
-        <div class="flex flex-col items-center gap-0.5" data-thumb-index="${i}">
-            <canvas class="box-preview-canvas hidden rounded border" width="100" height="75" style="width:100px;height:75px;"></canvas>
-            <span class="text-[10px] text-gray-400">盒${i + 1}</span>
-        </div>`).join('');
-}
-
 function renderBoxPickersDom() {
     const container = document.getElementById('box-picker-container');
-    renderBoxThumbRow();
     if (!boxPickerStates.length) { container.innerHTML = ''; return; }
     container.innerHTML = boxPickerStates.map((state, i) => boxPickerBlockHtml(i, state)).join('');
     boxPickerStates.forEach((state, i) => wireBoxPicker(i));
@@ -2222,10 +2199,12 @@ function updateBoxDisabledTiles(i) {
     });
 }
 
-// 疊圖合成：照軸的順序（跟編輯畫面上下移動排出來的順序一樣），把每個軸目前選到的
-// 那個選項自己的小圖依序疊上去（先疊的在底層，後疊的蓋在上面），合成一張示意圖。
+// 疊圖合成：把「架構」圖當底層，「接線盒規格」的合成圖疊在上面，畫成同一張圖——
+// 只選了 1 個接線盒的話整張蓋滿疊上去；選了不只 1 個接線盒的話，每個接線盒的合成圖縮小、
+// 並排畫在畫面下方那一條帶狀區域，彼此不重疊。每個接線盒自己的合成圖，則是照軸的順序
+// 把目前選到的那個選項自己的小圖依序疊上去（先疊的在底層，後疊的蓋在上面）。
 // 用一個遞增的 token 擋住「圖片還在下載時使用者又改了選擇」這種情況下畫面被舊結果蓋掉。
-let boxCanvasRenderTokens = {};
+let combinedPreviewRenderToken = 0;
 
 function loadImageEl(url) {
     return new Promise((resolve, reject) => {
@@ -2237,11 +2216,15 @@ function loadImageEl(url) {
     });
 }
 
+function drawImageContainInRect(ctx, img, x, y, w, h) {
+    const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+    const dw = img.naturalWidth * scale;
+    const dh = img.naturalHeight * scale;
+    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
 function drawImageContain(ctx, img, canvasW, canvasH) {
-    const scale = Math.min(canvasW / img.naturalWidth, canvasH / img.naturalHeight);
-    const w = img.naturalWidth * scale;
-    const h = img.naturalHeight * scale;
-    ctx.drawImage(img, (canvasW - w) / 2, (canvasH - h) / 2, w, h);
+    drawImageContainInRect(ctx, img, 0, 0, canvasW, canvasH);
 }
 
 // 有選值但那個選項本身還沒設定圖片的軸，就借用「排序後第一個有圖的軸」的照片頂著疊上去
@@ -2263,51 +2246,84 @@ function resolveBoxCompositeLayerUrls(axisNames, axisOptions, selectedValues) {
         .filter(Boolean);
 }
 
-function compositeBoxImage(canvasEl, selectedValues, tokenKey) {
-    const axisNames = sortedAxisNames(boxAxisOptions);
-    const layerUrls = resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, selectedValues);
+// 畫出「架構＋所有接線盒」合成後的圖，回傳一個畫好的離線 canvas——不直接畫到畫面上，
+// 交給呼叫的人決定要顯示出來、還是轉成 dataURL 塞進 PDF／通知紀錄清單的縮圖。
+async function renderCombinedComposite(architectureUrl, boxesLayerUrls, width, height) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
 
-    const ctx = canvasEl.getContext('2d');
-    if (!layerUrls.length) {
-        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-        canvasEl.classList.add('hidden');
-        return;
+    if (architectureUrl) {
+        const archImg = await loadImageEl(architectureUrl);
+        drawImageContainInRect(ctx, archImg, 0, 0, width, height);
     }
 
-    const myToken = (boxCanvasRenderTokens[tokenKey] = (boxCanvasRenderTokens[tokenKey] || 0) + 1);
-    Promise.all(layerUrls.map(loadImageEl)).then(imgs => {
-        if (boxCanvasRenderTokens[tokenKey] !== myToken) return; // 選擇又變了，這次結果過期了，不要蓋上去
-        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-        imgs.forEach(img => drawImageContain(ctx, img, canvasEl.width, canvasEl.height));
-        canvasEl.classList.remove('hidden');
-    }).catch(err => {
-        if (boxCanvasRenderTokens[tokenKey] !== myToken) return;
-        // 之前這裡是靜默吞掉錯誤，畫面會留著上一次成功疊出來的舊圖，看起來就像「疊不上去」，
-        // 但實際上是某張圖下載失敗（例如 CORS）。先印出來，不要留著誤導人的舊畫面。
-        console.error('[打腳通知] 接線盒合成圖有一層讀取失敗，圖層網址：', layerUrls, err);
-        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-        canvasEl.classList.add('hidden');
+    const boxes = boxesLayerUrls.filter(urls => urls && urls.length);
+    if (boxes.length === 1) {
+        const imgs = await Promise.all(boxes[0].map(loadImageEl));
+        imgs.forEach(img => drawImageContainInRect(ctx, img, 0, 0, width, height));
+    } else if (boxes.length > 1) {
+        const bandH = height * 0.32;
+        const bandY = height - bandH;
+        const slotW = width / boxes.length;
+        for (let i = 0; i < boxes.length; i++) {
+            const imgs = await Promise.all(boxes[i].map(loadImageEl));
+            imgs.forEach(img => drawImageContainInRect(ctx, img, i * slotW, bandY, slotW, bandH));
+        }
+    }
+
+    return canvas;
+}
+
+async function renderCombinedCompositeToDataUrl(architectureUrl, boxesLayerUrls, width, height) {
+    const canvas = await renderCombinedComposite(architectureUrl, boxesLayerUrls, width, height);
+    return canvas.toDataURL('image/png');
+}
+
+// 每個接線盒目前實際要疊的圖層網址（含上面說的「借圖」規則），照 boxPickerStates 的順序排。
+function currentBoxesLayerUrls() {
+    const axisNames = sortedAxisNames(boxAxisOptions);
+    return boxPickerStates.map((state, i) => {
+        const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
+        const combo = findBestBoxCombo(selected);
+        const finalValues = combo ? { ...selected, ...combo.values } : selected;
+        return resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, finalValues);
     });
 }
 
-function refreshBoxCanvas(i) {
-    const thumbEl = document.querySelector(`#box-thumb-row [data-thumb-index="${i}"]`);
-    const canvasEl = thumbEl && thumbEl.querySelector('.box-preview-canvas');
+// 表單上方那張「架構＋接線盒」合成預覽圖，架構軸或任何一個接線盒的選擇一變就重畫一次。
+function updateCombinedLivePreview() {
+    const canvasEl = document.getElementById('variant-preview-canvas');
     if (!canvasEl) return;
-    const state = boxPickerStates[i];
-    const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
-    const combo = findBestBoxCombo(selected);
-    const finalValues = combo ? { ...selected, ...combo.values } : selected;
-    compositeBoxImage(canvasEl, finalValues, 'box-' + i);
+
+    const architectureUrl = resolveArchitectureImageUrl(currentVariantValues());
+    const boxesLayerUrls = currentBoxesLayerUrls();
+    const hasContent = !!architectureUrl || boxesLayerUrls.some(urls => urls.length);
+
+    const myToken = ++combinedPreviewRenderToken;
+    if (!hasContent) {
+        canvasEl.classList.add('hidden');
+        return;
+    }
+    renderCombinedComposite(architectureUrl, boxesLayerUrls, canvasEl.width, canvasEl.height)
+        .then(resultCanvas => {
+            if (combinedPreviewRenderToken !== myToken) return; // 選擇又變了，這次結果過期了，不要蓋上去
+            const ctx = canvasEl.getContext('2d');
+            ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+            ctx.drawImage(resultCanvas, 0, 0);
+            canvasEl.classList.remove('hidden');
+        })
+        .catch(err => {
+            if (combinedPreviewRenderToken !== myToken) return;
+            console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err);
+            canvasEl.classList.add('hidden');
+        });
 }
 
 function updateBoxPreview(i) {
     if (!boxPickerStates[i].linkedToFirst) updateBoxDisabledTiles(i);
-    refreshBoxCanvas(i);
-    // 改的是接線盒 1 的話，順便刷新所有勾了「與接線盒 1 一樣」的其他盒子的合成圖。
-    if (i === 0) {
-        boxPickerStates.forEach((s, idx) => { if (idx !== 0 && s.linkedToFirst) refreshBoxCanvas(idx); });
-    }
+    updateCombinedLivePreview();
 }
 
 function applyDefaultBoxSelections(i) {
@@ -2427,29 +2443,12 @@ function localDayRangeUtc(dateStr) {
     return { gte: start.toISOString(), lt: end.toISOString() };
 }
 
-// 幫「下載 PDF」重新合成一次接線盒的示意圖（跟畫面上的 canvas 合成邏輯一樣，只是輸出
-// 成一張 dataURL 圖片塞進 PDF 用的 HTML，不是畫在畫面上的 <canvas>）。沒有任何圖層的話
-// 回傳 null，PDF 那格就顯示空白色塊。
-function renderBoxCompositeToDataUrl(boxValues) {
-    return new Promise(resolve => {
-        const axisNames = sortedAxisNames(boxAxisOptions);
-        const layerUrls = resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, boxValues);
-        if (!layerUrls.length) { resolve(null); return; }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 2000;
-        canvas.height = 1500;
-        const ctx = canvas.getContext('2d');
-        Promise.all(layerUrls.map(loadImageEl))
-            .then(imgs => {
-                imgs.forEach(img => drawImageContain(ctx, img, canvas.width, canvas.height));
-                resolve(canvas.toDataURL('image/png'));
-            })
-            .catch(err => {
-                console.error('[打腳通知] PDF 合成圖有一層讀取失敗，圖層網址：', layerUrls, err);
-                resolve(null);
-            });
-    });
+// 一筆已經存好的通知紀錄，各個接線盒目前該疊的圖層網址（含「借圖」規則），順序跟
+// record.box_values 對齊——跟畫面上即時預覽用的 currentBoxesLayerUrls() 是同一套規則，
+// 只是這裡讀的是存好的資料，不是使用者正在選的狀態。
+function boxesLayerUrlsForRecord(record) {
+    const axisNames = sortedAxisNames(boxAxisOptions);
+    return (record.box_values || []).map(bv => resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, bv));
 }
 
 // PDF 版面／分頁的機制（waitForImages、renderHtmlPagesInto）沿用 pdf.js 共用的部分，
@@ -2461,24 +2460,16 @@ async function buildHoujiaoNotificationHtml(record) {
 
     const dateStr = record.created_at ? new Date(record.created_at).toLocaleString('zh-TW') : '';
     const boxValuesArr = record.box_values || [];
-    const boxImages = await Promise.all(boxValuesArr.map(renderBoxCompositeToDataUrl));
 
-    const boxesHtml = boxValuesArr.map((bv, i) => {
-        const summary = formatVariantSummary({ variant_values: bv });
-        const img = boxImages[i];
-        return `
-            <div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #e5e7eb;">
-                <div style="width:70px;height:70px;flex-shrink:0;">
-                    ${img
-                        ? `<img src="${img}" style="width:70px;height:70px;object-fit:contain;border:1px solid #e5e7eb;border-radius:4px;">`
-                        : `<div style="width:70px;height:70px;background:#f3f4f6;border-radius:4px;"></div>`}
-                </div>
-                <div style="font-size:14px;">
-                    <div style="font-weight:700;">接線盒 ${i + 1}</div>
-                    <div style="color:#374151;">${escapeHtml(summary)}</div>
-                </div>
-            </div>`;
-    }).join('');
+    const architectureUrl = resolveArchitectureImageUrl(record.variant_values || {});
+    const boxesLayerUrls = boxesLayerUrlsForRecord(record);
+    const combinedImg = (architectureUrl || boxesLayerUrls.some(u => u.length))
+        ? await renderCombinedCompositeToDataUrl(architectureUrl, boxesLayerUrls, 2000, 1500)
+        : null;
+
+    const boxLinesHtml = boxValuesArr.map((bv, i) =>
+        `<div>接線盒 ${i + 1}：${escapeHtml(formatVariantSummary({ variant_values: bv }))}</div>`
+    ).join('');
 
     container.innerHTML = `
         <h1 style="font-size:22px;font-weight:700;margin:0 0 4px;">錦輝塑膠業有限公司 打腳通知</h1>
@@ -2487,15 +2478,16 @@ async function buildHoujiaoNotificationHtml(record) {
             <span>時間：${escapeHtml(dateStr)}</span>
         </div>
         <hr style="border:none;border-top:1px solid #d1d5db;margin:12px 0;">
+        ${combinedImg ? `<img src="${combinedImg}" style="display:block;max-width:100%;max-height:320px;object-fit:contain;margin:0 auto 16px;">` : ''}
         <div style="font-size:14px;color:#374151;line-height:1.8;">
             <div>架構：${escapeHtml(formatVariantSummary(record))}</div>
             <div>數量：${escapeHtml(String(record.qty))}</div>
             ${record.note ? `<div>備註：${escapeHtml(record.note)}</div>` : ''}
         </div>
-        ${boxesHtml ? `
+        ${boxLinesHtml ? `
         <hr style="border:none;border-top:1px solid #d1d5db;margin:16px 0;">
         <h2 style="font-size:15px;font-weight:700;margin:0 0 8px;">接線盒明細</h2>
-        ${boxesHtml}` : ''}
+        <div style="font-size:14px;color:#374151;line-height:1.8;">${boxLinesHtml}</div>` : ''}
     `;
     return container;
 }
@@ -2551,7 +2543,10 @@ function renderNotifList(records) {
         return `
         <div class="border rounded-lg p-3 mb-2" data-notif-id="${r.id}">
             <div class="flex justify-between items-start gap-2">
-                <div class="text-sm">${escapeHtml(formatVariantSummary(r))}　<span class="font-bold">x${escapeHtml(String(r.qty))}</span></div>
+                <div class="flex gap-2 items-start min-w-0">
+                    <img class="notif-thumb hidden w-16 h-12 object-contain rounded border bg-gray-50 flex-shrink-0" alt="">
+                    <div class="text-sm">${escapeHtml(formatVariantSummary(r))}　<span class="font-bold">x${escapeHtml(String(r.qty))}</span></div>
+                </div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs text-gray-400 whitespace-nowrap">${escapeHtml(new Date(r.created_at).toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit' }))}</span>
                     <button type="button" class="notif-pdf-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap">下載 PDF</button>
@@ -2563,6 +2558,22 @@ function renderNotifList(records) {
             <div class="text-xs text-gray-400 mt-1">建立人：${escapeHtml(r.created_by || '')}</div>
         </div>`;
     }).join('');
+
+    // 縮圖是非同步疊圖出來的，不擋清單本身的顯示——每筆各自疊完再各自補上去，
+    // 疊不出來（例如完全沒有圖）就維持原本的 hidden，不留空白破圖示。
+    records.forEach(r => {
+        const architectureUrl = resolveArchitectureImageUrl(r.variant_values || {});
+        const boxesLayerUrls = boxesLayerUrlsForRecord(r);
+        if (!architectureUrl && !boxesLayerUrls.some(u => u.length)) return;
+        renderCombinedCompositeToDataUrl(architectureUrl, boxesLayerUrls, 200, 150)
+            .then(dataUrl => {
+                const thumbEl = listEl.querySelector(`[data-notif-id="${r.id}"] .notif-thumb`);
+                if (!thumbEl) return;
+                thumbEl.src = dataUrl;
+                thumbEl.classList.remove('hidden');
+            })
+            .catch(err => console.error('[打腳通知] 通知紀錄縮圖疊圖失敗：', err));
+    });
 
     listEl.querySelectorAll('.notif-pdf-btn').forEach(btn => {
         btn.addEventListener('click', () => {
