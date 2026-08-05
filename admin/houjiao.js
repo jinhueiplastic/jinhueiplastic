@@ -209,7 +209,11 @@ async function loadEditorSection() {
     lastComboDisableIndex = null;
     document.getElementById('variant-combo-list').innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
 
-    const { data, error } = await sb.from('houjiao_variants').select('*').order('sort_order', { ascending: true });
+    // Supabase/PostgREST 一次查詢預設最多只回傳 1000 筆，6 個軸、每軸 2~9 個選項疊出來的
+    // 完整組合數量很容易超過，只查一次會漏掉排在後面的資料——用 fetchAllRows 分頁抓齊。
+    // 加上 id 當第二個排序依據：完整組合的 sort_order 全部都是 0，資料庫對「平手」的列
+    // 不保證每次查詢順序都一樣，分頁查詢時可能漏掉夾在中間的某幾頁。
+    const { data, error } = await fetchAllRows(() => sb.from('houjiao_variants').select('*').order('sort_order', { ascending: true }).order('id', { ascending: true }));
     if (error) {
         document.getElementById('variant-combo-list').innerHTML = `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
         return;
@@ -1203,7 +1207,7 @@ function wireVariantPicker() {
 }
 
 async function loadHoujiaoVariants() {
-    const { data, error } = await sb.from('houjiao_variants').select('*').order('sort_order', { ascending: true });
+    const { data, error } = await fetchAllRows(() => sb.from('houjiao_variants').select('*').order('sort_order', { ascending: true }).order('id', { ascending: true }));
     if (error) {
         document.getElementById('variant-fields').innerHTML = `<p class="text-xs text-red-500">讀取失敗：${escapeHtml(error.message)}</p>`;
         return;
