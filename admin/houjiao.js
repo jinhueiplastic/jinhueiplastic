@@ -1223,8 +1223,9 @@ function boxSplitVariantRow(axisName, tempId) {
     renderBoxVariantSection();
 }
 
-// 接線盒規格的完整組合只用來標記「不能選」，不用管圖片（示意圖是疊圖合成的），
-// 所以這裡沒有上傳/移除圖片、combo-thumb，比架構那份簡單一點。
+// 接線盒規格的完整組合預設是靠疊圖合成示意圖，但也可以像架構那樣幫某一筆完整組合另外
+// 上傳一張專屬照片——選規格時如果剛好對到這筆組合，就會優先直接用這張圖，不去疊每個軸
+// 自己的小圖（跟架構完整組合的上傳/優先順序是同一套規則）。
 function renderBoxComboList(combos, axisOptions, axisNames) {
     const container = document.getElementById('box-variant-combo-list');
 
@@ -1293,7 +1294,9 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         targetCells.forEach(c => {
             if (c.existing) {
                 c.existing.is_disabled = checked;
-                if (!checked) toRemoveIds.push(c.existing.tempId);
+                if (!checked && !c.existing.image_url) {
+                    toRemoveIds.push(c.existing.tempId);
+                }
             } else if (checked) {
                 const row = {
                     tempId: ++boxVariantTempCounter,
@@ -1348,11 +1351,19 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
                 ${existing ? '<input type="checkbox" class="combo-select-checkbox">' : '<span style="width:16px;display:inline-block;"></span>'}
+                <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
                 <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
                     <input type="checkbox" class="combo-disable-checkbox" ${isDisabled ? 'checked' : ''}>
                     停用（不能選）
                 </label>
+                <span class="combo-upload-status text-xs text-gray-400"></span>
+                ${isDisabled ? '' : `
+                <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
+                    上傳圖片
+                    <input type="file" accept="image/*" class="hidden combo-upload-input">
+                </label>`}
+                ${!isDisabled && existing && existing.image_url ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
     }).join('');
@@ -1438,6 +1449,16 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             });
         }
 
+        const removeBtn = rowEl.querySelector('.combo-remove-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                if (!confirm('確定要移除這張組合照片嗎？')) return;
+                cell.existing.image_url = null;
+                boxModalDirty = true;
+                renderBoxVariantSection();
+            });
+        }
+
         rowEl.querySelector('.combo-disable-checkbox').addEventListener('click', (e) => {
             const checked = e.target.checked;
             const cellIdx = Number(rowEl.dataset.cellIdx);
@@ -1450,6 +1471,40 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             boxLastComboDisableIndex = cellIdx;
 
             applyComboDisable(targets, checked);
+        });
+
+        const uploadInput = rowEl.querySelector('.combo-upload-input');
+        if (uploadInput) uploadInput.addEventListener('change', async (e) => {
+            const input = e.target;
+            const file = input.files[0];
+            if (!file) return;
+
+            const thumbImg = rowEl.querySelector('.combo-thumb');
+            const statusEl = rowEl.querySelector('.combo-upload-status');
+            statusEl.textContent = '上傳中…';
+            try {
+                const url = await uploadImageToCloudinary(file);
+                if (cell.existing) {
+                    cell.existing.image_url = url;
+                } else {
+                    boxLocalVariantRows.push({
+                        tempId: ++boxVariantTempCounter,
+                        id: null,
+                        axis_values: cell.values,
+                        image_url: url,
+                        sort_order: 0,
+                    });
+                }
+                boxModalDirty = true;
+                thumbImg.src = url;
+                statusEl.textContent = '';
+                renderBoxVariantSection();
+            } catch (e2) {
+                statusEl.textContent = '';
+                alert('上傳失敗：' + e2.message);
+            } finally {
+                input.value = '';
+            }
         });
     });
 }
@@ -2264,17 +2319,24 @@ function resolveArchitectureLayerUrls(values) {
     return resolveAxisLayerUrls(axisNames, pickerAxisOptions, values);
 }
 
+// 接線盒規格這邊「完整組合」也可以上傳一張專屬圖——道理跟架構的 resolveArchitectureLayerUrls
+// 一樣：目前的選擇剛好對到一筆有上傳圖片的完整組合，就直接用那張，不用再疊每個軸自己的小圖。
+function resolveBoxLayerUrls(selected) {
+    const combo = findBestBoxCombo(selected);
+    if (combo && combo.image_url) return [combo.image_url];
+    const finalValues = combo ? { ...selected, ...combo.values } : selected;
+    const axisNames = sortedAxisNames(boxAxisOptions);
+    return resolveAxisLayerUrls(axisNames, boxAxisOptions, finalValues);
+}
+
 // 目前畫面上「架構＋所有接線盒」實際要疊的圖層網址，攤平成一份清單：架構的軸排最前面，
 // 接下來照 boxPickerStates 的順序，每個接線盒自己的軸接在後面。
 function currentCombinedLayerUrls() {
     const archLayers = resolveArchitectureLayerUrls(currentVariantValues());
 
-    const boxAxisNames = sortedAxisNames(boxAxisOptions);
     const boxLayers = boxPickerStates.flatMap((state, i) => {
         const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
-        const combo = findBestBoxCombo(selected);
-        const finalValues = combo ? { ...selected, ...combo.values } : selected;
-        return resolveAxisLayerUrls(boxAxisNames, boxAxisOptions, finalValues);
+        return resolveBoxLayerUrls(selected);
     });
 
     return [...archLayers, ...boxLayers];
@@ -2434,10 +2496,7 @@ function localDayRangeUtc(dateStr) {
 // 資料（record.variant_values／record.box_values），不是使用者正在選的狀態。
 function combinedLayerUrlsForRecord(record) {
     const archLayers = resolveArchitectureLayerUrls(record.variant_values || {});
-
-    const boxAxisNames = sortedAxisNames(boxAxisOptions);
-    const boxLayers = (record.box_values || []).flatMap(bv => resolveAxisLayerUrls(boxAxisNames, boxAxisOptions, bv));
-
+    const boxLayers = (record.box_values || []).flatMap(bv => resolveBoxLayerUrls(bv));
     return [...archLayers, ...boxLayers];
 }
 
