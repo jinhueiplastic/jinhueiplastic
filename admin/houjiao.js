@@ -1803,23 +1803,6 @@ function findBestCombo(selectedValues) {
     return best;
 }
 
-// values 可以是目前畫面上正在選的（currentVariantValues()），也可以是一筆已經存好的
-// 通知紀錄的 variant_values——兩種情況共用同一套「找完整組合圖、退而求其次找單一軸圖」的規則。
-function resolveArchitectureImageUrl(values) {
-    const combo = findBestCombo(values);
-    if (combo && combo.image_url) return combo.image_url;
-
-    const entries = Object.entries(values);
-    if (entries.length === 1) {
-        const [axis, value] = entries[0];
-        const options = pickerAxisOptions[axis] || [];
-        const match = options.find(o => o.value === value);
-        if (match && match.image_url) return match.image_url;
-    }
-
-    return '';
-}
-
 function fullyTrackedAxisSet(axis) {
     let best = null;
     pickerCombos.forEach(c => {
@@ -2230,7 +2213,8 @@ function drawImageContain(ctx, img, canvasW, canvasH) {
 // 有選值但那個選項本身還沒設定圖片的軸，就借用「排序後第一個有圖的軸」的照片頂著疊上去
 // （寧可同一張圖被畫好幾層看起來怪，也不要那一層整個開天窗）。真的完全没有任何軸有圖的話，
 // 就沒有東西可以借，回傳空陣列（跟原本「完全沒圖就不合成」的行為一樣）。
-function resolveBoxCompositeLayerUrls(axisNames, axisOptions, selectedValues) {
+// 架構的軸、接線盒的軸都是同一套規則，共用這個函式。
+function resolveAxisLayerUrls(axisNames, axisOptions, selectedValues) {
     const ownImageByAxis = {};
     axisNames.forEach(name => {
         const value = selectedValues[name];
@@ -2246,50 +2230,45 @@ function resolveBoxCompositeLayerUrls(axisNames, axisOptions, selectedValues) {
         .filter(Boolean);
 }
 
-// 畫出「架構＋所有接線盒」合成後的圖，回傳一個畫好的離線 canvas——不直接畫到畫面上，
-// 交給呼叫的人決定要顯示出來、還是轉成 dataURL 塞進 PDF／通知紀錄清單的縮圖。
-async function renderCombinedComposite(architectureUrl, boxesLayerUrls, width, height) {
+// 畫出「架構＋所有接線盒」合成後的圖：layerUrls 是一份攤平的圖層網址清單（架構的軸排前面、
+// 接線盒的軸接在後面），全部都用同一個畫布尺寸整張蓋滿疊上去，先疊的在底層、後疊的蓋在上面
+// ——每張來源圖都已經是同樣的 2000x1500，疊起來的相對位置由圖片本身內容決定，這裡不額外
+// 縮放/排版。回傳一個畫好的離線 canvas，不直接畫到畫面上，交給呼叫的人決定要顯示出來、
+// 還是轉成 dataURL 塞進 PDF／通知紀錄清單的縮圖。
+async function renderCombinedComposite(layerUrls, width, height) {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    if (architectureUrl) {
-        const archImg = await loadImageEl(architectureUrl);
-        drawImageContainInRect(ctx, archImg, 0, 0, width, height);
-    }
-
-    const boxes = boxesLayerUrls.filter(urls => urls && urls.length);
-    if (boxes.length === 1) {
-        const imgs = await Promise.all(boxes[0].map(loadImageEl));
-        imgs.forEach(img => drawImageContainInRect(ctx, img, 0, 0, width, height));
-    } else if (boxes.length > 1) {
-        const bandH = height * 0.32;
-        const bandY = height - bandH;
-        const slotW = width / boxes.length;
-        for (let i = 0; i < boxes.length; i++) {
-            const imgs = await Promise.all(boxes[i].map(loadImageEl));
-            imgs.forEach(img => drawImageContainInRect(ctx, img, i * slotW, bandY, slotW, bandH));
-        }
+    for (const url of layerUrls) {
+        const img = await loadImageEl(url);
+        drawImageContainInRect(ctx, img, 0, 0, width, height);
     }
 
     return canvas;
 }
 
-async function renderCombinedCompositeToDataUrl(architectureUrl, boxesLayerUrls, width, height) {
-    const canvas = await renderCombinedComposite(architectureUrl, boxesLayerUrls, width, height);
+async function renderCombinedCompositeToDataUrl(layerUrls, width, height) {
+    const canvas = await renderCombinedComposite(layerUrls, width, height);
     return canvas.toDataURL('image/png');
 }
 
-// 每個接線盒目前實際要疊的圖層網址（含上面說的「借圖」規則），照 boxPickerStates 的順序排。
-function currentBoxesLayerUrls() {
-    const axisNames = sortedAxisNames(boxAxisOptions);
-    return boxPickerStates.map((state, i) => {
+// 目前畫面上「架構＋所有接線盒」實際要疊的圖層網址，攤平成一份清單：架構的軸排最前面，
+// 接下來照 boxPickerStates 的順序，每個接線盒自己的軸接在後面。
+function currentCombinedLayerUrls() {
+    const archAxisNames = sortedAxisNames(pickerAxisOptions);
+    const archLayers = resolveAxisLayerUrls(archAxisNames, pickerAxisOptions, currentVariantValues());
+
+    const boxAxisNames = sortedAxisNames(boxAxisOptions);
+    const boxLayers = boxPickerStates.flatMap((state, i) => {
         const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
         const combo = findBestBoxCombo(selected);
         const finalValues = combo ? { ...selected, ...combo.values } : selected;
-        return resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, finalValues);
+        return resolveAxisLayerUrls(boxAxisNames, boxAxisOptions, finalValues);
     });
+
+    return [...archLayers, ...boxLayers];
 }
 
 // 表單上方那張「架構＋接線盒」合成預覽圖，架構軸或任何一個接線盒的選擇一變就重畫一次。
@@ -2297,16 +2276,14 @@ function updateCombinedLivePreview() {
     const canvasEl = document.getElementById('variant-preview-canvas');
     if (!canvasEl) return;
 
-    const architectureUrl = resolveArchitectureImageUrl(currentVariantValues());
-    const boxesLayerUrls = currentBoxesLayerUrls();
-    const hasContent = !!architectureUrl || boxesLayerUrls.some(urls => urls.length);
+    const layerUrls = currentCombinedLayerUrls();
 
     const myToken = ++combinedPreviewRenderToken;
-    if (!hasContent) {
+    if (!layerUrls.length) {
         canvasEl.classList.add('hidden');
         return;
     }
-    renderCombinedComposite(architectureUrl, boxesLayerUrls, canvasEl.width, canvasEl.height)
+    renderCombinedComposite(layerUrls, canvasEl.width, canvasEl.height)
         .then(resultCanvas => {
             if (combinedPreviewRenderToken !== myToken) return; // 選擇又變了，這次結果過期了，不要蓋上去
             const ctx = canvasEl.getContext('2d');
@@ -2316,7 +2293,7 @@ function updateCombinedLivePreview() {
         })
         .catch(err => {
             if (combinedPreviewRenderToken !== myToken) return;
-            console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err);
+            console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err, layerUrls);
             canvasEl.classList.add('hidden');
         });
 }
@@ -2443,12 +2420,17 @@ function localDayRangeUtc(dateStr) {
     return { gte: start.toISOString(), lt: end.toISOString() };
 }
 
-// 一筆已經存好的通知紀錄，各個接線盒目前該疊的圖層網址（含「借圖」規則），順序跟
-// record.box_values 對齊——跟畫面上即時預覽用的 currentBoxesLayerUrls() 是同一套規則，
-// 只是這裡讀的是存好的資料，不是使用者正在選的狀態。
-function boxesLayerUrlsForRecord(record) {
-    const axisNames = sortedAxisNames(boxAxisOptions);
-    return (record.box_values || []).map(bv => resolveBoxCompositeLayerUrls(axisNames, boxAxisOptions, bv));
+// 一筆已經存好的通知紀錄，「架構＋所有接線盒」目前該疊的圖層網址，攤平成一份清單——
+// 跟畫面上即時預覽用的 currentCombinedLayerUrls() 是同一套規則，只是這裡讀的是存好的
+// 資料（record.variant_values／record.box_values），不是使用者正在選的狀態。
+function combinedLayerUrlsForRecord(record) {
+    const archAxisNames = sortedAxisNames(pickerAxisOptions);
+    const archLayers = resolveAxisLayerUrls(archAxisNames, pickerAxisOptions, record.variant_values || {});
+
+    const boxAxisNames = sortedAxisNames(boxAxisOptions);
+    const boxLayers = (record.box_values || []).flatMap(bv => resolveAxisLayerUrls(boxAxisNames, boxAxisOptions, bv));
+
+    return [...archLayers, ...boxLayers];
 }
 
 // PDF 版面／分頁的機制（waitForImages、renderHtmlPagesInto）沿用 pdf.js 共用的部分，
@@ -2461,10 +2443,9 @@ async function buildHoujiaoNotificationHtml(record) {
     const dateStr = record.created_at ? new Date(record.created_at).toLocaleString('zh-TW') : '';
     const boxValuesArr = record.box_values || [];
 
-    const architectureUrl = resolveArchitectureImageUrl(record.variant_values || {});
-    const boxesLayerUrls = boxesLayerUrlsForRecord(record);
-    const combinedImg = (architectureUrl || boxesLayerUrls.some(u => u.length))
-        ? await renderCombinedCompositeToDataUrl(architectureUrl, boxesLayerUrls, 2000, 1500)
+    const layerUrls = combinedLayerUrlsForRecord(record);
+    const combinedImg = layerUrls.length
+        ? await renderCombinedCompositeToDataUrl(layerUrls, 2000, 1500)
         : null;
 
     const boxLinesHtml = boxValuesArr.map((bv, i) =>
@@ -2562,10 +2543,9 @@ function renderNotifList(records) {
     // 縮圖是非同步疊圖出來的，不擋清單本身的顯示——每筆各自疊完再各自補上去，
     // 疊不出來（例如完全沒有圖）就維持原本的 hidden，不留空白破圖示。
     records.forEach(r => {
-        const architectureUrl = resolveArchitectureImageUrl(r.variant_values || {});
-        const boxesLayerUrls = boxesLayerUrlsForRecord(r);
-        if (!architectureUrl && !boxesLayerUrls.some(u => u.length)) return;
-        renderCombinedCompositeToDataUrl(architectureUrl, boxesLayerUrls, 200, 150)
+        const layerUrls = combinedLayerUrlsForRecord(r);
+        if (!layerUrls.length) return;
+        renderCombinedCompositeToDataUrl(layerUrls, 200, 150)
             .then(dataUrl => {
                 const thumbEl = listEl.querySelector(`[data-notif-id="${r.id}"] .notif-thumb`);
                 if (!thumbEl) return;
