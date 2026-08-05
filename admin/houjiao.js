@@ -2395,6 +2395,92 @@ function localDayRangeUtc(dateStr) {
     return { gte: start.toISOString(), lt: end.toISOString() };
 }
 
+// 幫「下載 PDF」重新合成一次接線盒的示意圖（跟畫面上的 canvas 合成邏輯一樣，只是輸出
+// 成一張 dataURL 圖片塞進 PDF 用的 HTML，不是畫在畫面上的 <canvas>）。沒有任何圖層的話
+// 回傳 null，PDF 那格就顯示空白色塊。
+function renderBoxCompositeToDataUrl(boxValues) {
+    return new Promise(resolve => {
+        const axisNames = sortedAxisNames(boxAxisOptions);
+        const layerUrls = axisNames
+            .map(name => {
+                const value = boxValues[name];
+                if (!value) return null;
+                const opt = (boxAxisOptions[name] || []).find(o => o.value === value);
+                return opt && opt.image_url ? opt.image_url : null;
+            })
+            .filter(Boolean);
+        if (!layerUrls.length) { resolve(null); return; }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 160;
+        const ctx = canvas.getContext('2d');
+        Promise.all(layerUrls.map(loadImageEl))
+            .then(imgs => {
+                imgs.forEach(img => drawImageContain(ctx, img, canvas.width, canvas.height));
+                resolve(canvas.toDataURL('image/png'));
+            })
+            .catch(() => resolve(null));
+    });
+}
+
+// PDF 版面／分頁的機制（waitForImages、renderHtmlPagesInto）沿用 pdf.js 共用的部分，
+// 這裡只負責排出「打腳通知」這張單子本身的 HTML 內容。
+async function buildHoujiaoNotificationHtml(record) {
+    const container = document.createElement('div');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:40px;'
+        + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;';
+
+    const dateStr = record.created_at ? new Date(record.created_at).toLocaleString('zh-TW') : '';
+    const boxValuesArr = record.box_values || [];
+    const boxImages = await Promise.all(boxValuesArr.map(renderBoxCompositeToDataUrl));
+
+    const boxesHtml = boxValuesArr.map((bv, i) => {
+        const summary = formatVariantSummary({ variant_values: bv });
+        const img = boxImages[i];
+        return `
+            <div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #e5e7eb;">
+                <div style="width:70px;height:70px;flex-shrink:0;">
+                    ${img
+                        ? `<img src="${img}" style="width:70px;height:70px;object-fit:contain;border:1px solid #e5e7eb;border-radius:4px;">`
+                        : `<div style="width:70px;height:70px;background:#f3f4f6;border-radius:4px;"></div>`}
+                </div>
+                <div style="font-size:14px;">
+                    <div style="font-weight:700;">接線盒 ${i + 1}</div>
+                    <div style="color:#374151;">${escapeHtml(summary)}</div>
+                </div>
+            </div>`;
+    }).join('');
+
+    container.innerHTML = `
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 4px;">錦輝塑膠業有限公司 打腳通知</h1>
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#374151;margin-bottom:16px;">
+            <span>建立人：${escapeHtml(record.created_by || '')}</span>
+            <span>時間：${escapeHtml(dateStr)}</span>
+        </div>
+        <hr style="border:none;border-top:1px solid #d1d5db;margin:12px 0;">
+        <div style="font-size:14px;color:#374151;line-height:1.8;">
+            <div>架構：${escapeHtml(formatVariantSummary(record))}</div>
+            <div>數量：${escapeHtml(String(record.qty))}</div>
+            ${record.note ? `<div>備註：${escapeHtml(record.note)}</div>` : ''}
+        </div>
+        ${boxesHtml ? `
+        <hr style="border:none;border-top:1px solid #d1d5db;margin:16px 0;">
+        <h2 style="font-size:15px;font-weight:700;margin:0 0 8px;">接線盒明細</h2>
+        ${boxesHtml}` : ''}
+    `;
+    return container;
+}
+
+async function generateHoujiaoNotificationPdf(record) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const container = await buildHoujiaoNotificationHtml(record);
+    await renderHtmlPagesInto(doc, container, true);
+    const dateForFile = record.created_at ? record.created_at.slice(0, 10) : todayIso();
+    doc.save(`打腳通知_${dateForFile}_${record.id}.pdf`);
+}
+
 async function loadNotifList(dateStr) {
     currentNotifDate = dateStr;
     const listEl = document.getElementById('notif-list');
@@ -2414,6 +2500,16 @@ async function loadNotifList(dateStr) {
     renderNotifList(data || []);
 }
 
+const TRASH_ICON_SVG = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+        <path d="M10 11v6"></path>
+        <path d="M14 11v6"></path>
+        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+    </svg>`;
+
 function renderNotifList(records) {
     const listEl = document.getElementById('notif-list');
     if (!records.length) {
@@ -2425,16 +2521,38 @@ function renderNotifList(records) {
             `<div>接線盒 ${i + 1}：${escapeHtml(formatVariantSummary({ variant_values: bv }))}</div>`
         ).join('');
         return `
-        <div class="border rounded-lg p-3 mb-2">
+        <div class="border rounded-lg p-3 mb-2" data-notif-id="${r.id}">
             <div class="flex justify-between items-start gap-2">
                 <div class="text-sm">${escapeHtml(formatVariantSummary(r))}　<span class="font-bold">x${escapeHtml(String(r.qty))}</span></div>
-                <div class="text-xs text-gray-400 whitespace-nowrap">${escapeHtml(new Date(r.created_at).toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit' }))}</div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <span class="text-xs text-gray-400 whitespace-nowrap">${escapeHtml(new Date(r.created_at).toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit' }))}</span>
+                    <button type="button" class="notif-pdf-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap">下載 PDF</button>
+                    <button type="button" class="notif-delete-btn p-1 rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" title="刪除這筆通知">${TRASH_ICON_SVG}</button>
+                </div>
             </div>
             ${boxLines ? `<div class="text-xs text-gray-600 mt-1 space-y-0.5">${boxLines}</div>` : ''}
             ${r.note ? `<div class="text-xs text-gray-500 mt-1">備註：${escapeHtml(r.note)}</div>` : ''}
             <div class="text-xs text-gray-400 mt-1">建立人：${escapeHtml(r.created_by || '')}</div>
         </div>`;
     }).join('');
+
+    listEl.querySelectorAll('.notif-pdf-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = Number(btn.closest('[data-notif-id]').dataset.notifId);
+            const record = records.find(r => r.id === id);
+            if (record) generateHoujiaoNotificationPdf(record);
+        });
+    });
+
+    listEl.querySelectorAll('.notif-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = Number(btn.closest('[data-notif-id]').dataset.notifId);
+            if (!confirm('確定要刪除這筆通知紀錄嗎？此動作無法復原。')) return;
+            const { error } = await sb.from('houjiao_notifications').delete().eq('id', id);
+            if (error) { alert('刪除失敗：' + error.message); return; }
+            await loadNotifList(currentNotifDate || todayIso());
+        });
+    });
 }
 
 document.getElementById('notif-date-filter').addEventListener('change', (e) => {
