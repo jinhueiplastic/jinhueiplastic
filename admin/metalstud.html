@@ -52,7 +52,6 @@
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-bold">打腳通知</h2>
                 <div class="flex gap-2">
-                    <button type="button" id="edit-box-slots-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">設定接線盒位置</button>
                     <button type="button" id="edit-box-axes-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯接線盒規格</button>
                     <button type="button" id="edit-axes-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯架構</button>
                 </div>
@@ -158,8 +157,23 @@
                     這裡的軸/選項用法跟「編輯架構」一樣，但每個選項的圖片是拿來「疊圖合成」用的：
                     使用者選好每個軸各自的值之後，系統會照這裡軸的上下順序（上面的軸在底層，下面的軸疊在上面），
                     把每個選到的選項的圖片疊在一起，自動合成一張示意圖——不用每一種組合都準備一張照片。
-                    完整組合這裡只用來標記「這個組合不能選」，不需要另外上傳組合照片。
+                    完整組合也可以另外上傳一張專屬照片，選規格時對到就會優先用那張，不用再疊軸的圖。
                 </p>
+
+                <div class="flex items-center gap-2 border rounded-lg p-2 bg-blue-50">
+                    <label class="field-label mb-0">目前正在編輯第幾個接線盒的圖片</label>
+                    <select id="box-image-slot-select" class="field-input" style="width:auto">
+                        <option value="1">第 1 個（預設圖）</option>
+                        <option value="2">第 2 個</option>
+                        <option value="3">第 3 個</option>
+                        <option value="4">第 4 個</option>
+                        <option value="5">第 5 個</option>
+                    </select>
+                    <span class="text-xs text-gray-500">
+                        每個軸選項／完整組合都可以幫「第幾個接線盒」各自上傳不同的圖（例如已經先畫在不同位置），
+                        沒有另外上傳的位置會沿用第 1 個的預設圖。
+                    </span>
+                </div>
 
                 <div id="box-axis-groups" class="space-y-2 mb-3"></div>
 
