@@ -1889,7 +1889,7 @@ function buildPickerData(rows) {
             if (!axisOptions[name]) axisOptions[name] = [];
             axisOptions[name].push({ value, image_url: r.image_url || '', sort_order: r.sort_order || 0 });
         } else if (entries.length >= 2) {
-            combos.push({ values: r.axis_values, image_url: r.image_url || '', is_disabled: !!r.is_disabled });
+            combos.push({ values: r.axis_values, image_url: r.image_url || '', is_disabled: !!r.is_disabled, box_slots: r.box_slots || null });
         }
     });
     Object.keys(axisOptions).forEach(name => {
@@ -2407,38 +2407,54 @@ function resolveAxisLayerUrls(axisNames, axisOptions, selectedValues) {
         .filter(Boolean);
 }
 
-// 畫出「架構＋所有接線盒」合成後的圖：layerUrls 是一份攤平的圖層網址清單（架構的軸排前面、
-// 接線盒的軸接在後面），全部都用同一個畫布尺寸整張蓋滿疊上去，先疊的在底層、後疊的蓋在上面
-// ——每張來源圖都已經是同樣的 2000x1500，疊起來的相對位置由圖片本身內容決定，這裡不額外
-// 縮放/排版。回傳一個畫好的離線 canvas，不直接畫到畫面上，交給呼叫的人決定要顯示出來、
-// 還是轉成 dataURL 塞進 PDF／通知紀錄清單的縮圖。
-async function renderCombinedComposite(layerUrls, width, height) {
+// 畫出「架構＋所有接線盒」合成後的圖：先整張蓋滿畫 archLayers（架構的圖層），再畫
+// boxLayerGroups（每個接線盒各自的圖層清單，順序對應接線盒 1、2、3…）。
+// boxSlots 是「架構那筆完整組合」設定好的每個接線盒該畫在畫布哪個位置/多大（0~1 的比例，
+// 用「設定接線盒位置」那個工具拖出來的）；沒有設定過（null，或跟接線盒數量對不上）的話，
+// 每個接線盒的圖層一樣整張蓋滿畫，跟architecture疊在同一個位置（維持原本沒有設定位置時的行為）。
+// 回傳一個畫好的離線 canvas，不直接畫到畫面上，交給呼叫的人決定要顯示出來、還是轉成
+// dataURL 塞進 PDF／通知紀錄清單的縮圖。
+async function renderCombinedComposite(archLayers, boxLayerGroups, boxSlots, width, height) {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    for (const url of layerUrls) {
+    for (const url of archLayers) {
         const img = await loadImageEl(url);
         drawImageContainInRect(ctx, img, 0, 0, width, height);
+    }
+
+    const slotsUsable = Array.isArray(boxSlots) && boxSlots.length === boxLayerGroups.length;
+    for (let i = 0; i < boxLayerGroups.length; i++) {
+        const layerUrls = boxLayerGroups[i];
+        if (!layerUrls.length) continue;
+        const slot = slotsUsable ? boxSlots[i] : null;
+        const rect = slot
+            ? { x: slot.x * width, y: slot.y * height, w: slot.w * width, h: slot.h * height }
+            : { x: 0, y: 0, w: width, h: height };
+        const imgs = await Promise.all(layerUrls.map(loadImageEl));
+        imgs.forEach(img => drawImageContainInRect(ctx, img, rect.x, rect.y, rect.w, rect.h));
     }
 
     return canvas;
 }
 
-async function renderCombinedCompositeToDataUrl(layerUrls, width, height) {
-    const canvas = await renderCombinedComposite(layerUrls, width, height);
+async function renderCombinedCompositeToDataUrl(archLayers, boxLayerGroups, boxSlots, width, height) {
+    const canvas = await renderCombinedComposite(archLayers, boxLayerGroups, boxSlots, width, height);
     return canvas.toDataURL('image/png');
 }
 
-// 架構這邊「完整組合」本身也可以上傳一張圖（在「編輯架構」彈窗裡）——如果目前選到的架構軸
-// 剛好對到一筆有上傳圖片的完整組合，就直接用那張（代表已經手動排好版的圖），不用再疊每個軸
-// 自己的小圖；沒有對到才退回疊圖（含借圖規則）。
+// 架構這邊「完整組合」本身也可以上傳一張圖、也可以設定每個接線盒該疊的位置（在「編輯架構」
+// 彈窗上傳圖片／用「設定接線盒位置」拖出來的）——如果目前選到的架構軸剛好對到一筆完整組合，
+// 就用它記著的 box_slots；圖片的部分則是有上傳圖片就直接用那張（代表已經手動排好版的圖），
+// 沒有才退回疊每個軸自己的小圖（含借圖規則）。
 function resolveArchitectureLayerUrls(values) {
     const combo = findBestCombo(values);
-    if (combo && combo.image_url) return [combo.image_url];
+    const boxSlots = combo && combo.box_slots ? combo.box_slots : null;
+    if (combo && combo.image_url) return { layers: [combo.image_url], boxSlots };
     const axisNames = sortedAxisNames(pickerAxisOptions);
-    return resolveAxisLayerUrls(axisNames, pickerAxisOptions, values);
+    return { layers: resolveAxisLayerUrls(axisNames, pickerAxisOptions, values), boxSlots };
 }
 
 // 接線盒規格這邊「完整組合」也可以上傳一張專屬圖——道理跟架構的 resolveArchitectureLayerUrls
@@ -2451,17 +2467,17 @@ function resolveBoxLayerUrls(selected) {
     return resolveAxisLayerUrls(axisNames, boxAxisOptions, finalValues);
 }
 
-// 目前畫面上「架構＋所有接線盒」實際要疊的圖層網址，攤平成一份清單：架構的軸排最前面，
-// 接下來照 boxPickerStates 的順序，每個接線盒自己的軸接在後面。
+// 目前畫面上「架構＋所有接線盒」實際要疊的東西：架構圖層、每個接線盒各自的圖層清單
+// （順序照 boxPickerStates），以及架構那筆完整組合設定好的接線盒位置（沒設定過就是 null）。
 function currentCombinedLayerUrls() {
-    const archLayers = resolveArchitectureLayerUrls(currentVariantValues());
+    const { layers: archLayers, boxSlots } = resolveArchitectureLayerUrls(currentVariantValues());
 
-    const boxLayers = boxPickerStates.flatMap((state, i) => {
+    const boxLayerGroups = boxPickerStates.map((state, i) => {
         const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
         return resolveBoxLayerUrls(selected);
     });
 
-    return [...archLayers, ...boxLayers];
+    return { archLayers, boxLayerGroups, boxSlots };
 }
 
 // 表單上方那張「架構＋接線盒」合成預覽圖，架構軸或任何一個接線盒的選擇一變就重畫一次。
@@ -2469,14 +2485,15 @@ function updateCombinedLivePreview() {
     const canvasEl = document.getElementById('variant-preview-canvas');
     if (!canvasEl) return;
 
-    const layerUrls = currentCombinedLayerUrls();
+    const { archLayers, boxLayerGroups, boxSlots } = currentCombinedLayerUrls();
+    const hasContent = archLayers.length || boxLayerGroups.some(g => g.length);
 
     const myToken = ++combinedPreviewRenderToken;
-    if (!layerUrls.length) {
+    if (!hasContent) {
         canvasEl.classList.add('hidden');
         return;
     }
-    renderCombinedComposite(layerUrls, canvasEl.width, canvasEl.height)
+    renderCombinedComposite(archLayers, boxLayerGroups, boxSlots, canvasEl.width, canvasEl.height)
         .then(resultCanvas => {
             if (combinedPreviewRenderToken !== myToken) return; // 選擇又變了，這次結果過期了，不要蓋上去
             const ctx = canvasEl.getContext('2d');
@@ -2486,7 +2503,7 @@ function updateCombinedLivePreview() {
         })
         .catch(err => {
             if (combinedPreviewRenderToken !== myToken) return;
-            console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err, layerUrls);
+            console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err, archLayers, boxLayerGroups);
             canvasEl.classList.add('hidden');
         });
 }
@@ -2495,6 +2512,163 @@ function updateBoxPreview(i) {
     if (!boxPickerStates[i].linkedToFirst) updateBoxDisabledTiles(i);
     updateCombinedLivePreview();
 }
+
+/* ===================== 設定接線盒位置 =====================
+   讓「目前選到的這筆完整架構組合」記住每個接線盒該疊在畫布上的哪個位置/多大
+   （0~1 的比例，跟畫布實際尺寸無關，所以疊圖不管在畫面預覽／PDF／清單縮圖，不同解析度
+   下都能照同一組比例換算），存在 houjiao_variants 那筆完整組合自己的 box_slots 欄位。
+   拖曳/縮放都是純前端算比例，只有按「儲存」才會真的寫回 Supabase。 */
+
+function exactComboMatch(combos, values) {
+    const key = comboKeyOf(values);
+    return combos.find(c => comboKeyOf(c.values) === key) || null;
+}
+
+async function saveBoxSlotsForCombo(values, slots) {
+    // 存位置的時候，圖片／停用狀態如果這筆組合本來就有，要保留住，不能因為只是存個位置
+    // 就把既有的圖片/停用狀態洗掉。
+    const existing = exactComboMatch(pickerCombos, values);
+    const payload = {
+        axis_values: values,
+        image_url: existing ? existing.image_url || null : null,
+        is_disabled: existing ? !!existing.is_disabled : false,
+        sort_order: 0,
+        box_slots: slots,
+    };
+    const { error } = await sb.from('houjiao_variants').upsert(payload, { onConflict: 'axis_values' });
+    if (error) throw error;
+}
+
+function openBoxSlotEditor() {
+    const values = currentVariantValues();
+    const boxCount = boxCountFromStructureSelection();
+    if (!boxCount) {
+        alert('請先在上面選好架構（包含「接線盒數量」），才能設定接線盒位置。');
+        return;
+    }
+
+    const { layers: archLayers, boxSlots: savedSlots } = resolveArchitectureLayerUrls(values);
+    const W = 640, H = 480; // 4:3，跟合成圖同比例，顯示尺寸而已，實際存的是 0~1 比例
+
+    // 還沒設定過的話，把幾個方塊沿水平方向平均攤開，一開始就能看得到、方便直接拖開，
+    // 不會全部疊在正中間分不出來。
+    const defaultSlots = Array.from({ length: boxCount }, (_, i) => ({
+        x: Math.min(Math.max((i + 0.5) / boxCount - 0.1, 0), 0.8),
+        y: 0.4,
+        w: 0.2,
+        h: 0.2,
+    }));
+    const slots = (savedSlots && savedSlots.length === boxCount ? savedSlots : defaultSlots).map(s => ({ ...s }));
+
+    renderCombinedComposite(archLayers, [], null, W, H).then(bgCanvas => {
+        const bgDataUrl = bgCanvas.toDataURL('image/png');
+
+        const overlay = document.createElement('div');
+        overlay.id = 'box-slot-editor-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        const panel = document.createElement('div');
+        panel.style.cssText = 'background:#fff;border-radius:8px;padding:16px;max-width:95vw;';
+        panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:12px;">
+                <h3 style="font-weight:700;font-size:14px;">設定接線盒位置（${escapeHtml(formatVariantSummary({ variant_values: values }))}）</h3>
+                <button type="button" class="slots-cancel-btn" style="font-size:12px;color:#6b7280;cursor:pointer;flex-shrink:0;">取消</button>
+            </div>
+            <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">拖動色塊移動位置，拖右下角的白色小手把調整大小。</p>
+            <div class="slots-stage" style="position:relative;width:${W}px;height:${H}px;background-color:#f3f4f6;background-image:url('${bgDataUrl}');background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid #e5e7eb;"></div>
+            <div style="margin-top:12px;text-align:right;">
+                <button type="button" class="slots-save-btn" style="padding:6px 16px;font-size:13px;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer;">儲存</button>
+            </div>`;
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+
+        const stage = panel.querySelector('.slots-stage');
+        const boxColors = ['#3b82f6', '#ef4444', '#22c55e', '#eab308', '#a855f7'];
+
+        slots.forEach((slot, i) => {
+            const color = boxColors[i % boxColors.length];
+            const rectEl = document.createElement('div');
+            rectEl.style.cssText = `position:absolute;border:2px solid ${color};background:${color}80;cursor:move;`
+                + 'display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;'
+                + 'text-shadow:0 1px 2px rgba(0,0,0,0.6);box-sizing:border-box;';
+            rectEl.textContent = `接線盒 ${i + 1}`;
+
+            const applyStyle = () => {
+                rectEl.style.left = (slot.x * W) + 'px';
+                rectEl.style.top = (slot.y * H) + 'px';
+                rectEl.style.width = (slot.w * W) + 'px';
+                rectEl.style.height = (slot.h * H) + 'px';
+            };
+            applyStyle();
+
+            const handle = document.createElement('div');
+            handle.style.cssText = 'position:absolute;right:-5px;bottom:-5px;width:12px;height:12px;'
+                + 'background:#fff;border:2px solid #374151;border-radius:2px;cursor:nwse-resize;';
+            rectEl.appendChild(handle);
+
+            rectEl.addEventListener('mousedown', (e) => {
+                if (e.target === handle) return;
+                e.preventDefault();
+                const startX = e.clientX, startY = e.clientY;
+                const startSlotX = slot.x, startSlotY = slot.y;
+                function onMove(ev) {
+                    slot.x = Math.min(Math.max(startSlotX + (ev.clientX - startX) / W, 0), 1 - slot.w);
+                    slot.y = Math.min(Math.max(startSlotY + (ev.clientY - startY) / H, 0), 1 - slot.h);
+                    applyStyle();
+                }
+                function onUp() {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                }
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const startX = e.clientX, startY = e.clientY;
+                const startW = slot.w, startH = slot.h;
+                function onMove(ev) {
+                    slot.w = Math.min(Math.max(startW + (ev.clientX - startX) / W, 0.05), 1 - slot.x);
+                    slot.h = Math.min(Math.max(startH + (ev.clientY - startY) / H, 0.05), 1 - slot.y);
+                    applyStyle();
+                }
+                function onUp() {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                }
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+
+            stage.appendChild(rectEl);
+        });
+
+        function close() {
+            document.body.removeChild(overlay);
+        }
+        panel.querySelector('.slots-cancel-btn').addEventListener('click', close);
+        panel.querySelector('.slots-save-btn').addEventListener('click', async () => {
+            const saveBtn = panel.querySelector('.slots-save-btn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = '儲存中…';
+            try {
+                await saveBoxSlotsForCombo(values, slots);
+                await loadHoujiaoVariants(); // 重新整理 pickerCombos，讓剛存好的位置立刻反映在畫面預覽上
+                close();
+            } catch (e) {
+                alert('儲存失敗：' + e.message);
+                saveBtn.disabled = false;
+                saveBtn.textContent = '儲存';
+            }
+        });
+    }).catch(err => {
+        console.error('[打腳通知] 設定接線盒位置時，背景圖疊圖失敗：', err);
+        alert('讀取架構圖失敗，請稍後再試。');
+    });
+}
+
+document.getElementById('edit-box-slots-btn').addEventListener('click', openBoxSlotEditor);
 
 function applyDefaultBoxSelections(i) {
     const state = boxPickerStates[i];
@@ -2613,13 +2787,13 @@ function localDayRangeUtc(dateStr) {
     return { gte: start.toISOString(), lt: end.toISOString() };
 }
 
-// 一筆已經存好的通知紀錄，「架構＋所有接線盒」目前該疊的圖層網址，攤平成一份清單——
-// 跟畫面上即時預覽用的 currentCombinedLayerUrls() 是同一套規則，只是這裡讀的是存好的
-// 資料（record.variant_values／record.box_values），不是使用者正在選的狀態。
+// 一筆已經存好的通知紀錄，「架構＋所有接線盒」目前該疊的東西——跟畫面上即時預覽用的
+// currentCombinedLayerUrls() 是同一套規則，只是這裡讀的是存好的資料
+// （record.variant_values／record.box_values），不是使用者正在選的狀態。
 function combinedLayerUrlsForRecord(record) {
-    const archLayers = resolveArchitectureLayerUrls(record.variant_values || {});
-    const boxLayers = (record.box_values || []).flatMap(bv => resolveBoxLayerUrls(bv));
-    return [...archLayers, ...boxLayers];
+    const { layers: archLayers, boxSlots } = resolveArchitectureLayerUrls(record.variant_values || {});
+    const boxLayerGroups = (record.box_values || []).map(bv => resolveBoxLayerUrls(bv));
+    return { archLayers, boxLayerGroups, boxSlots };
 }
 
 // PDF 版面／分頁的機制（waitForImages、renderHtmlPagesInto）沿用 pdf.js 共用的部分，
@@ -2632,9 +2806,9 @@ async function buildHoujiaoNotificationHtml(record) {
     const dateStr = record.created_at ? new Date(record.created_at).toLocaleString('zh-TW') : '';
     const boxValuesArr = record.box_values || [];
 
-    const layerUrls = combinedLayerUrlsForRecord(record);
-    const combinedImg = layerUrls.length
-        ? await renderCombinedCompositeToDataUrl(layerUrls, 2000, 1500)
+    const { archLayers, boxLayerGroups, boxSlots } = combinedLayerUrlsForRecord(record);
+    const combinedImg = (archLayers.length || boxLayerGroups.some(g => g.length))
+        ? await renderCombinedCompositeToDataUrl(archLayers, boxLayerGroups, boxSlots, 2000, 1500)
         : null;
 
     const boxLinesHtml = boxValuesArr.map((bv, i) =>
@@ -2732,9 +2906,9 @@ function renderNotifList(records) {
     // 縮圖是非同步疊圖出來的，不擋清單本身的顯示——每筆各自疊完再各自補上去，
     // 疊不出來（例如完全沒有圖）就維持原本的 hidden，不留空白破圖示。
     records.forEach(r => {
-        const layerUrls = combinedLayerUrlsForRecord(r);
-        if (!layerUrls.length) return;
-        renderCombinedCompositeToDataUrl(layerUrls, 200, 150)
+        const { archLayers, boxLayerGroups, boxSlots } = combinedLayerUrlsForRecord(r);
+        if (!archLayers.length && !boxLayerGroups.some(g => g.length)) return;
+        renderCombinedCompositeToDataUrl(archLayers, boxLayerGroups, boxSlots, 200, 150)
             .then(dataUrl => {
                 const thumbEl = listEl.querySelector(`[data-notif-id="${r.id}"] .notif-thumb`);
                 if (!thumbEl) return;
