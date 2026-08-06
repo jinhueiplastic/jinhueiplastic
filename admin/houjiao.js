@@ -1025,6 +1025,9 @@ let boxComboSortSnapshot = null;
 // 「完整組合」列表要不要照某個軸的值排序（方便把同一個軸值的組合排在一起，勾選起來批次
 // 套用圖片）；空字串＝維持原本的排序方式。
 let boxComboSortAxis = '';
+// 「完整組合」列表只顯示符合這些軸值的組合（例如只顯示「產品＝一連型內外耳」＋「顏色＝原色」
+// 的組合，不管厚度／管孔選什麼）——{ 軸名: 值 }，某個軸沒設定就是不篩選那個軸。
+let boxComboFilters = {};
 
 function boxMoveAxisGroup(name, direction) {
     const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
@@ -1369,6 +1372,33 @@ function boxSplitVariantRow(axisName, tempId) {
     renderBoxVariantSection();
 }
 
+// 篩選／排序下拉選單的變動事件，兩種畫面（篩到剩 0 筆時的空狀態、跟正常列表）都要接上，
+// 抽成共用函式避免兩處各寫一次容易漏改。
+function wireBoxComboFilterAndSortControls(axisNames) {
+    document.querySelectorAll('.box-combo-filter-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            boxComboFilters[sel.dataset.axis] = sel.value;
+            renderBoxVariantSection();
+        });
+    });
+
+    const clearBtn = document.getElementById('box-combo-filter-clear-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            boxComboFilters = {};
+            renderBoxVariantSection();
+        });
+    }
+
+    const sortSelectEl = document.getElementById('box-combo-sort-select');
+    if (sortSelectEl) {
+        sortSelectEl.addEventListener('change', () => {
+            boxComboSortAxis = sortSelectEl.value;
+            renderBoxVariantSection();
+        });
+    }
+}
+
 // 接線盒規格的完整組合預設是靠疊圖合成示意圖，但也可以像架構那樣幫某一筆完整組合另外
 // 上傳一張專屬照片——選規格時如果剛好對到這筆組合，就會優先直接用這張圖，不去疊每個軸
 // 自己的小圖（跟架構完整組合的上傳/優先順序是同一套規則）。
@@ -1378,7 +1408,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
     const comboByKey = {};
     combos.forEach(c => { comboByKey[comboKeyOf(c.axis_values)] = c; });
 
-    const cells = [];
+    let cells = [];
     const matchedKeys = new Set();
     let anyDisabledInGrid = false;
 
@@ -1465,10 +1495,20 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         renderBoxVariantSection();
     }
 
+    const totalCellCount = cells.length;
+
+    // 只顯示符合篩選條件的組合——例如篩「產品＝一連型內外耳」＋「顏色＝原色」，厚度／管孔
+    // 不篩就是全部都顯示，這樣不管厚度／管孔怎麼排列組合都會被篩出來，全選/批次套用圖片
+    // 就只會套用到這些篩出來的組合，不會誤選到別的規格。
+    const activeFilterEntries = Object.entries(boxComboFilters).filter(([name, value]) => value && axisNames.includes(name));
+    if (activeFilterEntries.length) {
+        cells = cells.filter(cell => activeFilterEntries.every(([axis, value]) => cell.values[axis] === value));
+    }
+
     if (boxComboSortAxis && axisOptions[boxComboSortAxis]) {
         // 依照選定的軸排序，把同一個軸值的組合排在一起，方便勾選一整批來批次套用圖片；
         // 排序用該軸選項自己的順序（跟軸編輯畫面上下移動排出來的順序一樣），不是字母排序。
-        const orderMap = new Map(axisOptions[boxComboSortAxis].map((o, idx) => [o.value, idx]));
+        const orderMap = new Map(axisOptions[boxComboSortAxis].map((o, idx) => [o.axis_values[boxComboSortAxis], idx]));
         cells.sort((a, b) => (orderMap.get(a.values[boxComboSortAxis]) ?? 999) - (orderMap.get(b.values[boxComboSortAxis]) ?? 999));
     } else if (boxComboSortSnapshot) {
         cells.sort((a, b) => {
@@ -1478,7 +1518,17 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         });
     }
 
-    const sortBarHtml = `
+    const hasActiveFilter = activeFilterEntries.length > 0;
+    const filterBarHtml = `
+        <div class="flex items-center gap-2 mb-2 text-xs flex-wrap">
+            <label class="text-gray-500 whitespace-nowrap">只顯示：</label>
+            ${axisNames.map(name => `
+                <select class="box-combo-filter-select field-input" data-axis="${escapeHtml(name)}" style="width:auto">
+                    <option value="">${escapeHtml(name)}：不限</option>
+                    ${(axisOptions[name] || []).map(o => o.axis_values[name]).map(value => `<option value="${escapeHtml(value)}" ${boxComboFilters[name] === value ? 'selected' : ''}>${escapeHtml(name)}：${escapeHtml(value)}</option>`).join('')}
+                </select>`).join('')}
+            ${hasActiveFilter ? `<button type="button" id="box-combo-filter-clear-btn" class="text-blue-600 hover:underline whitespace-nowrap">清除篩選（目前顯示 ${totalCellCount} 筆中的 ${cells.length} 筆）</button>` : ''}
+        </div>
         <div class="flex items-center gap-2 mb-2 text-xs">
             <label class="text-gray-500 whitespace-nowrap">排序依據：</label>
             <select id="box-combo-sort-select" class="field-input" style="width:auto">
@@ -1488,10 +1538,16 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             <span class="text-gray-400">排序方便把同一個軸值的組合排在一起，整批勾選後批次套用圖片。</span>
         </div>`;
 
-    if (!cells.length) {
+    if (!totalCellCount) {
         container.innerHTML = axisNames.length < 2
             ? '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才會自動列出組合；也可以用下面「手動新增一筆完整組合」直接建立。</p>'
             : '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
+        return;
+    }
+
+    if (!cells.length) {
+        container.innerHTML = filterBarHtml + '<p class="text-xs text-gray-400">篩選條件下沒有符合的組合。</p>';
+        wireBoxComboFilterAndSortControls(axisNames);
         return;
     }
 
@@ -1513,7 +1569,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
 
     const isOverrideSlot = currentBoxImageSlot > 1;
 
-    container.innerHTML = sortBarHtml + bulkBarHtml + cells.map((cell, i) => {
+    container.innerHTML = filterBarHtml + bulkBarHtml + cells.map((cell, i) => {
         const existing = cell.existing;
         const isDisabled = !!(existing && existing.is_disabled);
         const hasOwnSlotImage = existing
@@ -1656,13 +1712,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         refreshBulkButtons();
     }
 
-    const sortSelectEl = document.getElementById('box-combo-sort-select');
-    if (sortSelectEl) {
-        sortSelectEl.addEventListener('change', () => {
-            boxComboSortAxis = sortSelectEl.value;
-            renderBoxVariantSection();
-        });
-    }
+    wireBoxComboFilterAndSortControls(axisNames);
 
     container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
         const cell = cells[Number(rowEl.dataset.cellIdx)];
@@ -1900,6 +1950,7 @@ function openEditBoxModal() {
     boxModalDirty = false;
     currentBoxImageSlot = 1;
     boxComboSortAxis = '';
+    boxComboFilters = {};
     document.getElementById('box-image-slot-select').value = '1';
     loadBoxEditorSection();
 }
