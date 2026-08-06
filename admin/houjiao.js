@@ -1022,6 +1022,9 @@ let boxLocalVariantRows = [];
 let boxDeletedVariantIds = [];
 let boxLastComboDisableIndex = null;
 let boxComboSortSnapshot = null;
+// 「完整組合」列表要不要照某個軸的值排序（方便把同一個軸值的組合排在一起，勾選起來批次
+// 套用圖片）；空字串＝維持原本的排序方式。
+let boxComboSortAxis = '';
 
 function boxMoveAxisGroup(name, direction) {
     const { axisOptions } = categorizeVariantRows(boxLocalVariantRows);
@@ -1462,13 +1465,28 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         renderBoxVariantSection();
     }
 
-    if (boxComboSortSnapshot) {
+    if (boxComboSortAxis && axisOptions[boxComboSortAxis]) {
+        // 依照選定的軸排序，把同一個軸值的組合排在一起，方便勾選一整批來批次套用圖片；
+        // 排序用該軸選項自己的順序（跟軸編輯畫面上下移動排出來的順序一樣），不是字母排序。
+        const orderMap = new Map(axisOptions[boxComboSortAxis].map((o, idx) => [o.value, idx]));
+        cells.sort((a, b) => (orderMap.get(a.values[boxComboSortAxis]) ?? 999) - (orderMap.get(b.values[boxComboSortAxis]) ?? 999));
+    } else if (boxComboSortSnapshot) {
         cells.sort((a, b) => {
             const disabledA = a.existing ? boxComboSortSnapshot.get(comboKeyOf(a.values)) : undefined;
             const disabledB = b.existing ? boxComboSortSnapshot.get(comboKeyOf(b.values)) : undefined;
             return Number(!!disabledA) - Number(!!disabledB);
         });
     }
+
+    const sortBarHtml = `
+        <div class="flex items-center gap-2 mb-2 text-xs">
+            <label class="text-gray-500 whitespace-nowrap">排序依據：</label>
+            <select id="box-combo-sort-select" class="field-input" style="width:auto">
+                <option value="">預設順序</option>
+                ${axisNames.map(name => `<option value="${escapeHtml(name)}" ${boxComboSortAxis === name ? 'selected' : ''}>依「${escapeHtml(name)}」排序</option>`).join('')}
+            </select>
+            <span class="text-gray-400">排序方便把同一個軸值的組合排在一起，整批勾選後批次套用圖片。</span>
+        </div>`;
 
     if (!cells.length) {
         container.innerHTML = axisNames.length < 2
@@ -1477,20 +1495,25 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         return;
     }
 
-    const hasAnyExisting = cells.some(c => c.existing);
-
-    const bulkBarHtml = hasAnyExisting ? `
-        <div id="box-combo-bulk-bar" class="flex items-center gap-2 mb-2 pb-2 border-b">
+    const bulkBarHtml = `
+        <div id="box-combo-bulk-bar" class="flex items-center gap-2 mb-2 pb-2 border-b flex-wrap">
             <label class="flex items-center gap-1 text-xs text-gray-600">
                 <input type="checkbox" id="box-combo-select-all">
                 全選
             </label>
             <button type="button" id="box-combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
-        </div>` : '';
+            <span class="text-gray-300">｜</span>
+            <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap" id="box-combo-batch-upload-label">
+                批次上傳圖片給已選取
+                <input type="file" accept="image/*" class="hidden" id="box-combo-batch-upload-input" disabled>
+            </label>
+            <button type="button" id="box-combo-batch-pick-btn" class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" disabled>批次選用已上傳給已選取</button>
+            <span id="box-combo-batch-status" class="text-xs text-gray-400"></span>
+        </div>`;
 
     const isOverrideSlot = currentBoxImageSlot > 1;
 
-    container.innerHTML = bulkBarHtml + cells.map((cell, i) => {
+    container.innerHTML = sortBarHtml + bulkBarHtml + cells.map((cell, i) => {
         const existing = cell.existing;
         const isDisabled = !!(existing && existing.is_disabled);
         const hasOwnSlotImage = existing
@@ -1499,7 +1522,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         const effectiveUrl = existing ? (isOverrideSlot ? slotAwareImageUrl(existing, currentBoxImageSlot) : (existing.image_url || '')) : '';
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
-                <input type="checkbox" class="combo-select-checkbox" ${existing ? '' : 'disabled title="這筆組合還沒有建立資料，不需要選取/刪除"'}>
+                <input type="checkbox" class="combo-select-checkbox" title="${existing ? '' : '這筆組合還沒有建立資料，勾選後批次套用圖片會自動建立'}">
                 <img src="${escapeHtml(effectiveUrl)}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
                 ${isOverrideSlot && existing && !hasOwnSlotImage ? '<span class="text-xs text-gray-400 whitespace-nowrap">（沿用預設圖）</span>' : ''}
@@ -1519,14 +1542,26 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             </div>`;
     }).join('');
 
-    if (hasAnyExisting) {
+    {
         const selectAllCb = document.getElementById('box-combo-select-all');
         const deleteSelectedBtn = document.getElementById('box-combo-delete-selected-btn');
+        const batchUploadLabel = document.getElementById('box-combo-batch-upload-label');
+        const batchUploadInput = document.getElementById('box-combo-batch-upload-input');
+        const batchPickBtn = document.getElementById('box-combo-batch-pick-btn');
+        const batchStatusEl = document.getElementById('box-combo-batch-status');
         const itemCheckboxes = () => Array.from(container.querySelectorAll('.combo-select-checkbox'));
+        const checkedCells = () => itemCheckboxes()
+            .filter(cb => cb.checked)
+            .map(cb => cells[Number(cb.closest('[data-cell-idx]').dataset.cellIdx)]);
 
         function refreshBulkButtons() {
-            const anyChecked = itemCheckboxes().some(cb => cb.checked);
-            deleteSelectedBtn.disabled = !anyChecked;
+            const checkedExisting = checkedCells().some(c => c.existing);
+            const anyChecked = checkedCells().length > 0;
+            deleteSelectedBtn.disabled = !checkedExisting;
+            batchUploadInput.disabled = !anyChecked;
+            batchUploadLabel.classList.toggle('opacity-40', !anyChecked);
+            batchUploadLabel.classList.toggle('pointer-events-none', !anyChecked);
+            batchPickBtn.disabled = !anyChecked;
         }
 
         selectAllCb.addEventListener('change', () => {
@@ -1542,15 +1577,49 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             });
         });
 
-        deleteSelectedBtn.addEventListener('click', () => {
-            const selectedCells = [];
-            container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
-                const cb = rowEl.querySelector('.combo-select-checkbox');
-                if (cb && cb.checked) {
-                    const cell = cells[Number(rowEl.dataset.cellIdx)];
-                    if (cell.existing) selectedCells.push(cell);
+        // 批次套用圖片給已選取的組合：套用的是「目前正在編輯第幾個接線盒的圖片」那個位置
+        // （跟每一列自己的上傳按鈕是同一套規則），沒有資料的格子會自動先建立起來。
+        function applyImageToCheckedCells(url) {
+            const targets = checkedCells();
+            if (!targets.length) return;
+            targets.forEach(cell => {
+                if (!cell.existing) {
+                    cell.existing = { tempId: ++boxVariantTempCounter, id: null, axis_values: cell.values, image_url: null, sort_order: 0 };
+                    boxLocalVariantRows.push(cell.existing);
                 }
+                setBoxRowImageForSlot(cell.existing, url);
             });
+            boxModalDirty = true;
+            renderBoxVariantSection();
+        }
+
+        batchUploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const count = checkedCells().length;
+            batchStatusEl.textContent = '上傳中…';
+            try {
+                const url = await uploadImageToCloudinary(file);
+                applyImageToCheckedCells(url);
+                batchStatusEl.textContent = `已套用到 ${count} 筆組合，記得最下面按「儲存」。`;
+            } catch (err) {
+                batchStatusEl.textContent = '';
+                alert('上傳失敗：' + err.message);
+            } finally {
+                e.target.value = '';
+            }
+        });
+
+        batchPickBtn.addEventListener('click', async () => {
+            const count = checkedCells().length;
+            const url = await promptPickExistingImage(boxLocalVariantRows);
+            if (!url) return;
+            applyImageToCheckedCells(url);
+            batchStatusEl.textContent = `已套用到 ${count} 筆組合，記得最下面按「儲存」。`;
+        });
+
+        deleteSelectedBtn.addEventListener('click', () => {
+            const selectedCells = checkedCells().filter(c => c.existing);
             if (!selectedCells.length) return;
 
             const selectedTempIdSet = new Set(selectedCells.map(c => c.existing.tempId));
@@ -1581,6 +1650,16 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
                 boxLocalVariantRows = boxLocalVariantRows.filter(r => !idSet.has(r.tempId));
             }
             boxModalDirty = true;
+            renderBoxVariantSection();
+        });
+
+        refreshBulkButtons();
+    }
+
+    const sortSelectEl = document.getElementById('box-combo-sort-select');
+    if (sortSelectEl) {
+        sortSelectEl.addEventListener('change', () => {
+            boxComboSortAxis = sortSelectEl.value;
             renderBoxVariantSection();
         });
     }
@@ -1820,6 +1899,7 @@ function openEditBoxModal() {
     document.getElementById('box-form-error').classList.add('hidden');
     boxModalDirty = false;
     currentBoxImageSlot = 1;
+    boxComboSortAxis = '';
     document.getElementById('box-image-slot-select').value = '1';
     loadBoxEditorSection();
 }
