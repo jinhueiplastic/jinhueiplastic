@@ -267,10 +267,14 @@ function distinctImageUrls(rows) {
     };
     rows.forEach(r => {
         add(r.image_url);
-        // 接線盒規格才會有 image_urls_by_slot（每個接線盒位置各自的圖），架構的軸/組合
-        // 沒有這個欄位，這裡順便一起列出來，選圖的時候不用分是不是某個位置專屬的。
+        // 接線盒規格才會有 image_urls_by_slot／image_urls_by_context（每個接線盒位置、或
+        // 「架構＋規格＋位置」各自的圖），架構的軸/組合沒有這些欄位，這裡順便一起列出來，
+        // 選圖的時候不用分是不是某個位置專屬的。
         if (r.image_urls_by_slot) {
             Object.values(r.image_urls_by_slot).forEach(add);
+        }
+        if (r.image_urls_by_context) {
+            Object.values(r.image_urls_by_context).forEach(add);
         }
     });
     return urls;
@@ -1925,9 +1929,9 @@ function buildPickerData(rows) {
         if (entries.length === 1) {
             const [name, value] = entries[0];
             if (!axisOptions[name]) axisOptions[name] = [];
-            axisOptions[name].push({ value, image_url: r.image_url || '', sort_order: r.sort_order || 0, image_urls_by_slot: r.image_urls_by_slot || null });
+            axisOptions[name].push({ value, image_url: r.image_url || '', sort_order: r.sort_order || 0, image_urls_by_slot: r.image_urls_by_slot || null, image_urls_by_context: r.image_urls_by_context || null });
         } else if (entries.length >= 2) {
-            combos.push({ values: r.axis_values, image_url: r.image_url || '', is_disabled: !!r.is_disabled, image_urls_by_slot: r.image_urls_by_slot || null });
+            combos.push({ values: r.axis_values, image_url: r.image_url || '', is_disabled: !!r.is_disabled, image_urls_by_slot: r.image_urls_by_slot || null, image_urls_by_context: r.image_urls_by_context || null });
         }
     });
     Object.keys(axisOptions).forEach(name => {
@@ -2075,6 +2079,10 @@ function updateDisabledTiles() {
         axisNames.forEach(axis => {
             if (selectedVariant[axis]) return;
             const options = pickerAxisOptions[axis] || [];
+            // 只有 1 個選項的軸本來就不是「被其他選擇窄化到剩 1 個」，是原本就只有這一個值可選
+            // ——這種軸交給 applyDefaultVariantSelections() 在一開始選好就好，這裡不用再自動選，
+            // 不然使用者手動點掉之後，下一輪又會被這裡重新選回去，等於永遠取消不掉。
+            if (options.length <= 1) return;
             const others = { ...manualAfterClear };
             const enabledValues = options.filter(o => !isValueDisabled(axis, o.value, others));
             if (enabledValues.length === 1) {
@@ -2222,6 +2230,17 @@ function boxPickerBlockHtml(i, state) {
                 </label>` : ''}
             </div>
             <div class="box-variant-fields space-y-2 ${state.linkedToFirst ? 'hidden' : ''}"></div>
+            <div class="flex items-center gap-2 mt-2 pt-2 border-t flex-wrap">
+                <span class="text-xs text-gray-400 whitespace-nowrap">這個架構＋這個規格＋這個位置專屬的圖：</span>
+                <img class="context-thumb hidden rounded border" alt="" style="width:32px;height:32px;">
+                <span class="context-upload-status text-xs text-gray-400"></span>
+                <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap">
+                    上傳圖片
+                    <input type="file" accept="image/*" class="hidden context-upload-input">
+                </label>
+                <button type="button" class="context-pick-existing-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap">選用已上傳</button>
+                <button type="button" class="context-remove-btn hidden px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>
+            </div>
         </div>`;
 }
 
@@ -2373,6 +2392,9 @@ function updateBoxDisabledTiles(i) {
         axisNames.forEach(axis => {
             if (state.selectedVariant[axis]) return;
             const options = boxAxisOptions[axis] || [];
+            // 理由同架構那邊：只有 1 個選項的軸不用「窄化」邏輯再自動選一次，不然手動點掉之後
+            // 馬上又被選回去，永遠取消不掉。
+            if (options.length <= 1) return;
             const others = { ...manualAfterClear };
             const enabledValues = options.filter(o => !isBoxValueDisabled(axis, o.value, others));
             if (enabledValues.length === 1) {
@@ -2439,14 +2461,25 @@ function slotAwareImageUrl(row, slotIndex) {
     return row.image_url || '';
 }
 
-function resolveAxisLayerUrls(axisNames, axisOptions, selectedValues, slotIndex) {
+// 跟 slotAwareImageUrl 一樣，但多疊一層「這個架構＋這個位置」專屬圖（contextKey，
+// 已經是算好的 comboKeyOf(架構)::位置編號 字串），比單純的位置圖更精確、優先權更高。
+// 接線盒的軸選項（不是完整組合，例如只選了「產品」這一個軸）也可能設定過專屬圖，
+// 所以疊圖合成（跟編輯彈窗的「單純只分位置」不一樣）要用這個。
+function contextAwareImageUrl(row, slotIndex, contextKey) {
+    if (contextKey && row.image_urls_by_context && row.image_urls_by_context[contextKey]) {
+        return row.image_urls_by_context[contextKey];
+    }
+    return slotAwareImageUrl(row, slotIndex);
+}
+
+function resolveAxisLayerUrls(axisNames, axisOptions, selectedValues, slotIndex, contextKey) {
     const ownImageByAxis = {};
     axisNames.forEach(name => {
         const value = selectedValues[name];
         if (!value) return;
         const opt = (axisOptions[name] || []).find(o => o.value === value);
         if (opt) {
-            const url = slotAwareImageUrl(opt, slotIndex);
+            const url = contextAwareImageUrl(opt, slotIndex, contextKey);
             if (url) ownImageByAxis[name] = url;
         }
     });
@@ -2499,29 +2532,51 @@ function resolveArchitectureLayerUrls(values) {
     return resolveAxisLayerUrls(axisNames, pickerAxisOptions, values, null);
 }
 
-// 接線盒規格這邊「完整組合」也可以上傳圖——道理跟架構的 resolveArchitectureLayerUrls 一樣：
-// 目前的選擇剛好對到一筆有上傳圖片的完整組合，就直接用那張，不用再疊每個軸自己的小圖。
-// slotIndex（1、2、3…）決定要用「這個接線盒位置」專屬的圖，還是退回預設圖——同一個規格
-// （例如都選「一連型」），接線盒 1 跟接線盒 2 可以疊出不一樣的畫面，不會完全疊在同一個位置。
-function resolveBoxLayerUrls(selected, slotIndex) {
+// 「architectureValues + slotIndex」換成 image_urls_by_context 用的 key——連架構都要對得上，
+// 比 image_urls_by_slot 再多分一層。
+function contextKeyFor(architectureValues, slotIndex) {
+    return `${comboKeyOf(architectureValues || {})}::${slotIndex}`;
+}
+
+// 跟 findBestCombo／findBestBoxCombo 的「找最接近的」不一樣，這裡要精準對到完全一樣的軸組合
+// 才算數，存專屬圖片用的（不然可能存錯到別的比較寬鬆但比對得上的組合去）。
+function exactComboMatch(combos, values) {
+    const key = comboKeyOf(values);
+    return combos.find(c => comboKeyOf(c.values) === key) || null;
+}
+
+// 接線盒規格這邊「完整組合」可以上傳圖，而且分三層、由精確到概略依序退回：
+// 1. 「這個架構＋這個接線盒規格＋這個位置」專屬圖（image_urls_by_context，在表單上針對當下
+//    選到的組合直接上傳）
+// 2. 「這個接線盒規格＋這個位置」的圖（image_urls_by_slot，不分架構，在「編輯接線盒規格」設定）
+// 3. 這個接線盒規格的預設圖（image_url）
+// 都沒有的話才退回疊每個軸自己的小圖（含借圖規則）。同一個規格（例如都選「一連型」），
+// 接線盒 1 跟接線盒 2 可以疊出不一樣的畫面，不會完全疊在同一個位置。
+function resolveBoxLayerUrls(selected, slotIndex, architectureValues) {
+    const contextKey = architectureValues ? contextKeyFor(architectureValues, slotIndex) : null;
+
     const combo = findBestBoxCombo(selected);
     if (combo) {
-        const url = slotAwareImageUrl(combo, slotIndex);
+        const url = contextAwareImageUrl(combo, slotIndex, contextKey);
         if (url) return [url];
     }
     const finalValues = combo ? { ...selected, ...combo.values } : selected;
     const axisNames = sortedAxisNames(boxAxisOptions);
-    return resolveAxisLayerUrls(axisNames, boxAxisOptions, finalValues, slotIndex);
+    // 就算沒有對到完整組合（例如只選了單一軸），那個軸選項本身也可能設定過「這個架構＋
+    // 這個位置」的專屬圖，所以退回疊軸圖時一樣要帶著 contextKey 去查，不能整個略過。
+    return resolveAxisLayerUrls(axisNames, boxAxisOptions, finalValues, slotIndex, contextKey);
 }
 
 // 目前畫面上「架構＋所有接線盒」實際要疊的東西：架構圖層、每個接線盒各自的圖層清單
-// （順序照 boxPickerStates，每個接線盒各自帶著自己的位置編號 i+1 去找專屬圖）。
+// （順序照 boxPickerStates，每個接線盒各自帶著自己的位置編號 i+1、以及目前的架構選擇，
+// 去找專屬圖）。
 function currentCombinedLayerUrls() {
-    const archLayers = resolveArchitectureLayerUrls(currentVariantValues());
+    const architectureValues = currentVariantValues();
+    const archLayers = resolveArchitectureLayerUrls(architectureValues);
 
     const boxLayerGroups = boxPickerStates.map((state, i) => {
         const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
-        return resolveBoxLayerUrls(selected, i + 1);
+        return resolveBoxLayerUrls(selected, i + 1, architectureValues);
     });
 
     return { archLayers, boxLayerGroups };
@@ -2538,21 +2593,129 @@ function updateCombinedLivePreview() {
     const myToken = ++combinedPreviewRenderToken;
     if (!hasContent) {
         canvasEl.classList.add('hidden');
-        return;
+    } else {
+        renderCombinedComposite(archLayers, boxLayerGroups, canvasEl.width, canvasEl.height)
+            .then(resultCanvas => {
+                if (combinedPreviewRenderToken !== myToken) return; // 選擇又變了，這次結果過期了，不要蓋上去
+                const ctx = canvasEl.getContext('2d');
+                ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+                ctx.drawImage(resultCanvas, 0, 0);
+                canvasEl.classList.remove('hidden');
+            })
+            .catch(err => {
+                if (combinedPreviewRenderToken !== myToken) return;
+                console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err, archLayers, boxLayerGroups);
+                canvasEl.classList.add('hidden');
+            });
     }
-    renderCombinedComposite(archLayers, boxLayerGroups, canvasEl.width, canvasEl.height)
-        .then(resultCanvas => {
-            if (combinedPreviewRenderToken !== myToken) return; // 選擇又變了，這次結果過期了，不要蓋上去
-            const ctx = canvasEl.getContext('2d');
-            ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-            ctx.drawImage(resultCanvas, 0, 0);
-            canvasEl.classList.remove('hidden');
-        })
-        .catch(err => {
-            if (combinedPreviewRenderToken !== myToken) return;
-            console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err, archLayers, boxLayerGroups);
-            canvasEl.classList.add('hidden');
-        });
+
+    updateBoxContextIndicators();
+}
+
+// 每個接線盒規格區塊下面那排「這個架構＋這個規格＋這個位置專屬的圖」縮圖/移除按鈕，
+// 跟著目前的架構、每個接線盒各自的選擇重新整理一次要不要顯示。
+// 接線盒的選擇如果剛好對到一筆完整組合（2 個以上的軸），專屬圖存在那筆組合上；如果只選了
+// 單一軸，那筆資料其實是被歸類成「軸選項」，不是「完整組合」（跟 categorizeVariantRows／
+// buildPickerData 的分類規則一樣），要找/存的地方是 boxAxisOptions，不是 boxCombos——不然
+// 只選一個軸的情況，資料存得到但讀不到（或存的時候找錯地方，把這個軸選項本來就有的預設圖
+// 洗掉）。
+function findExistingBoxRow(selected) {
+    const entries = Object.entries(selected).filter(([, v]) => v);
+    if (entries.length === 1) {
+        const [axis, value] = entries[0];
+        return (boxAxisOptions[axis] || []).find(o => o.value === value) || null;
+    }
+    if (entries.length >= 2) {
+        return exactComboMatch(boxCombos, selected);
+    }
+    return null;
+}
+
+// 決定接線盒 i 目前該顯示的「專屬圖」縮圖網址：先看選到的規格有沒有剛好對到一筆完整組合、
+// 這筆組合有沒有這個架構＋位置的專屬圖；沒有的話，再看目前選到的每個軸，有沒有哪個軸選項
+// 自己就設定過這個架構＋位置的專屬圖（疊圖合成退回疊軸圖時，就是用軸選項各自的專屬圖）。
+function resolveBoxContextThumbUrl(selected, architectureValues, slotIndex) {
+    const key = contextKeyFor(architectureValues, slotIndex);
+    const row = findExistingBoxRow(selected);
+    return row && row.image_urls_by_context ? (row.image_urls_by_context[key] || null) : null;
+}
+
+function updateBoxContextIndicators() {
+    const architectureValues = currentVariantValues();
+    boxPickerStates.forEach((state, i) => {
+        const scopeEl = document.querySelector(`[data-box-index="${i}"]`);
+        if (!scopeEl) return;
+        const thumbImg = scopeEl.querySelector('.context-thumb');
+        const removeBtn = scopeEl.querySelector('.context-remove-btn');
+        if (!thumbImg || !removeBtn) return;
+
+        const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
+        const url = resolveBoxContextThumbUrl(selected, architectureValues, i + 1);
+
+        if (url) {
+            thumbImg.src = url;
+            thumbImg.classList.remove('hidden');
+            removeBtn.classList.remove('hidden');
+        } else {
+            thumbImg.src = '';
+            thumbImg.classList.add('hidden');
+            removeBtn.classList.add('hidden');
+        }
+    });
+}
+
+// 表單上直接針對「目前選到的架構＋接線盒 i 目前選到的規格＋位置 i+1」這個精確組合存/移除
+// 一張專屬圖片；用的是接線盒 i 實際選到的值當 axis_values（不是最佳比對展開後的），
+// 跟其他「上傳圖片就順便建立這筆組合」的地方是同一套慣例。
+async function saveBoxContextImage(i, url) {
+    const architectureValues = currentVariantValues();
+    const state = boxPickerStates[i];
+    const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
+    const key = contextKeyFor(architectureValues, i + 1);
+
+    const existing = findExistingBoxRow(selected);
+    const payload = {
+        axis_values: selected,
+        image_url: existing ? existing.image_url || null : null,
+        image_urls_by_slot: existing ? existing.image_urls_by_slot || null : null,
+        is_disabled: existing ? !!existing.is_disabled : false,
+        sort_order: 0,
+        image_urls_by_context: { ...(existing ? existing.image_urls_by_context || {} : {}), [key]: url },
+    };
+    const { error } = await sb.from('houjiao_box_variants').upsert(payload, { onConflict: 'axis_values' });
+    if (error) throw error;
+}
+
+async function removeBoxContextImage(i) {
+    const architectureValues = currentVariantValues();
+    const state = boxPickerStates[i];
+    const selected = state.linkedToFirst ? currentBoxVariantValues(0) : currentBoxVariantValues(i);
+    const key = contextKeyFor(architectureValues, i + 1);
+
+    const existing = findExistingBoxRow(selected);
+    if (!existing || !existing.image_urls_by_context || !existing.image_urls_by_context[key]) return;
+
+    const updatedContext = { ...existing.image_urls_by_context };
+    delete updatedContext[key];
+    const payload = {
+        axis_values: selected,
+        image_url: existing.image_url || null,
+        image_urls_by_slot: existing.image_urls_by_slot || null,
+        is_disabled: !!existing.is_disabled,
+        sort_order: 0,
+        image_urls_by_context: Object.keys(updatedContext).length ? updatedContext : null,
+    };
+    const { error } = await sb.from('houjiao_box_variants').upsert(payload, { onConflict: 'axis_values' });
+    if (error) throw error;
+}
+
+// 表單上「選用已上傳」要選的清單，把目前已知的所有接線盒圖片（每個軸選項＋每筆完整組合，
+// 含它們各自的預設圖/位置圖/架構專屬圖）攤平成一份給 promptPickExistingImage 用。
+function allKnownBoxImageRows() {
+    const rows = [];
+    Object.values(boxAxisOptions).forEach(opts => rows.push(...opts));
+    rows.push(...boxCombos);
+    return rows;
 }
 
 function updateBoxPreview(i) {
@@ -2623,6 +2786,49 @@ function wireBoxPicker(i) {
         });
     }
 
+    scopeEl.querySelector('.context-upload-input').addEventListener('change', async (e) => {
+        const input = e.target;
+        const file = input.files[0];
+        if (!file) return;
+        const statusEl = scopeEl.querySelector('.context-upload-status');
+        statusEl.textContent = '上傳中…';
+        try {
+            const url = await uploadImageToCloudinary(file);
+            await saveBoxContextImage(i, url);
+            await loadBoxVariants(); // 重新整理 boxAxisOptions/boxCombos，讓剛存好的專屬圖立刻反映在合成預覽上
+            statusEl.textContent = '';
+            updateCombinedLivePreview();
+        } catch (err) {
+            statusEl.textContent = '';
+            alert('上傳失敗：' + err.message);
+        } finally {
+            input.value = '';
+        }
+    });
+
+    scopeEl.querySelector('.context-pick-existing-btn').addEventListener('click', async () => {
+        const url = await promptPickExistingImage(allKnownBoxImageRows());
+        if (!url) return;
+        try {
+            await saveBoxContextImage(i, url);
+            await loadBoxVariants();
+            updateCombinedLivePreview();
+        } catch (err) {
+            alert('儲存失敗：' + err.message);
+        }
+    });
+
+    scopeEl.querySelector('.context-remove-btn').addEventListener('click', async () => {
+        if (!confirm('確定要移除這張專屬圖片嗎？')) return;
+        try {
+            await removeBoxContextImage(i);
+            await loadBoxVariants();
+            updateCombinedLivePreview();
+        } catch (err) {
+            alert('移除失敗：' + err.message);
+        }
+    });
+
     updateBoxPreview(i);
 }
 
@@ -2681,8 +2887,9 @@ function localDayRangeUtc(dateStr) {
 // currentCombinedLayerUrls() 是同一套規則，只是這裡讀的是存好的資料
 // （record.variant_values／record.box_values），不是使用者正在選的狀態。
 function combinedLayerUrlsForRecord(record) {
-    const archLayers = resolveArchitectureLayerUrls(record.variant_values || {});
-    const boxLayerGroups = (record.box_values || []).map((bv, i) => resolveBoxLayerUrls(bv, i + 1));
+    const architectureValues = record.variant_values || {};
+    const archLayers = resolveArchitectureLayerUrls(architectureValues);
+    const boxLayerGroups = (record.box_values || []).map((bv, i) => resolveBoxLayerUrls(bv, i + 1, architectureValues));
     return { archLayers, boxLayerGroups };
 }
 
