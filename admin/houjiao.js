@@ -642,7 +642,7 @@ function renderComboList(combos, axisOptions, axisNames) {
         const isDisabled = !!(existing && existing.is_disabled);
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
-                ${existing ? '<input type="checkbox" class="combo-select-checkbox">' : '<span style="width:16px;display:inline-block;"></span>'}
+                <input type="checkbox" class="combo-select-checkbox" ${existing ? '' : 'disabled title="這筆組合還沒有建立資料，不需要選取/刪除"'}>
                 <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
                 <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
@@ -1452,7 +1452,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         const isDisabled = !!(existing && existing.is_disabled);
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
-                ${existing ? '<input type="checkbox" class="combo-select-checkbox">' : '<span style="width:16px;display:inline-block;"></span>'}
+                <input type="checkbox" class="combo-select-checkbox" ${existing ? '' : 'disabled title="這筆組合還沒有建立資料，不需要選取/刪除"'}>
                 <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
                 <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
