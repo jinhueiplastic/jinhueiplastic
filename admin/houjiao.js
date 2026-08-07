@@ -1022,9 +1022,6 @@ let boxLocalVariantRows = [];
 let boxDeletedVariantIds = [];
 let boxLastComboDisableIndex = null;
 let boxComboSortSnapshot = null;
-// 「完整組合」列表要不要照某個軸的值排序（方便把同一個軸值的組合排在一起，勾選起來批次
-// 套用圖片）；空字串＝維持原本的排序方式。
-let boxComboSortAxis = '';
 // 「完整組合」列表只顯示符合這些軸值的組合（例如只顯示「產品＝一連型內外耳」＋「顏色＝原色」
 // 的組合，不管厚度／管孔選什麼）——{ 軸名: 值 }，某個軸沒設定就是不篩選那個軸。
 let boxComboFilters = {};
@@ -1374,7 +1371,7 @@ function boxSplitVariantRow(axisName, tempId) {
 
 // 篩選／排序下拉選單的變動事件，兩種畫面（篩到剩 0 筆時的空狀態、跟正常列表）都要接上，
 // 抽成共用函式避免兩處各寫一次容易漏改。
-function wireBoxComboFilterAndSortControls(axisNames) {
+function wireBoxComboFilterControls(axisNames) {
     document.querySelectorAll('.box-combo-filter-select').forEach(sel => {
         sel.addEventListener('change', () => {
             boxComboFilters[sel.dataset.axis] = sel.value;
@@ -1386,14 +1383,6 @@ function wireBoxComboFilterAndSortControls(axisNames) {
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
             boxComboFilters = {};
-            renderBoxVariantSection();
-        });
-    }
-
-    const sortSelectEl = document.getElementById('box-combo-sort-select');
-    if (sortSelectEl) {
-        sortSelectEl.addEventListener('change', () => {
-            boxComboSortAxis = sortSelectEl.value;
             renderBoxVariantSection();
         });
     }
@@ -1505,12 +1494,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         cells = cells.filter(cell => activeFilterEntries.every(([axis, value]) => cell.values[axis] === value));
     }
 
-    if (boxComboSortAxis && axisOptions[boxComboSortAxis]) {
-        // 依照選定的軸排序，把同一個軸值的組合排在一起，方便勾選一整批來批次套用圖片；
-        // 排序用該軸選項自己的順序（跟軸編輯畫面上下移動排出來的順序一樣），不是字母排序。
-        const orderMap = new Map(axisOptions[boxComboSortAxis].map((o, idx) => [o.axis_values[boxComboSortAxis], idx]));
-        cells.sort((a, b) => (orderMap.get(a.values[boxComboSortAxis]) ?? 999) - (orderMap.get(b.values[boxComboSortAxis]) ?? 999));
-    } else if (boxComboSortSnapshot) {
+    if (boxComboSortSnapshot) {
         cells.sort((a, b) => {
             const disabledA = a.existing ? boxComboSortSnapshot.get(comboKeyOf(a.values)) : undefined;
             const disabledB = b.existing ? boxComboSortSnapshot.get(comboKeyOf(b.values)) : undefined;
@@ -1528,14 +1512,6 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
                     ${(axisOptions[name] || []).map(o => o.axis_values[name]).map(value => `<option value="${escapeHtml(value)}" ${boxComboFilters[name] === value ? 'selected' : ''}>${escapeHtml(name)}：${escapeHtml(value)}</option>`).join('')}
                 </select>`).join('')}
             ${hasActiveFilter ? `<button type="button" id="box-combo-filter-clear-btn" class="text-blue-600 hover:underline whitespace-nowrap">清除篩選（目前顯示 ${totalCellCount} 筆中的 ${cells.length} 筆）</button>` : ''}
-        </div>
-        <div class="flex items-center gap-2 mb-2 text-xs">
-            <label class="text-gray-500 whitespace-nowrap">排序依據：</label>
-            <select id="box-combo-sort-select" class="field-input" style="width:auto">
-                <option value="">預設順序</option>
-                ${axisNames.map(name => `<option value="${escapeHtml(name)}" ${boxComboSortAxis === name ? 'selected' : ''}>依「${escapeHtml(name)}」排序</option>`).join('')}
-            </select>
-            <span class="text-gray-400">排序方便把同一個軸值的組合排在一起，整批勾選後批次套用圖片。</span>
         </div>`;
 
     if (!totalCellCount) {
@@ -1547,7 +1523,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
 
     if (!cells.length) {
         container.innerHTML = filterBarHtml + '<p class="text-xs text-gray-400">篩選條件下沒有符合的組合。</p>';
-        wireBoxComboFilterAndSortControls(axisNames);
+        wireBoxComboFilterControls(axisNames);
         return;
     }
 
@@ -1712,7 +1688,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
         refreshBulkButtons();
     }
 
-    wireBoxComboFilterAndSortControls(axisNames);
+    wireBoxComboFilterControls(axisNames);
 
     container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
         const cell = cells[Number(rowEl.dataset.cellIdx)];
@@ -1949,7 +1925,6 @@ function openEditBoxModal() {
     document.getElementById('box-form-error').classList.add('hidden');
     boxModalDirty = false;
     currentBoxImageSlot = 1;
-    boxComboSortAxis = '';
     boxComboFilters = {};
     document.getElementById('box-image-slot-select').value = '1';
     loadBoxEditorSection();
