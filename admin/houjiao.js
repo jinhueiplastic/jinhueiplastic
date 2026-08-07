@@ -3137,15 +3137,19 @@ function renderNotifList(records) {
         return;
     }
     listEl.innerHTML = records.map(r => {
-        const boxLines = (r.box_values || []).map((bv, i) =>
-            `<div>接線盒 ${i + 1}：${escapeHtml(formatVariantSummary({ variant_values: bv }))}</div>`
+        const boxValuesArr = r.box_values || [];
+        const suffix = boxCountSuffix(boxValuesArr.length);
+        const archLine = formatOrderedAxisValues(r.variant_values || {}, pickerAxisOptions, ['接線盒數量'])
+            + (suffix ? ' ' + suffix : '');
+        const boxLines = boxValuesArr.map((bv, i) =>
+            `<div>【${i + 1}】${escapeHtml(formatOrderedAxisValues(bv, boxAxisOptions))}</div>`
         ).join('');
         return `
         <div class="border rounded-lg p-3 mb-2" data-notif-id="${r.id}">
             <div class="flex justify-between items-start gap-2">
                 <div class="flex gap-2 items-start min-w-0">
                     <img class="notif-thumb hidden w-16 h-12 object-contain rounded border bg-gray-50 flex-shrink-0" alt="">
-                    <div class="text-sm">${escapeHtml(formatVariantSummary(r))}　<span class="font-bold">x${escapeHtml(String(r.qty))}</span></div>
+                    <div class="text-sm">${escapeHtml(archLine)}　<span class="font-bold">x${escapeHtml(String(r.qty))}</span></div>
                 </div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs text-gray-400 whitespace-nowrap">${escapeHtml(new Date(r.created_at).toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit' }))}</span>
