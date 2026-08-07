@@ -3159,7 +3159,7 @@ function renderNotifList(records) {
             </div>
             ${boxLines ? `<div class="text-xs text-gray-600 mt-1 space-y-0.5">${boxLines}</div>` : ''}
             ${r.note ? `<div class="text-xs text-gray-500 mt-1">備註：${escapeHtml(r.note)}</div>` : ''}
-            <div class="text-xs text-gray-400 mt-1">建立人：${escapeHtml(r.created_by || '')}</div>
+            <div class="text-xs text-gray-400 mt-1 text-right">建立人：${escapeHtml(r.created_by || '')}</div>
         </div>`;
     }).join('');
 
