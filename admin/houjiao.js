@@ -3044,6 +3044,14 @@ function formatOrderedAxisValues(values, axisOptions, excludeNames) {
         .join(' ');
 }
 
+// 接線盒數量會影響架構那行要不要多加一個「幾並」的字尾：1 個不用加，2 個是「雙並」，
+// 3 個以上就是「N並」（3並、4並、5並…）。
+function boxCountSuffix(boxCount) {
+    if (boxCount === 2) return '雙並';
+    if (boxCount >= 3) return `${boxCount}並`;
+    return '';
+}
+
 // PDF 版面／分頁的機制（waitForImages、renderHtmlPagesInto）沿用 pdf.js 共用的部分，
 // 這裡只負責排出「打腳通知」這張單子本身的 HTML 內容。
 async function buildHoujiaoNotificationHtml(record) {
@@ -3059,7 +3067,9 @@ async function buildHoujiaoNotificationHtml(record) {
         ? await renderCombinedCompositeToDataUrl(archLayers, boxLayerGroups, 2000, 1500)
         : null;
 
-    const archLine = formatOrderedAxisValues(record.variant_values || {}, pickerAxisOptions, ['接線盒數量']);
+    const suffix = boxCountSuffix(boxValuesArr.length);
+    const archLine = formatOrderedAxisValues(record.variant_values || {}, pickerAxisOptions, ['接線盒數量'])
+        + (suffix ? ' ' + suffix : '');
     const boxLinesHtml = boxValuesArr.map((bv, i) =>
         `<div>【${i + 1}】${escapeHtml(formatOrderedAxisValues(bv, boxAxisOptions))}</div>`
     ).join('');
