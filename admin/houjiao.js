@@ -41,6 +41,9 @@ let localVariantRows = [];
 let deletedVariantIds = [];
 let lastComboDisableIndex = null;
 let comboSortSnapshot = null;
+// 「完整組合」列表只顯示符合這些軸值的組合，跟接線盒規格那邊的 boxComboFilters 是同一套規則
+// （{ 軸名: 值 }，某個軸沒設定就是不篩選那個軸）。
+let comboFilters = {};
 
 function stripWrappingBrackets(v) {
     const pairs = { '（': '）', '(': ')', '「': '」', '『': '』' };
@@ -594,13 +597,33 @@ function comboKeyOf(values) {
 const COMBO_GRID_MAX_AXES = 4;
 const COMBO_GRID_MAX_TOTAL = 1000;
 
+// 篩選下拉選單的變動事件，兩種畫面（篩到剩 0 筆時的空狀態、跟正常列表）都要接上，
+// 抽成共用函式避免兩處各寫一次容易漏改。跟接線盒規格那邊的 wireBoxComboFilterControls
+// 是同一套邏輯。
+function wireComboFilterControls() {
+    document.querySelectorAll('.combo-filter-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            comboFilters[sel.dataset.axis] = sel.value;
+            renderVariantSection();
+        });
+    });
+
+    const clearBtn = document.getElementById('combo-filter-clear-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            comboFilters = {};
+            renderVariantSection();
+        });
+    }
+}
+
 function renderComboList(combos, axisOptions, axisNames) {
     const container = document.getElementById('variant-combo-list');
 
     const comboByKey = {};
     combos.forEach(c => { comboByKey[comboKeyOf(c.axis_values)] = c; });
 
-    const cells = [];
+    let cells = [];
     const matchedKeys = new Set();
     let anyDisabledInGrid = false;
 
@@ -687,6 +710,14 @@ function renderComboList(combos, axisOptions, axisNames) {
         renderVariantSection();
     }
 
+    const totalCellCount = cells.length;
+
+    // 只顯示符合篩選條件的組合，跟接線盒規格那邊的篩選是同一套規則。
+    const activeFilterEntries = Object.entries(comboFilters).filter(([name, value]) => value && axisNames.includes(name));
+    if (activeFilterEntries.length) {
+        cells = cells.filter(cell => activeFilterEntries.every(([axis, value]) => cell.values[axis] === value));
+    }
+
     if (comboSortSnapshot) {
         cells.sort((a, b) => {
             const disabledA = a.existing ? comboSortSnapshot.get(comboKeyOf(a.values)) : undefined;
@@ -695,10 +726,28 @@ function renderComboList(combos, axisOptions, axisNames) {
         });
     }
 
-    if (!cells.length) {
+    const hasActiveFilter = activeFilterEntries.length > 0;
+    const filterBarHtml = `
+        <div class="flex items-center gap-2 mb-2 text-xs flex-wrap">
+            <label class="text-gray-500 whitespace-nowrap">只顯示：</label>
+            ${axisNames.map(name => `
+                <select class="combo-filter-select field-input" data-axis="${escapeHtml(name)}" style="width:auto">
+                    <option value="">${escapeHtml(name)}：不限</option>
+                    ${(axisOptions[name] || []).map(o => o.axis_values[name]).map(value => `<option value="${escapeHtml(value)}" ${comboFilters[name] === value ? 'selected' : ''}>${escapeHtml(name)}：${escapeHtml(value)}</option>`).join('')}
+                </select>`).join('')}
+            ${hasActiveFilter ? `<button type="button" id="combo-filter-clear-btn" class="text-blue-600 hover:underline whitespace-nowrap">清除篩選（目前顯示 ${totalCellCount} 筆中的 ${cells.length} 筆）</button>` : ''}
+        </div>`;
+
+    if (!totalCellCount) {
         container.innerHTML = axisNames.length < 2
             ? '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才會自動列出組合；也可以用下面「手動新增一筆完整組合」直接建立。</p>'
             : '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
+        return;
+    }
+
+    if (!cells.length) {
+        container.innerHTML = filterBarHtml + '<p class="text-xs text-gray-400">篩選條件下沒有符合的組合。</p>';
+        wireComboFilterControls();
         return;
     }
 
@@ -713,7 +762,7 @@ function renderComboList(combos, axisOptions, axisNames) {
             <button type="button" id="combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
         </div>` : '';
 
-    container.innerHTML = bulkBarHtml + cells.map((cell, i) => {
+    container.innerHTML = filterBarHtml + bulkBarHtml + cells.map((cell, i) => {
         const existing = cell.existing;
         const isDisabled = !!(existing && existing.is_disabled);
         return `
@@ -736,6 +785,8 @@ function renderComboList(combos, axisOptions, axisNames) {
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
     }).join('');
+
+    wireComboFilterControls();
 
     if (hasAnyExisting) {
         const selectAllCb = document.getElementById('combo-select-all');
@@ -2003,6 +2054,7 @@ function openEditModal() {
     editModal.classList.add('flex');
     document.getElementById('form-error').classList.add('hidden');
     modalDirty = false;
+    comboFilters = {};
     loadEditorSection();
 }
 
