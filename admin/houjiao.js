@@ -2146,6 +2146,38 @@ function clearAutoSelectedAxes() {
     autoSelectedAxes.clear();
 }
 
+// 選規格時如果某個軸的值是用「或直接輸入其他值」打的（不是點現有的小格子），送出這筆通知
+// 之後順便把這個新值存回軸選項清單（接在該軸現有選項最後面），下次選規格就會變成可以
+// 直接點的小格子，不用每次都重打。用「這個值有沒有出現在現有選項裡」判斷是不是新值，
+// 不用另外記「這個軸是不是用打的」的旗標，邏輯比較單純。
+function findNewAxisValues(values, axisOptions) {
+    return Object.entries(values).filter(([name, value]) => {
+        const options = axisOptions[name];
+        return options && !options.some(o => o.value === value);
+    });
+}
+
+function dedupeAxisValueEntries(entries) {
+    const seen = new Set();
+    return entries.filter(([name, value]) => {
+        const key = name + ' ' + value;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+async function persistNewAxisValues(entries, axisOptions, table) {
+    if (!entries.length) return;
+    const rows = entries.map(([name, value]) => {
+        const options = axisOptions[name] || [];
+        const maxOrder = options.length ? Math.max(...options.map(o => o.sort_order || 0)) : 0;
+        return { axis_values: { [name]: value }, image_url: null, sort_order: maxOrder + 10, is_disabled: false };
+    });
+    const { error } = await sb.from(table).upsert(rows, { onConflict: 'axis_values' });
+    if (error) throw error;
+}
+
 function findBestCombo(selectedValues) {
     const selectedEntries = Object.entries(selectedValues);
     if (!selectedEntries.length) return null;
@@ -2999,6 +3031,22 @@ document.getElementById('notif-submit-btn').addEventListener('click', async () =
         created_by: currentUserDisplayName || currentUserEmail,
     });
     if (error) { alert('送出失敗：' + error.message); return; }
+
+    try {
+        const archNewEntries = dedupeAxisValueEntries(findNewAxisValues(variantValues, pickerAxisOptions));
+        const boxNewEntries = dedupeAxisValueEntries(boxValues.flatMap(bv => findNewAxisValues(bv, boxAxisOptions)));
+        if (archNewEntries.length) {
+            await persistNewAxisValues(archNewEntries, pickerAxisOptions, 'houjiao_variants');
+            await loadHoujiaoVariants();
+        }
+        if (boxNewEntries.length) {
+            await persistNewAxisValues(boxNewEntries, boxAxisOptions, 'houjiao_box_variants');
+            await loadBoxVariants();
+            ensureBoxPickerCountForce();
+        }
+    } catch (err) {
+        console.error('[打腳通知] 手動輸入的新值存回軸選項清單失敗：', err);
+    }
 
     resetVariantPicker();
     await loadNotifList(currentNotifDate || todayIso());
