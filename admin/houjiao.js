@@ -3032,6 +3032,18 @@ function combinedLayerUrlsForRecord(record) {
     return { archLayers, boxLayerGroups };
 }
 
+// PDF 只需要顯示「值」，不需要顯示軸名稱：照 axisOptions 排好的軸序把值接起來，
+// excludeNames 可以整條排除某個軸（例如架構那行不需要顯示「接線盒數量」，因為下面
+// 接線盒明細本來就會列出每一個接線盒）。跟共用的 formatVariantSummary（會顯示軸名稱）
+// 是不同的呈現方式，所以另外寫一個，不動 shared.js 那份給其他頁面共用的邏輯。
+function formatOrderedAxisValues(values, axisOptions, excludeNames) {
+    const exclude = excludeNames || [];
+    return sortedAxisNames(axisOptions)
+        .filter(name => !exclude.includes(name) && values[name])
+        .map(name => values[name])
+        .join(' ');
+}
+
 // PDF 版面／分頁的機制（waitForImages、renderHtmlPagesInto）沿用 pdf.js 共用的部分，
 // 這裡只負責排出「打腳通知」這張單子本身的 HTML 內容。
 async function buildHoujiaoNotificationHtml(record) {
@@ -3047,8 +3059,9 @@ async function buildHoujiaoNotificationHtml(record) {
         ? await renderCombinedCompositeToDataUrl(archLayers, boxLayerGroups, 2000, 1500)
         : null;
 
+    const archLine = formatOrderedAxisValues(record.variant_values || {}, pickerAxisOptions, ['接線盒數量']);
     const boxLinesHtml = boxValuesArr.map((bv, i) =>
-        `<div>接線盒 ${i + 1}：${escapeHtml(formatVariantSummary({ variant_values: bv }))}</div>`
+        `<div>【${i + 1}】${escapeHtml(formatOrderedAxisValues(bv, boxAxisOptions))}</div>`
     ).join('');
 
     container.innerHTML = `
@@ -3060,14 +3073,11 @@ async function buildHoujiaoNotificationHtml(record) {
         <hr style="border:none;border-top:1px solid #d1d5db;margin:12px 0;">
         ${combinedImg ? `<img src="${combinedImg}" style="display:block;max-width:100%;max-height:320px;object-fit:contain;margin:0 auto 16px;">` : ''}
         <div style="font-size:14px;color:#374151;line-height:1.8;">
-            <div>架構：${escapeHtml(formatVariantSummary(record))}</div>
+            <div>${escapeHtml(archLine)}</div>
+            ${boxLinesHtml}
             <div>數量：${escapeHtml(String(record.qty))}</div>
             ${record.note ? `<div>備註：${escapeHtml(record.note)}</div>` : ''}
         </div>
-        ${boxLinesHtml ? `
-        <hr style="border:none;border-top:1px solid #d1d5db;margin:16px 0;">
-        <h2 style="font-size:15px;font-weight:700;margin:0 0 8px;">接線盒明細</h2>
-        <div style="font-size:14px;color:#374151;line-height:1.8;">${boxLinesHtml}</div>` : ''}
     `;
     return container;
 }
