@@ -751,23 +751,28 @@ function renderComboList(combos, axisOptions, axisNames) {
         return;
     }
 
-    const hasAnyExisting = cells.some(c => c.existing);
-
-    const bulkBarHtml = hasAnyExisting ? `
-        <div id="combo-bulk-bar" class="flex items-center gap-2 mb-2 pb-2 border-b">
+    const bulkBarHtml = `
+        <div id="combo-bulk-bar" class="flex items-center gap-2 mb-2 pb-2 border-b flex-wrap">
             <label class="flex items-center gap-1 text-xs text-gray-600">
                 <input type="checkbox" id="combo-select-all">
                 全選
             </label>
             <button type="button" id="combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
-        </div>` : '';
+            <span class="text-gray-300">｜</span>
+            <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap" id="combo-batch-upload-label">
+                批次上傳圖片給已選取
+                <input type="file" accept="image/*" class="hidden" id="combo-batch-upload-input" disabled>
+            </label>
+            <button type="button" id="combo-batch-pick-btn" class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" disabled>批次選用已上傳給已選取</button>
+            <span id="combo-batch-status" class="text-xs text-gray-400"></span>
+        </div>`;
 
     container.innerHTML = filterBarHtml + bulkBarHtml + cells.map((cell, i) => {
         const existing = cell.existing;
         const isDisabled = !!(existing && existing.is_disabled);
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
-                <input type="checkbox" class="combo-select-checkbox" ${existing ? '' : 'disabled title="這筆組合還沒有建立資料，不需要選取/刪除"'}>
+                <input type="checkbox" class="combo-select-checkbox" title="${existing ? '' : '這筆組合還沒有建立資料，勾選後批次套用圖片會自動建立'}">
                 <img src="${escapeHtml(existing ? existing.image_url || '' : '')}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
                 <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
@@ -788,14 +793,26 @@ function renderComboList(combos, axisOptions, axisNames) {
 
     wireComboFilterControls();
 
-    if (hasAnyExisting) {
+    {
         const selectAllCb = document.getElementById('combo-select-all');
         const deleteSelectedBtn = document.getElementById('combo-delete-selected-btn');
+        const batchUploadLabel = document.getElementById('combo-batch-upload-label');
+        const batchUploadInput = document.getElementById('combo-batch-upload-input');
+        const batchPickBtn = document.getElementById('combo-batch-pick-btn');
+        const batchStatusEl = document.getElementById('combo-batch-status');
         const itemCheckboxes = () => Array.from(container.querySelectorAll('.combo-select-checkbox'));
+        const checkedCells = () => itemCheckboxes()
+            .filter(cb => cb.checked)
+            .map(cb => cells[Number(cb.closest('[data-cell-idx]').dataset.cellIdx)]);
 
         function refreshBulkButtons() {
-            const anyChecked = itemCheckboxes().some(cb => cb.checked);
-            deleteSelectedBtn.disabled = !anyChecked;
+            const checkedExisting = checkedCells().some(c => c.existing);
+            const anyChecked = checkedCells().length > 0;
+            deleteSelectedBtn.disabled = !checkedExisting;
+            batchUploadInput.disabled = !anyChecked;
+            batchUploadLabel.classList.toggle('opacity-40', !anyChecked);
+            batchUploadLabel.classList.toggle('pointer-events-none', !anyChecked);
+            batchPickBtn.disabled = !anyChecked;
         }
 
         selectAllCb.addEventListener('change', () => {
@@ -811,15 +828,53 @@ function renderComboList(combos, axisOptions, axisNames) {
             });
         });
 
-        deleteSelectedBtn.addEventListener('click', () => {
-            const selectedCells = [];
-            container.querySelectorAll('[data-cell-idx]').forEach(rowEl => {
-                const cb = rowEl.querySelector('.combo-select-checkbox');
-                if (cb && cb.checked) {
-                    const cell = cells[Number(rowEl.dataset.cellIdx)];
-                    if (cell.existing) selectedCells.push(cell);
+        // 批次套用圖片給已選取的組合：沒有資料的格子會自動先建立起來（跟接線盒規格那邊
+        // 批次套用是同一套規則），架構的完整組合只有一張預設圖，沒有位置的概念。
+        // renderVariantSection() 會整個重畫列表，把 batchStatusEl 這個節點換掉，所以狀態訊息
+        // 要在重畫「之後」重新抓一次 #combo-batch-status，不能沿用重畫前記住的舊節點參考。
+        function applyImageToCheckedCells(url, statusMessage) {
+            const targets = checkedCells();
+            if (!targets.length) return;
+            targets.forEach(cell => {
+                if (!cell.existing) {
+                    cell.existing = { tempId: ++variantTempCounter, id: null, axis_values: cell.values, image_url: null, sort_order: 0 };
+                    localVariantRows.push(cell.existing);
                 }
+                cell.existing.image_url = url;
             });
+            modalDirty = true;
+            renderVariantSection();
+            if (statusMessage) {
+                const freshStatusEl = document.getElementById('combo-batch-status');
+                if (freshStatusEl) freshStatusEl.textContent = statusMessage;
+            }
+        }
+
+        batchUploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const count = checkedCells().length;
+            batchStatusEl.textContent = '上傳中…';
+            try {
+                const url = await uploadImageToCloudinary(file);
+                applyImageToCheckedCells(url, `已套用到 ${count} 筆組合，記得最下面按「儲存」。`);
+            } catch (err) {
+                batchStatusEl.textContent = '';
+                alert('上傳失敗：' + err.message);
+            } finally {
+                e.target.value = '';
+            }
+        });
+
+        batchPickBtn.addEventListener('click', async () => {
+            const count = checkedCells().length;
+            const url = await promptPickExistingImage(localVariantRows);
+            if (!url) return;
+            applyImageToCheckedCells(url, `已套用到 ${count} 筆組合，記得最下面按「儲存」。`);
+        });
+
+        deleteSelectedBtn.addEventListener('click', () => {
+            const selectedCells = checkedCells().filter(c => c.existing);
             if (!selectedCells.length) return;
 
             const selectedTempIdSet = new Set(selectedCells.map(c => c.existing.tempId));
@@ -1695,7 +1750,9 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
 
         // 批次套用圖片給已選取的組合：套用的是「目前正在編輯第幾個接線盒的圖片」那個位置
         // （跟每一列自己的上傳按鈕是同一套規則），沒有資料的格子會自動先建立起來。
-        function applyImageToCheckedCells(url) {
+        // renderBoxVariantSection() 會整個重畫列表，把 batchStatusEl 這個節點換掉，所以狀態
+        // 訊息要在重畫「之後」重新抓一次 #box-combo-batch-status，不能沿用重畫前的舊節點參考。
+        function applyImageToCheckedCells(url, statusMessage) {
             const targets = checkedCells();
             if (!targets.length) return;
             targets.forEach(cell => {
@@ -1707,6 +1764,10 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             });
             boxModalDirty = true;
             renderBoxVariantSection();
+            if (statusMessage) {
+                const freshStatusEl = document.getElementById('box-combo-batch-status');
+                if (freshStatusEl) freshStatusEl.textContent = statusMessage;
+            }
         }
 
         batchUploadInput.addEventListener('change', async (e) => {
@@ -1716,8 +1777,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             batchStatusEl.textContent = '上傳中…';
             try {
                 const url = await uploadImageToCloudinary(file);
-                applyImageToCheckedCells(url);
-                batchStatusEl.textContent = `已套用到 ${count} 筆組合，記得最下面按「儲存」。`;
+                applyImageToCheckedCells(url, `已套用到 ${count} 筆組合，記得最下面按「儲存」。`);
             } catch (err) {
                 batchStatusEl.textContent = '';
                 alert('上傳失敗：' + err.message);
@@ -1730,8 +1790,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             const count = checkedCells().length;
             const url = await promptPickExistingImage(boxLocalVariantRows);
             if (!url) return;
-            applyImageToCheckedCells(url);
-            batchStatusEl.textContent = `已套用到 ${count} 筆組合，記得最下面按「儲存」。`;
+            applyImageToCheckedCells(url, `已套用到 ${count} 筆組合，記得最下面按「儲存」。`);
         });
 
         deleteSelectedBtn.addEventListener('click', () => {
@@ -2809,6 +2868,7 @@ function currentCombinedLayerUrls() {
 function updateCombinedLivePreview() {
     const canvasEl = document.getElementById('variant-preview-canvas');
     if (!canvasEl) return;
+    const hintEl = document.getElementById('variant-preview-empty-hint');
 
     const { archLayers, boxLayerGroups } = currentCombinedLayerUrls();
     const hasContent = archLayers.length || boxLayerGroups.some(g => g.length);
@@ -2816,6 +2876,7 @@ function updateCombinedLivePreview() {
     const myToken = ++combinedPreviewRenderToken;
     if (!hasContent) {
         canvasEl.classList.add('hidden');
+        if (hintEl) hintEl.classList.remove('hidden');
     } else {
         renderCombinedComposite(archLayers, boxLayerGroups, canvasEl.width, canvasEl.height)
             .then(resultCanvas => {
@@ -2824,11 +2885,13 @@ function updateCombinedLivePreview() {
                 ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
                 ctx.drawImage(resultCanvas, 0, 0);
                 canvasEl.classList.remove('hidden');
+                if (hintEl) hintEl.classList.add('hidden');
             })
             .catch(err => {
                 if (combinedPreviewRenderToken !== myToken) return;
                 console.error('[打腳通知] 架構＋接線盒合成圖疊圖失敗：', err, archLayers, boxLayerGroups);
                 canvasEl.classList.add('hidden');
+                if (hintEl) hintEl.classList.remove('hidden');
             });
     }
 
