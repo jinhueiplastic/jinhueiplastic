@@ -293,18 +293,23 @@ function promptPickExistingImage(rows) {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
         const panel = document.createElement('div');
-        panel.style.cssText = 'background:#fff;border-radius:8px;padding:16px;max-width:32rem;width:100%;max-height:80vh;overflow-y:auto;';
+        panel.style.cssText = 'background:#fff;border-radius:8px;padding:16px;max-width:36rem;width:100%;max-height:80vh;overflow-y:auto;';
         panel.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                 <h3 style="font-weight:700;font-size:14px;">選用已上傳的圖片</h3>
                 <button type="button" class="picker-cancel-btn" style="font-size:12px;color:#6b7280;cursor:pointer;">取消</button>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;">
+            <p style="font-size:11px;color:#9ca3af;margin:0 0 10px;">點圖片直接選用；點右上角的放大鏡先看大圖再決定。</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;">
                 ${urls.map(u => `
-                <button type="button" class="picker-thumb-btn" data-url="${escapeHtml(u)}"
-                        style="border:1px solid #e5e7eb;border-radius:6px;padding:2px;cursor:pointer;background:#fff;">
-                    <img src="${escapeHtml(u)}" style="width:100%;aspect-ratio:1;object-fit:contain;display:block;">
-                </button>`).join('')}
+                <div style="position:relative;">
+                    <button type="button" class="picker-thumb-btn" data-url="${escapeHtml(u)}"
+                            style="border:1px solid #e5e7eb;border-radius:6px;padding:2px;cursor:pointer;background:#fff;width:100%;display:block;">
+                        <img src="${escapeHtml(u)}" style="width:100%;aspect-ratio:1;object-fit:contain;display:block;">
+                    </button>
+                    <button type="button" class="picker-zoom-btn" data-url="${escapeHtml(u)}" title="放大看"
+                            style="position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:4px;border:1px solid #e5e7eb;background:rgba(255,255,255,0.9);cursor:pointer;font-size:12px;line-height:20px;padding:0;">🔍</button>
+                </div>`).join('')}
             </div>`;
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
@@ -313,10 +318,38 @@ function promptPickExistingImage(rows) {
             document.body.removeChild(overlay);
             resolve(result);
         }
+
+        function openZoom(url) {
+            const zoomOverlay = document.createElement('div');
+            zoomOverlay.className = 'picker-zoom-overlay';
+            zoomOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+            const zoomPanel = document.createElement('div');
+            zoomPanel.style.cssText = 'background:#fff;border-radius:8px;padding:12px;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;gap:10px;';
+            zoomPanel.innerHTML = `
+                <img src="${escapeHtml(url)}" style="max-width:80vw;max-height:70vh;object-fit:contain;display:block;">
+                <div style="display:flex;justify-content:flex-end;gap:8px;">
+                    <button type="button" class="zoom-back-btn" style="padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;">返回</button>
+                    <button type="button" class="zoom-choose-btn" style="padding:6px 14px;font-size:13px;border-radius:6px;background:#2563eb;color:#fff;border:none;cursor:pointer;">選用這張</button>
+                </div>`;
+            zoomOverlay.appendChild(zoomPanel);
+            document.body.appendChild(zoomOverlay);
+
+            function closeZoom() { document.body.removeChild(zoomOverlay); }
+            zoomOverlay.addEventListener('click', (e) => { if (e.target === zoomOverlay) closeZoom(); });
+            zoomPanel.querySelector('.zoom-back-btn').addEventListener('click', closeZoom);
+            zoomPanel.querySelector('.zoom-choose-btn').addEventListener('click', () => { closeZoom(); close(url); });
+        }
+
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
         panel.querySelector('.picker-cancel-btn').addEventListener('click', () => close(null));
         panel.querySelectorAll('.picker-thumb-btn').forEach(btn => {
             btn.addEventListener('click', () => close(btn.dataset.url));
+        });
+        panel.querySelectorAll('.picker-zoom-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openZoom(btn.dataset.url);
+            });
         });
     });
 }
