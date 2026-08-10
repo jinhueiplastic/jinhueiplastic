@@ -2329,6 +2329,13 @@ function isValueDisabled(axis, value, otherSelectedValues) {
         const keys = Object.keys(c.values);
         return keys.length === trackedAxes.length && trackedAxes.every(a => keys.includes(a));
     });
+    // 只有這個形狀的完整組合裡「真的有人手動停用過」，才代表管理員是刻意在用完整組合列表
+    // 圈出「這個形狀底下只有這幾種是合法的」，才需要把沒對到的組合也一起鎖住。單純某筆
+    // 組合有上傳圖片（例如疊圖合成用、或用批次選圖工具存的）不代表要限制其他組合能不能選，
+    // 不然只是想幫某個接線盒數量的示意圖上傳照片，就會意外把同一個規格底下其他接線盒數量
+    // 都鎖死選不到。
+    if (!sameShapeCombos.some(c => c.is_disabled)) return false;
+
     const enabledSameShapeCombos = sameShapeCombos.filter(c => !c.is_disabled);
     if (!enabledSameShapeCombos.length) return false;
 
@@ -2638,6 +2645,10 @@ function isBoxValueDisabled(axis, value, otherSelectedValues) {
         const keys = Object.keys(c.values);
         return keys.length === trackedAxes.length && trackedAxes.every(a => keys.includes(a));
     });
+    // 跟架構那邊 isValueDisabled 的邏輯一樣：只有真的有手動停用過同形狀的組合，才代表要限制
+    // 這個形狀底下能選什麼；單純某筆組合有上傳圖片不該連帶鎖住其他組合。
+    if (!sameShapeCombos.some(c => c.is_disabled)) return false;
+
     const enabledSameShapeCombos = sameShapeCombos.filter(c => !c.is_disabled);
     if (!enabledSameShapeCombos.length) return false;
 
