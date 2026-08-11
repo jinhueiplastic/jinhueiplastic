@@ -139,6 +139,7 @@ const RUN_SHEET_CONTAINER_WIDTH_PX = 794; // 對應 A4_WIDTH_MM
 const RUN_SHEET_PADDING_PX = 28; // 上下各一份
 const RUN_SHEET_TITLE_HEIGHT_PX = 64;
 const RUN_SHEET_COLUMN_GAP_PX = 14;
+const RUN_SHEET_COLUMN_COUNT = 3;
 
 function runSheetColumnCapacityPx(hasTitle) {
     const pxPerMm = RUN_SHEET_CONTAINER_WIDTH_PX / A4_WIDTH_MM;
@@ -200,26 +201,40 @@ function runSheetItemValuesOnly(item) {
     return itemVariantEntries(item).map(([, v]) => v).join(' ');
 }
 
+// 「規格值＋商品名稱」接數量：塞得下同一行就整行顯示（靠左）；塞不下的話，數量自己獨立
+// 一行、靠右對齊，規格值＋名稱那行維持正常靠左（不會為了讓數量擠上去而被拆開）。
+// word-break:keep-all 讓商品名稱本身（含中英文混排，例如「PVC清潔口」）不會被硬拆到
+// 下一行——只有規格值/名稱之間的空白算是合法的換行點。
+// 用實際量出來的寬度判斷塞不塞得下，不是用字數估的，字級/欄寬以後調整也不用跟著改。
+function runSheetItemLineHtml(item, columnWidthPx) {
+    const specValues = runSheetItemValuesOnly(item);
+    const productName = item.product_name_zh || item.product_erp_code || '';
+    const label = [specValues, productName].filter(Boolean).join(' ');
+    const qtyText = `--${item.quantity}${item.unit || ''}`;
+    const oneLineText = label + qtyText;
+
+    const measurer = document.createElement('span');
+    measurer.style.cssText = 'position:fixed;left:-9999px;top:0;white-space:nowrap;font-weight:700;font-size:26px;';
+    measurer.textContent = oneLineText;
+    document.body.appendChild(measurer);
+    const fitsOneLine = measurer.getBoundingClientRect().width <= columnWidthPx;
+    document.body.removeChild(measurer);
+
+    if (fitsOneLine) {
+        return `<div style="font-weight:700;font-size:26px;word-break:keep-all;margin-top:10px;">${escapeHtml(oneLineText)}</div>`;
+    }
+    return `
+        <div style="font-weight:700;font-size:26px;word-break:keep-all;margin-top:10px;">${escapeHtml(label)}</div>
+        <div style="font-weight:700;font-size:26px;text-align:right;">${escapeHtml(qtyText)}</div>`;
+}
+
 function runSheetEntryHtml(entry) {
     const c = entry.customer || {};
     const items = entry.items || [];
     const nameLine = [c.name, c.site_name].filter(Boolean).join('-');
+    const columnWidthPx = runSheetColumnWidthPx(RUN_SHEET_COLUMN_COUNT);
 
-    // 「規格值＋商品名稱」跟數量放同一行：數量用 float:right 固定貼右邊，前面的文字正常
-    // 由左往右排、太長會自動換行；文字換到第二行時，數量還是貼在最後那一行的右邊，不會
-    // 硬性把數量單獨拆一行對齊。display:flow-root 讓這個 div 的高度確實把浮動的數量包住，
-    // 不然數量比文字還高的話（例如商品名稱只有一個字）下面會塌陷、蓋到下一筆的分隔線。
-    const itemsHtml = items.map(item => {
-        const specValues = runSheetItemValuesOnly(item);
-        const productName = item.product_name_zh || item.product_erp_code || '';
-        const label = [specValues, productName].filter(Boolean).join(' ');
-        const qtyText = `--${item.quantity}${item.unit || ''}`;
-        return `
-            <div style="font-weight:700;font-size:26px;overflow-wrap:break-word;margin-top:10px;display:flow-root;">
-                <span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
-                ${escapeHtml(label)}
-            </div>`;
-    }).join('');
+    const itemsHtml = items.map(item => runSheetItemLineHtml(item, columnWidthPx)).join('');
 
     const phoneLine = `${c.phone || ''}${c.contact_person ? '（' + c.contact_person + '）' : ''}`;
 
@@ -255,7 +270,7 @@ async function generateCombinedOrdersPdf(entries, filename, title) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
-    const columnCount = 3;
+    const columnCount = RUN_SHEET_COLUMN_COUNT;
     const heights = measureRunSheetEntryHeights(entries, columnCount);
     const pages = distributeEntriesIntoPages(entries, heights, columnCount, runSheetColumnCapacityPx(Boolean(title)));
 
