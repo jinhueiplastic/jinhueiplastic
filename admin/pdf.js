@@ -194,17 +194,31 @@ function distributeEntriesIntoPages(entries, heights, columnCount, columnCapacit
     return pages;
 }
 
+// 只顯示規格的值（不顯示軸名稱標籤），跟打腳通知那邊「只顯示排好序的值」是同樣的呈現方式；
+// itemVariantEntries（shared.js）已經處理好新舊訂單兩種資料格式，這裡直接取值就好。
+function runSheetItemValuesOnly(item) {
+    return itemVariantEntries(item).map(([, v]) => v).join(' ');
+}
+
 function runSheetEntryHtml(entry) {
     const c = entry.customer || {};
     const items = entry.items || [];
     const nameLine = [c.name, c.site_name].filter(Boolean).join('-');
 
+    // 「規格值＋商品名稱」跟數量放同一行：數量用 float:right 固定貼右邊，前面的文字正常
+    // 由左往右排、太長會自動換行；文字換到第二行時，數量還是貼在最後那一行的右邊，不會
+    // 硬性把數量單獨拆一行對齊。display:flow-root 讓這個 div 的高度確實把浮動的數量包住，
+    // 不然數量比文字還高的話（例如商品名稱只有一個字）下面會塌陷、蓋到下一筆的分隔線。
     const itemsHtml = items.map(item => {
-        const variant = formatVariantSummary(item);
+        const specValues = runSheetItemValuesOnly(item);
+        const productName = item.product_name_zh || item.product_erp_code || '';
+        const label = [specValues, productName].filter(Boolean).join(' ');
+        const qtyText = `--${item.quantity}${item.unit || ''}`;
         return `
-            <div style="font-weight:700;font-size:26px;overflow-wrap:break-word;margin-top:10px;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}</div>
-            ${variant ? `<div style="font-weight:700;font-size:26px;overflow-wrap:break-word;">${escapeHtml(variant)}</div>` : ''}
-            <div style="font-weight:700;font-size:26px;">數量：${escapeHtml(String(item.quantity))}${item.unit ? escapeHtml(item.unit) : ''}</div>`;
+            <div style="font-weight:700;font-size:26px;overflow-wrap:break-word;margin-top:10px;display:flow-root;">
+                <span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
+                ${escapeHtml(label)}
+            </div>`;
     }).join('');
 
     const phoneLine = `${c.phone || ''}${c.contact_person ? '（' + c.contact_person + '）' : ''}`;
