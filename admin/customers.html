@@ -50,15 +50,31 @@
             <div class="flex items-center gap-3 flex-wrap mb-4">
                 <input type="text" id="search-input" placeholder="搜尋客戶名稱 / 電話"
                        class="border rounded px-3 py-1.5 text-sm w-56">
+                <select id="region-filter" class="border rounded px-3 py-1.5 text-sm">
+                    <option value="">全部區域</option>
+                </select>
                 <button id="new-customer-btn" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded hover:bg-blue-700">
                     + 新增客戶
                 </button>
             </div>
             <p id="status-msg" class="text-sm text-gray-500 mb-3"></p>
+
+            <div id="batch-region-bar" class="flex items-center gap-2 flex-wrap mb-3 bg-white border rounded-lg p-3">
+                <span class="text-sm text-gray-600">已選取 <span id="batch-selected-count">0</span> 位客戶</span>
+                <input type="text" id="batch-region-input" class="field-input" style="width:auto"
+                       placeholder="改成這個區域名稱" list="region-datalist">
+                <button id="batch-region-apply-btn" type="button"
+                        class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700" disabled>
+                    套用到已選取的客戶
+                </button>
+                <span id="batch-region-status" class="text-xs text-gray-400"></span>
+            </div>
+
             <div class="overflow-x-auto bg-white rounded-lg shadow-sm border">
                 <table class="min-w-full text-sm">
                     <thead class="bg-gray-100 text-gray-600 text-left">
                         <tr>
+                            <th class="px-3 py-2 w-8"><input type="checkbox" id="select-all-checkbox"></th>
                             <th class="px-3 py-2">客戶名稱</th>
                             <th class="px-3 py-2">工地名稱</th>
                             <th class="px-3 py-2">區域</th>
