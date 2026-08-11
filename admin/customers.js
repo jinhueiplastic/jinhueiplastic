@@ -56,12 +56,35 @@ function renderTable(customers) {
             <td class="px-3 py-2">${escapeHtml(c.phone || '')}</td>
             <td class="px-3 py-2">
                 <button data-id="${c.id}" class="edit-btn text-blue-600 hover:underline text-sm">編輯</button>
+                <button data-id="${c.id}" class="delete-btn text-red-600 hover:underline text-sm ml-2">刪除</button>
             </td>
         </tr>`).join('');
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', () => openEditModal(btn.dataset.id));
     });
+    tbody.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => deleteCustomer(btn.dataset.id));
+    });
+}
+
+// 客戶如果已經有訂單（orders.customer_id 參照這筆客戶），資料庫的外鍵限制會擋下刪除、
+// 回傳 23503 錯誤——這是刻意保留的保護，不能刪掉還有訂單記錄的客戶，這裡把原始錯誤代碼
+// 轉成看得懂的提示，不要讓使用者看到一串 SQL 錯誤訊息。
+async function deleteCustomer(id) {
+    const customer = allCustomers.find(c => String(c.id) === String(id));
+    if (!confirm(`確定要刪除客戶「${customer ? customer.name : ''}」嗎？`)) return;
+
+    const { error } = await sb.from('customers').delete().eq('id', id);
+    if (error) {
+        if (error.code === '23503') {
+            alert('無法刪除：這位客戶已經有訂單紀錄，要保留訂單資料就不能刪除客戶。');
+        } else {
+            alert('刪除失敗：' + error.message);
+        }
+        return;
+    }
+    loadCustomers();
 }
 
 searchInput.addEventListener('input', () => {
