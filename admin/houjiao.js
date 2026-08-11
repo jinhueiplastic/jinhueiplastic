@@ -14,11 +14,44 @@ let boxModalDirty = false;
 // 「編輯接線盒規格」彈窗裡，目前正在編輯第幾個接線盒的圖片（1 = 預設圖，跟 image_url 一樣；
 // 2 以上是額外的 image_urls_by_slot 覆蓋）。只有接線盒規格用得到，架構那邊沒有這個概念。
 let currentBoxImageSlot = 1;
+// 同一個彈窗裡，還可以額外指定「架構條件」——{ 軸名: 值 }，只放有指定值的軸（例如只放
+// {形式:'長腳型', 規格:'附腳', 接線盒數量:'2個'}，長度不指定就不會出現在這個物件裡）。
+// 空物件代表沒有指定任何架構條件，這時候上傳/選圖的行為維持原本「只分位置，不分架構」的
+// 規則（image_url／image_urls_by_slot）；有指定的話改讀寫 image_context_rules，實際疊圖
+// 合成時會挑「符合目前架構選擇、而且指定的軸數最多（最精確）」的那條規則，方便像「長度
+// 不指定時共用一張圖，之後想幫某個長度另外補一張更精確的圖」這種漸進式的用法。
+let currentBoxImageArchCondition = {};
 
-// 上傳／選用已上傳／移除圖片，都要看目前是在編輯第幾個接線盒：第 1 個直接讀寫 image_url
-// （預設圖），第 2 個以後改讀寫 image_urls_by_slot 底下對應那個位置編號的欄位。
+function currentBoxImageArchConditionActive() {
+    return Object.keys(currentBoxImageArchCondition).length > 0;
+}
+
+// 找 row.image_context_rules 裡「架構條件、位置都完全一樣」的那一條的索引，用在編輯彈窗裡
+// 直接讀寫「目前這組條件」對應的那條規則（不是疊圖合成時用的「最精確比對」）。
+function findContextRuleIndex(row, archCondition, slot) {
+    if (!row.image_context_rules) return -1;
+    const archKeys = Object.keys(archCondition);
+    return row.image_context_rules.findIndex(rule => {
+        if (rule.slot !== slot) return false;
+        const ruleKeys = Object.keys(rule.arch || {});
+        if (ruleKeys.length !== archKeys.length) return false;
+        return archKeys.every(k => rule.arch[k] === archCondition[k]);
+    });
+}
+
+// 上傳／選用已上傳／移除圖片，都要看目前彈窗裡選的「位置」＋「架構條件」：
+// 有指定架構條件的話讀寫 image_context_rules；沒有指定的話維持原本規則——第 1 個直接讀寫
+// image_url（預設圖），第 2 個以後改讀寫 image_urls_by_slot 底下對應那個位置編號的欄位。
 function setBoxRowImageForSlot(row, url) {
-    if (currentBoxImageSlot > 1) {
+    if (currentBoxImageArchConditionActive()) {
+        row.image_context_rules = row.image_context_rules || [];
+        const idx = findContextRuleIndex(row, currentBoxImageArchCondition, currentBoxImageSlot);
+        if (idx === -1) {
+            row.image_context_rules.push({ arch: { ...currentBoxImageArchCondition }, slot: currentBoxImageSlot, url });
+        } else {
+            row.image_context_rules[idx] = { ...row.image_context_rules[idx], url };
+        }
+    } else if (currentBoxImageSlot > 1) {
         row.image_urls_by_slot = row.image_urls_by_slot || {};
         row.image_urls_by_slot[String(currentBoxImageSlot)] = url;
     } else {
@@ -27,11 +60,30 @@ function setBoxRowImageForSlot(row, url) {
 }
 
 function clearBoxRowImageForSlot(row) {
-    if (currentBoxImageSlot > 1) {
+    if (currentBoxImageArchConditionActive()) {
+        if (!row.image_context_rules) return;
+        const idx = findContextRuleIndex(row, currentBoxImageArchCondition, currentBoxImageSlot);
+        if (idx !== -1) row.image_context_rules.splice(idx, 1);
+    } else if (currentBoxImageSlot > 1) {
         if (row.image_urls_by_slot) delete row.image_urls_by_slot[String(currentBoxImageSlot)];
     } else {
         row.image_url = null;
     }
+}
+
+// 編輯彈窗裡，某一列（軸選項或完整組合）在「目前選的位置＋架構條件」下該顯示的縮圖網址，
+// 以及這個條件底下是不是已經有自己專屬的圖（沒有的話就是沿用退一層的預設圖）。
+function boxEditModalImageInfo(row) {
+    if (currentBoxImageArchConditionActive()) {
+        const idx = findContextRuleIndex(row, currentBoxImageArchCondition, currentBoxImageSlot);
+        if (idx !== -1) return { url: row.image_context_rules[idx].url, hasOwn: true };
+        return { url: slotAwareImageUrl(row, currentBoxImageSlot), hasOwn: false };
+    }
+    if (currentBoxImageSlot > 1) {
+        const hasOwn = !!(row.image_urls_by_slot && row.image_urls_by_slot[String(currentBoxImageSlot)]);
+        return { url: slotAwareImageUrl(row, currentBoxImageSlot), hasOwn };
+    }
+    return { url: row.image_url || '', hasOwn: !!row.image_url };
 }
 
 /* ===================== 編輯區：架構的軸／完整組合（port 自 admin.js） ===================== */
@@ -279,6 +331,9 @@ function distinctImageUrls(rows) {
         if (r.image_urls_by_context) {
             Object.values(r.image_urls_by_context).forEach(add);
         }
+        if (r.image_context_rules) {
+            r.image_context_rules.forEach(rule => add(rule.url));
+        }
     });
     return urls;
 }
@@ -364,10 +419,11 @@ function promptPickExistingImage(rows) {
 function axisChipHtml(r, name, isFirst, isLast, imageSlot) {
     const rawValue = r.axis_values[name];
     const splitCount = splitBulkValues(rawValue).length;
-    const isOverrideSlot = !!imageSlot && imageSlot > 1;
-    const hasOwnSlotImage = isOverrideSlot ? !!(r.image_urls_by_slot && r.image_urls_by_slot[String(imageSlot)]) : !!r.image_url;
-    const effectiveUrl = isOverrideSlot ? slotAwareImageUrl(r, imageSlot) : (r.image_url || '');
-    const showRemove = isOverrideSlot ? hasOwnSlotImage : !!r.image_url;
+    const isBoxContext = imageSlot !== undefined;
+    const isOverride = isBoxContext && (imageSlot > 1 || currentBoxImageArchConditionActive());
+    const info = isBoxContext ? boxEditModalImageInfo(r) : { url: r.image_url || '', hasOwn: !!r.image_url };
+    const effectiveUrl = info.url;
+    const showRemove = info.hasOwn;
     return `
         <div class="flex items-center gap-2 border rounded-lg p-2" data-temp-id="${r.tempId}" data-axis-name="${escapeHtml(name)}">
             <div class="flex flex-col gap-0.5">
@@ -376,7 +432,7 @@ function axisChipHtml(r, name, isFirst, isLast, imageSlot) {
             </div>
             <img src="${escapeHtml(effectiveUrl)}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
             <button type="button" class="axis-value-edit-btn flex-1 text-sm text-left hover:underline hover:text-blue-600" title="點一下改這個選項的值">${escapeHtml(rawValue)} ✎</button>
-            ${isOverrideSlot && !hasOwnSlotImage ? '<span class="text-xs text-gray-400 whitespace-nowrap">（沿用預設圖）</span>' : ''}
+            ${isOverride && !showRemove ? '<span class="text-xs text-gray-400 whitespace-nowrap">（沿用預設圖）</span>' : ''}
             <span class="axis-upload-status text-xs text-gray-400"></span>
             <button type="button" class="axis-insert-before-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之前插入新選項">＋前</button>
             <button type="button" class="axis-insert-after-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap" title="在這個之後插入新選項">＋後</button>
@@ -1682,21 +1738,20 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             <span id="box-combo-batch-status" class="text-xs text-gray-400"></span>
         </div>`;
 
-    const isOverrideSlot = currentBoxImageSlot > 1;
+    const isOverride = currentBoxImageSlot > 1 || currentBoxImageArchConditionActive();
 
     container.innerHTML = filterBarHtml + bulkBarHtml + cells.map((cell, i) => {
         const existing = cell.existing;
         const isDisabled = !!(existing && existing.is_disabled);
-        const hasOwnSlotImage = existing
-            ? (isOverrideSlot ? !!(existing.image_urls_by_slot && existing.image_urls_by_slot[String(currentBoxImageSlot)]) : !!existing.image_url)
-            : false;
-        const effectiveUrl = existing ? (isOverrideSlot ? slotAwareImageUrl(existing, currentBoxImageSlot) : (existing.image_url || '')) : '';
+        const info = existing ? boxEditModalImageInfo(existing) : { url: '', hasOwn: false };
+        const hasOwnImage = info.hasOwn;
+        const effectiveUrl = info.url;
         return `
             <div class="flex items-center gap-3 border rounded-lg p-2 ${isDisabled ? 'bg-red-50 border-red-200' : ''}" data-cell-idx="${i}">
                 <input type="checkbox" class="combo-select-checkbox" title="${existing ? '' : '這筆組合還沒有建立資料，勾選後批次套用圖片會自動建立'}">
                 <img src="${escapeHtml(effectiveUrl)}" alt="" class="product-thumb combo-thumb" style="width:40px;height:40px;">
                 <div class="flex-1 text-sm ${isDisabled ? 'line-through text-gray-400' : ''}">${escapeHtml(cell.label)}</div>
-                ${isOverrideSlot && existing && !hasOwnSlotImage ? '<span class="text-xs text-gray-400 whitespace-nowrap">（沿用預設圖）</span>' : ''}
+                ${isOverride && existing && !hasOwnImage ? '<span class="text-xs text-gray-400 whitespace-nowrap">（沿用預設圖）</span>' : ''}
                 <label class="flex items-center gap-1 text-xs text-red-600 whitespace-nowrap">
                     <input type="checkbox" class="combo-disable-checkbox" ${isDisabled ? 'checked' : ''}>
                     停用（不能選）
@@ -1708,7 +1763,7 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
                     <input type="file" accept="image/*" class="hidden combo-upload-input">
                 </label>
                 <button type="button" class="combo-pick-existing-btn px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 whitespace-nowrap">選用已上傳</button>`}
-                ${!isDisabled && existing && hasOwnSlotImage ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
+                ${!isDisabled && existing && hasOwnImage ? `<button type="button" class="combo-remove-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">移除圖片</button>` : ''}
                 ${existing ? `<button type="button" class="combo-delete-btn px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 whitespace-nowrap">刪除組合</button>` : ''}
             </div>`;
     }).join('');
@@ -2052,6 +2107,7 @@ async function saveBoxVariantChanges() {
             axis_values: r.axis_values || {},
             image_url: r.image_url || null,
             image_urls_by_slot: r.image_urls_by_slot && Object.keys(r.image_urls_by_slot).length ? r.image_urls_by_slot : null,
+            image_context_rules: r.image_context_rules && r.image_context_rules.length ? r.image_context_rules : null,
             sort_order: r.sort_order || 0,
             is_disabled: !!r.is_disabled,
         }));
@@ -2068,8 +2124,10 @@ function openEditBoxModal() {
     document.getElementById('box-form-error').classList.add('hidden');
     boxModalDirty = false;
     currentBoxImageSlot = 1;
+    currentBoxImageArchCondition = {};
     boxComboFilters = {};
     document.getElementById('box-image-slot-select').value = '1';
+    renderBoxImageArchConditionSelectors();
     loadBoxEditorSection();
 }
 
@@ -2077,6 +2135,33 @@ document.getElementById('box-image-slot-select').addEventListener('change', (e) 
     currentBoxImageSlot = Number(e.target.value) || 1;
     renderBoxVariantSection();
 });
+
+// 「目前正在編輯第幾個接線盒的圖片」旁邊那排「架構條件」下拉選單，每個架構軸各一個，
+// 預設「不限」；選了值的軸會加進 currentBoxImageArchCondition，之後這個彈窗裡的上傳/選圖/
+// 移除動作都會套用到「這個位置＋這些架構條件」這組精確範圍。用架構那邊已經載入的
+// pickerAxisOptions，不用另外查一次資料庫。
+function renderBoxImageArchConditionSelectors() {
+    const container = document.getElementById('box-image-arch-condition-container');
+    if (!container) return;
+    const axisNames = sortedAxisNames(pickerAxisOptions);
+    if (!axisNames.length) {
+        container.innerHTML = '<span class="text-xs text-gray-400">（架構那邊還沒有任何軸，沒有東西可以指定）</span>';
+        return;
+    }
+    container.innerHTML = axisNames.map(name => `
+        <select class="field-input box-image-arch-condition-select" data-axis="${escapeHtml(name)}" style="width:auto">
+            <option value="">${escapeHtml(name)}：不限</option>
+            ${(pickerAxisOptions[name] || []).map(o => `<option value="${escapeHtml(o.value)}" ${currentBoxImageArchCondition[name] === o.value ? 'selected' : ''}>${escapeHtml(name)}：${escapeHtml(o.value)}</option>`).join('')}
+        </select>`).join('');
+    container.querySelectorAll('.box-image-arch-condition-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            const axis = sel.dataset.axis;
+            if (sel.value) currentBoxImageArchCondition[axis] = sel.value;
+            else delete currentBoxImageArchCondition[axis];
+            renderBoxVariantSection();
+        });
+    });
+}
 
 function closeEditBoxModal() {
     if (boxModalDirty && !confirm('您有尚未儲存的修改，確定要離開嗎？')) return;
@@ -2179,9 +2264,9 @@ function buildPickerData(rows) {
         if (entries.length === 1) {
             const [name, value] = entries[0];
             if (!axisOptions[name]) axisOptions[name] = [];
-            axisOptions[name].push({ value, image_url: r.image_url || '', sort_order: r.sort_order || 0, image_urls_by_slot: r.image_urls_by_slot || null, image_urls_by_context: r.image_urls_by_context || null });
+            axisOptions[name].push({ value, image_url: r.image_url || '', sort_order: r.sort_order || 0, image_urls_by_slot: r.image_urls_by_slot || null, image_urls_by_context: r.image_urls_by_context || null, image_context_rules: r.image_context_rules || null });
         } else if (entries.length >= 2) {
-            combos.push({ values: r.axis_values, image_url: r.image_url || '', is_disabled: !!r.is_disabled, image_urls_by_slot: r.image_urls_by_slot || null, image_urls_by_context: r.image_urls_by_context || null });
+            combos.push({ values: r.axis_values, image_url: r.image_url || '', is_disabled: !!r.is_disabled, image_urls_by_slot: r.image_urls_by_slot || null, image_urls_by_context: r.image_urls_by_context || null, image_context_rules: r.image_context_rules || null });
         }
     });
     Object.keys(axisOptions).forEach(name => {
@@ -2754,25 +2839,48 @@ function slotAwareImageUrl(row, slotIndex) {
     return row.image_url || '';
 }
 
-// 跟 slotAwareImageUrl 一樣，但多疊一層「這個架構＋這個位置」專屬圖（contextKey，
-// 已經是算好的 comboKeyOf(架構)::位置編號 字串），比單純的位置圖更精確、優先權更高。
+// 「編輯接線盒規格」彈窗裡設定的架構條件規則（image_context_rules）：在 row 底下找符合
+// 目前架構選擇、而且指定軸數最多（最精確）的那條——例如同時有「形式+規格」跟「形式+規格+
+// 長度=6.5」兩條規則都對得上時，選 6.5 用比較精確的那條，選別的長度就退回「形式+規格」
+// 那條；都沒對到就回傳 null，讓呼叫的人繼續往下退到 image_urls_by_context／slot／預設圖。
+function bestContextRuleUrl(row, slotIndex, architectureValues) {
+    if (!row.image_context_rules || !row.image_context_rules.length || !architectureValues) return null;
+    let bestUrl = null;
+    let bestScore = -1;
+    row.image_context_rules.forEach(rule => {
+        if (rule.slot !== slotIndex) return;
+        const archEntries = Object.entries(rule.arch || {});
+        if (!archEntries.length) return;
+        const matches = archEntries.every(([k, v]) => architectureValues[k] === v);
+        if (!matches) return;
+        if (archEntries.length > bestScore) { bestUrl = rule.url; bestScore = archEntries.length; }
+    });
+    return bestUrl;
+}
+
+// 跟 slotAwareImageUrl 一樣，但多疊兩層專屬圖，由精確到概略依序退回：
+// 1. image_context_rules（可以只指定部分架構軸，取符合、且指定軸數最多的那條）
+// 2. image_urls_by_context（表單上針對「當下選到的完整架構」直接存的專屬圖，contextKey
+//    是算好的 comboKeyOf(架構)::位置編號 字串，要求完整架構完全對上）
 // 接線盒的軸選項（不是完整組合，例如只選了「產品」這一個軸）也可能設定過專屬圖，
 // 所以疊圖合成（跟編輯彈窗的「單純只分位置」不一樣）要用這個。
-function contextAwareImageUrl(row, slotIndex, contextKey) {
+function contextAwareImageUrl(row, slotIndex, contextKey, architectureValues) {
+    const ruleUrl = bestContextRuleUrl(row, slotIndex, architectureValues);
+    if (ruleUrl) return ruleUrl;
     if (contextKey && row.image_urls_by_context && row.image_urls_by_context[contextKey]) {
         return row.image_urls_by_context[contextKey];
     }
     return slotAwareImageUrl(row, slotIndex);
 }
 
-function resolveAxisLayerUrls(axisNames, axisOptions, selectedValues, slotIndex, contextKey) {
+function resolveAxisLayerUrls(axisNames, axisOptions, selectedValues, slotIndex, contextKey, architectureValues) {
     const ownImageByAxis = {};
     axisNames.forEach(name => {
         const value = selectedValues[name];
         if (!value) return;
         const opt = (axisOptions[name] || []).find(o => o.value === value);
         if (opt) {
-            const url = contextAwareImageUrl(opt, slotIndex, contextKey);
+            const url = contextAwareImageUrl(opt, slotIndex, contextKey, architectureValues);
             if (url) ownImageByAxis[name] = url;
         }
     });
@@ -2838,11 +2946,13 @@ function exactComboMatch(combos, values) {
     return combos.find(c => comboKeyOf(c.values) === key) || null;
 }
 
-// 接線盒規格這邊「完整組合」可以上傳圖，而且分三層、由精確到概略依序退回：
-// 1. 「這個架構＋這個接線盒規格＋這個位置」專屬圖（image_urls_by_context，在表單上針對當下
-//    選到的組合直接上傳）
-// 2. 「這個接線盒規格＋這個位置」的圖（image_urls_by_slot，不分架構，在「編輯接線盒規格」設定）
-// 3. 這個接線盒規格的預設圖（image_url）
+// 接線盒規格這邊「完整組合」可以上傳圖，而且分四層、由精確到概略依序退回：
+// 1. 「編輯接線盒規格」彈窗裡設定的架構條件規則（image_context_rules，可以只指定部分架構
+//    軸，符合的規則裡指定軸數最多的優先）
+// 2. 「這個架構＋這個接線盒規格＋這個位置」專屬圖（image_urls_by_context，在表單上針對當下
+//    選到的完整組合直接上傳）
+// 3. 「這個接線盒規格＋這個位置」的圖（image_urls_by_slot，不分架構，在「編輯接線盒規格」設定）
+// 4. 這個接線盒規格的預設圖（image_url）
 // 都沒有的話才退回疊每個軸自己的小圖（含借圖規則）。同一個規格（例如都選「一連型」），
 // 接線盒 1 跟接線盒 2 可以疊出不一樣的畫面，不會完全疊在同一個位置。
 function resolveBoxLayerUrls(selected, slotIndex, architectureValues) {
@@ -2850,14 +2960,15 @@ function resolveBoxLayerUrls(selected, slotIndex, architectureValues) {
 
     const combo = findBestBoxCombo(selected);
     if (combo) {
-        const url = contextAwareImageUrl(combo, slotIndex, contextKey);
+        const url = contextAwareImageUrl(combo, slotIndex, contextKey, architectureValues);
         if (url) return [url];
     }
     const finalValues = combo ? { ...selected, ...combo.values } : selected;
     const axisNames = sortedAxisNames(boxAxisOptions);
     // 就算沒有對到完整組合（例如只選了單一軸），那個軸選項本身也可能設定過「這個架構＋
-    // 這個位置」的專屬圖，所以退回疊軸圖時一樣要帶著 contextKey 去查，不能整個略過。
-    return resolveAxisLayerUrls(axisNames, boxAxisOptions, finalValues, slotIndex, contextKey);
+    // 這個位置」的專屬圖，所以退回疊軸圖時一樣要帶著 contextKey/architectureValues 去查，
+    // 不能整個略過。
+    return resolveAxisLayerUrls(axisNames, boxAxisOptions, finalValues, slotIndex, contextKey, architectureValues);
 }
 
 // 目前畫面上「架構＋所有接線盒」實際要疊的東西：架構圖層、每個接線盒各自的圖層清單
