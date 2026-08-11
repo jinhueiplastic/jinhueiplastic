@@ -814,6 +814,8 @@ function renderComboList(combos, axisOptions, axisNames) {
                 全選
             </label>
             <button type="button" id="combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
+            <button type="button" id="combo-disable-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>停用已選取（不能選）</button>
+            <button type="button" id="combo-enable-selected-btn" class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100" disabled>取消停用已選取</button>
             <span class="text-gray-300">｜</span>
             <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap" id="combo-batch-upload-label">
                 批次上傳圖片給已選取
@@ -852,6 +854,8 @@ function renderComboList(combos, axisOptions, axisNames) {
     {
         const selectAllCb = document.getElementById('combo-select-all');
         const deleteSelectedBtn = document.getElementById('combo-delete-selected-btn');
+        const disableSelectedBtn = document.getElementById('combo-disable-selected-btn');
+        const enableSelectedBtn = document.getElementById('combo-enable-selected-btn');
         const batchUploadLabel = document.getElementById('combo-batch-upload-label');
         const batchUploadInput = document.getElementById('combo-batch-upload-input');
         const batchPickBtn = document.getElementById('combo-batch-pick-btn');
@@ -865,6 +869,8 @@ function renderComboList(combos, axisOptions, axisNames) {
             const checkedExisting = checkedCells().some(c => c.existing);
             const anyChecked = checkedCells().length > 0;
             deleteSelectedBtn.disabled = !checkedExisting;
+            disableSelectedBtn.disabled = !anyChecked;
+            enableSelectedBtn.disabled = !checkedExisting;
             batchUploadInput.disabled = !anyChecked;
             batchUploadLabel.classList.toggle('opacity-40', !anyChecked);
             batchUploadLabel.classList.toggle('pointer-events-none', !anyChecked);
@@ -927,6 +933,20 @@ function renderComboList(combos, axisOptions, axisNames) {
             const url = await promptPickExistingImage(localVariantRows);
             if (!url) return;
             applyImageToCheckedCells(url, `已套用到 ${count} 筆組合，記得最下面按「儲存」。`);
+        });
+
+        // 批次停用／取消停用已選取的組合：跟每一列自己的「停用（不能選）」checkbox 是同一套
+        // applyComboDisable，沒有資料的格子勾了「停用」一樣會自動先建立起來。
+        disableSelectedBtn.addEventListener('click', () => {
+            const targets = checkedCells();
+            if (!targets.length) return;
+            applyComboDisable(targets, true);
+        });
+
+        enableSelectedBtn.addEventListener('click', () => {
+            const targets = checkedCells().filter(c => c.existing);
+            if (!targets.length) return;
+            applyComboDisable(targets, false);
         });
 
         deleteSelectedBtn.addEventListener('click', () => {
@@ -1729,6 +1749,8 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
                 全選
             </label>
             <button type="button" id="box-combo-delete-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>刪除已選取的組合</button>
+            <button type="button" id="box-combo-disable-selected-btn" class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50" disabled>停用已選取（不能選）</button>
+            <button type="button" id="box-combo-enable-selected-btn" class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100" disabled>取消停用已選取</button>
             <span class="text-gray-300">｜</span>
             <label class="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-100 cursor-pointer whitespace-nowrap" id="box-combo-batch-upload-label">
                 批次上傳圖片給已選取
@@ -1771,6 +1793,8 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
     {
         const selectAllCb = document.getElementById('box-combo-select-all');
         const deleteSelectedBtn = document.getElementById('box-combo-delete-selected-btn');
+        const disableSelectedBtn = document.getElementById('box-combo-disable-selected-btn');
+        const enableSelectedBtn = document.getElementById('box-combo-enable-selected-btn');
         const batchUploadLabel = document.getElementById('box-combo-batch-upload-label');
         const batchUploadInput = document.getElementById('box-combo-batch-upload-input');
         const batchPickBtn = document.getElementById('box-combo-batch-pick-btn');
@@ -1784,6 +1808,8 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             const checkedExisting = checkedCells().some(c => c.existing);
             const anyChecked = checkedCells().length > 0;
             deleteSelectedBtn.disabled = !checkedExisting;
+            disableSelectedBtn.disabled = !anyChecked;
+            enableSelectedBtn.disabled = !checkedExisting;
             batchUploadInput.disabled = !anyChecked;
             batchUploadLabel.classList.toggle('opacity-40', !anyChecked);
             batchUploadLabel.classList.toggle('pointer-events-none', !anyChecked);
@@ -1846,6 +1872,20 @@ function renderBoxComboList(combos, axisOptions, axisNames) {
             const url = await promptPickExistingImage(boxLocalVariantRows);
             if (!url) return;
             applyImageToCheckedCells(url, `已套用到 ${count} 筆組合，記得最下面按「儲存」。`);
+        });
+
+        // 批次停用／取消停用已選取的組合：跟每一列自己的「停用（不能選）」checkbox 是同一套
+        // applyComboDisable，沒有資料的格子勾了「停用」一樣會自動先建立起來。
+        disableSelectedBtn.addEventListener('click', () => {
+            const targets = checkedCells();
+            if (!targets.length) return;
+            applyComboDisable(targets, true);
+        });
+
+        enableSelectedBtn.addEventListener('click', () => {
+            const targets = checkedCells().filter(c => c.existing);
+            if (!targets.length) return;
+            applyComboDisable(targets, false);
         });
 
         deleteSelectedBtn.addEventListener('click', () => {
