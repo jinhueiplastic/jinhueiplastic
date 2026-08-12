@@ -472,9 +472,55 @@ async function editProductOrderDisplayName(p) {
     if (wrap) wrap.innerHTML = variantProductNameHtml(p);
 }
 
+// 跟「修改 POS 商品」（admin.js）同一套規則：值前後的括號是排版習慣加的，不是值真正的一部分，
+// 拆開多個值的時候先去掉；用 / 、 , ， 其中一種分隔就能一次輸入多個值。
+function stripWrappingBrackets(v) {
+    const pairs = { '（': '）', '(': ')', '「': '」', '『': '』' };
+    const first = v[0];
+    const last = v[v.length - 1];
+    if (v.length >= 2 && pairs[first] === last) {
+        const inner = v.slice(1, -1);
+        const opens = (inner.match(/[（(「『]/g) || []).length;
+        const closes = (inner.match(/[）)」』]/g) || []).length;
+        if (opens === closes) return inner.trim();
+    }
+    return v;
+}
+
+function splitBulkValues(text) {
+    return text.split(/[/、,，]/)
+        .map(v => stripWrappingBrackets(v.trim()).trim())
+        .filter(Boolean);
+}
+
+// 「+ 新增規格軸」：不用跑去「修改 POS 商品」，在下單畫面就能順便把這個商品的軸建好——
+// 主要是給剛用「+ 新增商品」建的新商品用（還沒有任何軸），也可以用來幫既有商品多加一個軸。
+// 新增的軸/選項直接存進 pos_item_variants（不像修改 POS 商品那邊要按最下面「儲存」才生效），
+// 跟 POS 下單其他「馬上存檔」的操作（例如新單位）是同一套習慣。
+function newAxisPanelHtml() {
+    return `
+        <div class="border-t pt-3 mt-1">
+            <button type="button" id="new-axis-toggle" class="text-xs text-blue-600 hover:underline">+ 新增規格軸</button>
+            <div id="new-axis-panel" class="hidden flex flex-wrap gap-2 items-end mt-2">
+                <div class="flex-1 min-w-[8rem]">
+                    <label class="field-label">軸名稱</label>
+                    <input type="text" id="na-name-input" class="field-input" placeholder="例如：規格、顏色">
+                </div>
+                <div class="flex-1 min-w-[8rem]">
+                    <label class="field-label">值（用 / 分隔，可一次加多個）</label>
+                    <input type="text" id="na-value-input" class="field-input" placeholder="例如 1/2/3">
+                </div>
+                <button type="button" id="na-add-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+            </div>
+            <p id="na-status" class="text-xs text-gray-400 mt-1"></p>
+        </div>`;
+}
+
+function renderVariantFieldsHtml(p) {
+    return productAxisNames(p).map(name => variantFieldHtml(name, p)).join('');
+}
+
 function renderVariantPickerHtml(p) {
-    const axisNames = productAxisNames(p);
-    const fieldsHtml = axisNames.map(name => variantFieldHtml(name, p)).join('');
     return `
         <div class="flex gap-4 flex-col sm:flex-row">
             <img id="variant-preview-img" src="${escapeHtml(thumbOf(p))}" alt=""
@@ -484,7 +530,7 @@ function renderVariantPickerHtml(p) {
                 <p class="text-xs text-blue-600 font-bold">${escapeHtml(p.erp_code || '')}</p>
                 <div id="variant-product-name-wrap" class="mb-3">${variantProductNameHtml(p)}</div>
                 <div class="space-y-3">
-                    ${fieldsHtml}
+                    <div id="variant-fields-wrap">${renderVariantFieldsHtml(p)}</div>
                     <div class="flex flex-wrap items-end gap-2">
                         <div>
                             <label class="field-label">數量</label>
@@ -497,6 +543,7 @@ function renderVariantPickerHtml(p) {
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
                     加入已選購商品
                 </button>
+                ${newAxisPanelHtml()}
             </div>
         </div>`;
 }
@@ -1003,17 +1050,10 @@ async function commitNewUnit(rawValue) {
     renderUnitTiles();
 }
 
-function wireVariantPicker(p) {
-    const nameEditBtn = document.getElementById('variant-name-edit-btn');
-    if (nameEditBtn) nameEditBtn.addEventListener('click', () => editProductOrderDisplayName(p));
-
-    selectedVariant = {};
-    autoSelectedAxes = new Set();
-    selectedUnit = '';
-    unitAddMode = false;
-    renderUnitTiles();
-    applyDefaultVariantSelections(p);
-
+// 軸選項的按鈕／打字輸入框的點擊/輸入事件，抽成獨立函式：初次畫規格畫面時要接一次，
+// 「新增規格軸」之後只重畫軸欄位那一小塊時也要重新接一次（DOM 節點換新的了，舊的事件
+// 監聽器沒有跟著過去）。
+function wireVariantFieldInteractions(p) {
     document.querySelectorAll('.variant-text-input').forEach(textEl => {
         const axis = textEl.dataset.axis;
         textEl.addEventListener('input', () => {
@@ -1047,6 +1087,32 @@ function wireVariantPicker(p) {
             updateVariantPreviewImage(p);
         });
     });
+}
+
+// 「新增規格軸」存檔成功後用這個，只重畫軸欄位那一小塊，不要整個規格畫面重新來一次——
+// 不然 wireVariantPicker 的初始化邏輯會把 selectedVariant 清空，使用者已經選好的其他軸
+// 的值就不見了。重畫完把目前選到的值重新套用回新按鈕上（DOM 節點是全新的，選取樣式沒了）。
+function refreshVariantFieldsOnly(p) {
+    document.getElementById('variant-fields-wrap').innerHTML = renderVariantFieldsHtml(p);
+    wireVariantFieldInteractions(p);
+    document.querySelectorAll('.variant-tile').forEach(b => {
+        b.classList.toggle('selected', b.dataset.value === selectedVariant[b.dataset.axis]);
+    });
+    updateVariantPreviewImage(p);
+}
+
+function wireVariantPicker(p) {
+    const nameEditBtn = document.getElementById('variant-name-edit-btn');
+    if (nameEditBtn) nameEditBtn.addEventListener('click', () => editProductOrderDisplayName(p));
+
+    selectedVariant = {};
+    autoSelectedAxes = new Set();
+    selectedUnit = '';
+    unitAddMode = false;
+    renderUnitTiles();
+    applyDefaultVariantSelections(p);
+
+    wireVariantFieldInteractions(p);
 
     updateVariantPreviewImage(p);
 
@@ -1077,6 +1143,46 @@ function wireVariantPicker(p) {
         // 要換商品的話可以按上面的「← 返回」或「主分類」。
         resetVariantPicker(p);
         updateVariantPreviewImage(p);
+    });
+
+    const newAxisToggle = document.getElementById('new-axis-toggle');
+    const newAxisPanel = document.getElementById('new-axis-panel');
+    newAxisToggle.addEventListener('click', () => {
+        newAxisPanel.classList.toggle('hidden');
+        if (!newAxisPanel.classList.contains('hidden')) document.getElementById('na-name-input').focus();
+    });
+
+    document.getElementById('na-add-btn').addEventListener('click', async () => {
+        const nameInput = document.getElementById('na-name-input');
+        const valueInput = document.getElementById('na-value-input');
+        const statusEl = document.getElementById('na-status');
+        const axisName = nameInput.value.trim();
+        if (!axisName) { nameInput.focus(); return; }
+        const values = splitBulkValues(valueInput.value);
+        if (!values.length) { valueInput.focus(); return; }
+
+        const existing = new Set(((variantOptionsByErp[p.erp_code] || {})[axisName] || []).map(o => o.value));
+        const newValues = values.filter(v => !existing.has(v));
+        if (!newValues.length) { valueInput.value = ''; return; }
+
+        statusEl.textContent = '新增中…';
+        const rows = newValues.map(v => ({ erp_code: p.erp_code, axis_values: { [axisName]: v }, sort_order: 0 }));
+        const { error } = await sb.from('pos_item_variants').insert(rows);
+        if (error) {
+            statusEl.textContent = '';
+            alert('新增規格軸失敗：' + error.message);
+            return;
+        }
+
+        // 新增成功，直接更新本地資料重畫一次，不用整頁重新整理——馬上就能在上面看到、選用這個軸。
+        if (!variantOptionsByErp[p.erp_code]) variantOptionsByErp[p.erp_code] = {};
+        if (!variantOptionsByErp[p.erp_code][axisName]) variantOptionsByErp[p.erp_code][axisName] = [];
+        newValues.forEach(v => variantOptionsByErp[p.erp_code][axisName].push({ value: v, image_url: '' }));
+
+        statusEl.textContent = `已新增「${axisName}」的 ${newValues.length} 個選項。`;
+        nameInput.value = '';
+        valueInput.value = '';
+        refreshVariantFieldsOnly(p);
     });
 }
 
