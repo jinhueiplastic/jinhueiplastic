@@ -531,6 +531,7 @@ function renderVariantPickerHtml(p) {
                 <div id="variant-product-name-wrap" class="mb-3">${variantProductNameHtml(p)}</div>
                 <div class="space-y-3">
                     <div id="variant-fields-wrap">${renderVariantFieldsHtml(p)}</div>
+                    ${newAxisPanelHtml()}
                     <div class="flex flex-wrap items-end gap-2">
                         <div>
                             <label class="field-label">數量</label>
@@ -543,7 +544,6 @@ function renderVariantPickerHtml(p) {
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
                     加入已選購商品
                 </button>
-                ${newAxisPanelHtml()}
             </div>
         </div>`;
 }
