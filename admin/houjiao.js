@@ -3280,6 +3280,18 @@ function wireBoxPicker(i) {
     updateBoxPreview(i);
 }
 
+// 「清除已選」：架構、數量、備註照 resetVariantPicker 清空，接線盒規格另外處理——
+// 不能只靠架構「接線盒數量」剛好變動這個巧合去間接清掉（數量沒變的話 ensureBoxPickerCount
+// 會提早 return，每個接線盒原本選的值就會留著），直接把 boxPickerStates 清空重建，
+// 讓每個接線盒都照目前（已清空）的架構重新套用一次預設選取。
+function clearAllSelections() {
+    resetVariantPicker();
+    boxPickerStates.length = 0;
+    ensureBoxPickerCountForce();
+}
+
+document.getElementById('notif-clear-btn').addEventListener('click', clearAllSelections);
+
 document.getElementById('notif-submit-btn').addEventListener('click', async () => {
     const selected = currentVariantValues();
     if (!Object.keys(selected).length) { alert('請先選擇架構'); return; }
