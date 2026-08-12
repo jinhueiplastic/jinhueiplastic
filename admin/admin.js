@@ -157,6 +157,12 @@ function productRowHtml(p) {
     const orderName = (p.order_display_name || '').trim();
     const nameLine = orderName ? `${orderName}（${p.name_zh || ''}）` : (p.name_zh || '');
 
+    // 從「POS 下單」選購商品那邊當場新增的商品，資料通常還不齊全（可能只有一個暫時
+    // 拼湊的 ERP 編號、沒有圖片/價格），標記出來提醒要補齊；補齊後在這裡按儲存就會自動清掉。
+    const quickAddBadge = p.added_from_pos
+        ? `<span class="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 whitespace-nowrap">來自 POS 下單，待補齊資料</span>`
+        : '';
+
     return `
         <div class="flex gap-4 border rounded-lg p-3 bg-white">
             <div class="flex flex-col items-center gap-2 shrink-0">
@@ -167,6 +173,7 @@ function productRowHtml(p) {
                 <div class="min-w-0">
                     <p class="font-bold text-gray-900 truncate">${escapeHtml(p.erp_code || '')}</p>
                     <p class="text-gray-700 truncate">${escapeHtml(nameLine)}</p>
+                    ${quickAddBadge ? `<div class="mt-1">${quickAddBadge}</div>` : ''}
                 </div>
                 <label class="flex items-center gap-1 text-xs text-gray-500 shrink-0 whitespace-nowrap">
                     <input type="checkbox" data-id="${p.id}" class="active-toggle" ${p.is_active ? 'checked' : ''}>
@@ -644,6 +651,9 @@ productForm.addEventListener('submit', async (e) => {
 
     let error;
     if (editingId) {
+        // 在這裡按過儲存，代表資料已經確認/補齊過了，不管原本是不是「來自 POS 下單」的
+        // 暫時商品，都清掉那個提醒標記，變成正式商品。
+        payload.added_from_pos = false;
         ({ error } = await sb.from('pos_items').update(payload).eq('id', editingId));
     } else {
         ({ error } = await sb.from('pos_items').insert(payload));

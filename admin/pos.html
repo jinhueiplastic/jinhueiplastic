@@ -97,7 +97,25 @@
                         <div class="flex items-center gap-2 mb-3">
                             <button type="button" id="browse-home-btn" class="hidden px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">主分類</button>
                             <button type="button" id="browse-back-btn" class="hidden px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">← 返回</button>
-                            <input type="text" id="product-search-input" class="field-input flex-1" placeholder="搜尋商品貨號或名稱…">
+                            <input type="text" id="product-search-input" class="field-input flex-1 max-w-xs" placeholder="搜尋商品貨號或名稱…">
+                            <button type="button" id="new-product-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">+ 新增商品</button>
+                        </div>
+                        <div id="new-product-panel" class="hidden mb-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end bg-blue-50 border rounded-lg p-3">
+                            <div>
+                                <label class="field-label">商品名稱</label>
+                                <input type="text" id="np-name" class="field-input">
+                            </div>
+                            <div>
+                                <label class="field-label">ERP 編號（可留空）</label>
+                                <input type="text" id="np-erp" class="field-input">
+                            </div>
+                            <div>
+                                <label class="field-label">分類</label>
+                                <input type="text" id="np-category" class="field-input" list="np-category-datalist">
+                                <datalist id="np-category-datalist"></datalist>
+                            </div>
+                            <button type="button" id="np-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 w-fit">新增並選購</button>
+                            <p id="np-error" class="text-sm text-red-600 hidden md:col-span-4"></p>
                         </div>
                         <p id="browse-breadcrumb" class="text-sm text-gray-500 mb-3 hidden"></p>
                         <div id="browse-area"></div>

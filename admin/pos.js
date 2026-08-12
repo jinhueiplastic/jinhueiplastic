@@ -548,6 +548,78 @@ function renderBrowseArea() {
     }
 }
 
+// ===== 選購商品：完全沒出現過、目錄裡沒有的商品，直接在這裡新增 =====
+// 存進 pos_items（跟「修改 POS 商品」同一張表），不是只在這張訂單用一次的臨時快照——
+// 這樣之後其他訂單也能直接選到、不用每次都重打，跟其他商品完全一視同仁。
+
+const newProductToggle = document.getElementById('new-product-toggle');
+const newProductPanel  = document.getElementById('new-product-panel');
+
+function renderNewProductCategoryDatalist() {
+    const dl = document.getElementById('np-category-datalist');
+    if (!dl) return;
+    const categories = [...new Set(products.map(p => (p.category_name_zh || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    dl.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">`).join('');
+}
+
+newProductToggle.addEventListener('click', () => {
+    const opening = newProductPanel.classList.contains('hidden');
+    newProductPanel.classList.toggle('hidden');
+    if (!opening) return;
+
+    renderNewProductCategoryDatalist();
+    document.getElementById('np-error').classList.add('hidden');
+    document.getElementById('np-name').value = '';
+    document.getElementById('np-erp').value = '';
+    // 目前如果正在瀏覽某個分類，新增商品預設帶入那個分類，省得再打一次。
+    document.getElementById('np-category').value = (browseMode !== 'categories' && browseCategory)
+        ? (categoryNameById[browseCategory] || browseCategory)
+        : '';
+});
+
+document.getElementById('np-save-btn').addEventListener('click', async () => {
+    const errorEl = document.getElementById('np-error');
+    errorEl.classList.add('hidden');
+
+    const name = document.getElementById('np-name').value.trim();
+    if (!name) { alert('請輸入商品名稱'); return; }
+
+    const category = document.getElementById('np-category').value.trim();
+    // 沒填 ERP 編號的話自動生成一個（帶時間戳記，避免跟其他商品衝突），至少能先存進去，
+    // 之後想改成正式編號再去「修改 POS 商品」改就好。
+    const erp = document.getElementById('np-erp').value.trim() || `TEMP-${Date.now()}`;
+
+    const payload = {
+        erp_code: erp,
+        category_name_zh: category || null,
+        name_zh: name,
+        is_active: true,
+        row_index: 0,
+        // 標記這筆是從 POS 下單這裡新增的，讓「修改 POS 商品」那邊可以顯示出來、
+        // 提醒之後要把正式的 ERP 編號、圖片、價格等資料補齊。
+        added_from_pos: true,
+    };
+    const { data, error } = await sb.from('pos_items').insert(payload).select().single();
+    if (error) {
+        // (erp_code, category_name_zh) 這組合已經存在的話會撞到 unique constraint。
+        errorEl.textContent = error.code === '23505'
+            ? '新增失敗：這個 ERP 編號在這個分類下已經有商品了，換一個編號或分類。'
+            : '新增失敗：' + error.message;
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    products.push(data);
+    newProductPanel.classList.add('hidden');
+
+    // 新增完直接進去這個商品的選規格畫面，跟平常點商品卡片是一樣的流程——新商品通常還沒有
+    // 規格資料，這裡的軸清單會是空的，直接看得到數量/單位可以填、加入購物車。
+    browseProduct = data;
+    browseMode = 'variant';
+    renderBrowseArea();
+});
+
 // 目前畫面上選到的值（按鈕優先，沒按按鈕才看有沒有打字），key 是軸名稱。
 function currentVariantValues() {
     const values = {};
