@@ -195,6 +195,11 @@ document.getElementById('new-customer-btn').addEventListener('click', () => {
     editingId = null;
     modalTitle.textContent = '新增客戶';
     fillForm(null);
+    // 如果目前有用區域篩選，新增客戶就順便幫忙把「區域」填好，不用自己再打一次。
+    if (regionFilter.value) {
+        const regionField = customerForm.querySelector('[data-key="region"]');
+        if (regionField) regionField.value = regionFilter.value;
+    }
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
