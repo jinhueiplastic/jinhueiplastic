@@ -22,6 +22,7 @@ let allProducts = [];
 let editingId = null;
 let modalDirty = false; // 表單或規格選項有沒有還沒儲存的修改
 let selectedCategoryFilter = null; // null = 全部
+let showOnlyPendingPos = false; // 只顯示「來自 POS 下單，待補齊資料」的商品（點那個標記進來的）
 
 const statusMsg   = document.getElementById('status-msg');
 const tbody       = document.getElementById('product-tbody');
@@ -71,7 +72,33 @@ async function loadProducts() {
     allProducts = data || [];
     setStatus(`共 ${allProducts.length} 筆商品`);
     renderCategoryFilterTiles();
+    renderPendingPosFilterBar();
     applyFilters();
+}
+
+// 點商品列上「來自 POS 下單，待補齊資料」的標記，篩選成只顯示這些商品；這裡顯示目前還有
+// 幾筆待補齊、以及一個清除篩選的按鈕（篩選中的話）。
+function renderPendingPosFilterBar() {
+    const bar = document.getElementById('pending-pos-filter-bar');
+    if (!bar) return;
+    const pendingCount = allProducts.filter(p => p.added_from_pos).length;
+
+    if (showOnlyPendingPos) {
+        bar.innerHTML = `
+            <div class="inline-flex items-center gap-2 text-sm bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5">
+                <span class="text-orange-700">只顯示來自 POS 下單、待補齊資料的商品（${pendingCount} 筆）</span>
+                <button type="button" id="clear-pending-pos-filter-btn" class="text-blue-600 hover:underline">顯示全部商品</button>
+            </div>`;
+        document.getElementById('clear-pending-pos-filter-btn').addEventListener('click', () => {
+            showOnlyPendingPos = false;
+            renderPendingPosFilterBar();
+            applyFilters();
+        });
+    } else if (pendingCount > 0) {
+        bar.innerHTML = `<p class="text-xs text-gray-400">有 ${pendingCount} 筆商品來自 POS 下單、還沒補齊資料（點商品列上的橘色標記可以只顯示這些）。</p>`;
+    } else {
+        bar.innerHTML = '';
+    }
 }
 
 // 桌面版用按鈕，手機版（畫面比較窄，這頁又常常在手機上用）改用下拉選單，
@@ -122,6 +149,9 @@ function renderCategoryFilterTiles() {
 function applyFilters() {
     const q = searchInput.value.trim().toLowerCase();
     let filtered = allProducts;
+    if (showOnlyPendingPos) {
+        filtered = filtered.filter(p => p.added_from_pos);
+    }
     if (selectedCategoryFilter) {
         filtered = filtered.filter(p => (p.category_name_zh || '').trim() === selectedCategoryFilter);
     }
@@ -160,7 +190,7 @@ function productRowHtml(p) {
     // 從「POS 下單」選購商品那邊當場新增的商品，資料通常還不齊全（可能只有一個暫時
     // 拼湊的 ERP 編號、沒有圖片/價格），標記出來提醒要補齊；補齊後在這裡按儲存就會自動清掉。
     const quickAddBadge = p.added_from_pos
-        ? `<span class="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 whitespace-nowrap">來自 POS 下單，待補齊資料</span>`
+        ? `<button type="button" class="quick-add-badge-btn text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-orange-100" title="只顯示這些待補齊的商品">來自 POS 下單，待補齊資料</button>`
         : '';
 
     return `
@@ -199,6 +229,13 @@ function renderTable(products) {
     });
     tbody.querySelectorAll('.active-toggle').forEach(cb => {
         cb.addEventListener('change', () => toggleActive(cb.dataset.id, cb.checked));
+    });
+    tbody.querySelectorAll('.quick-add-badge-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            showOnlyPendingPos = true;
+            renderPendingPosFilterBar();
+            applyFilters();
+        });
     });
 }
 
