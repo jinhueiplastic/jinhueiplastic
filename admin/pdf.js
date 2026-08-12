@@ -201,40 +201,34 @@ function runSheetItemValuesOnly(item) {
     return itemVariantEntries(item).map(([, v]) => v).join(' ');
 }
 
-// 「規格值＋商品名稱」接數量：塞得下同一行就整行顯示（靠左）；塞不下的話，數量自己獨立
-// 一行、靠右對齊，規格值＋名稱那行維持正常靠左（不會為了讓數量擠上去而被拆開）。
-// word-break:keep-all 讓商品名稱本身（含中英文混排，例如「PVC清潔口」）不會被硬拆到
-// 下一行——只有規格值/名稱之間的空白算是合法的換行點。
-// 用實際量出來的寬度判斷塞不塞得下，不是用字數估的，字級/欄寬以後調整也不用跟著改。
-function runSheetItemLineHtml(item, columnWidthPx) {
+// 「規格值＋商品名稱」接數量：數量固定貼右邊，前面的文字正常排、太長會自動換行。
+// 關鍵是 float 的 <span> 要放在文字「後面」（不是前面）：CSS float 的規則是浮動元素的
+// 頂端不能高於「它前面那些行內內容所在行框的頂端」——文字先照正常寬度排好版（不受 float
+// 影響，因為 float 還沒出現），排到第幾行、換到哪裡都跟平常一樣；float 最後才貼到「文字
+// 目前排到的那一行」的右邊，那一行剩的空間不夠才會自己換到下一行、一樣靠右對齊。
+// 效果：整行塞得下就同一行靠右；文字本身很短不用換行的話，數量就跟在後面同一行；
+// 文字本身就需要換到第二行（跟數量無關），數量就接在文字實際排完的最後一行後面，
+// 不會為了讓數量擠上去而把商品名稱從中間拆開。
+// word-break:keep-all 讓商品名稱本身（含中英文混排，例如「PVC清潔口」）只在規格值／名稱
+// 之間的空白處換行，不會被硬拆到不自然的地方；display:flow-root 讓這個 div 的高度確實把
+// 浮動的數量包住，不然數量比文字還高的話下面會塌陷、蓋到下一筆的分隔線。
+function runSheetItemLineHtml(item) {
     const specValues = runSheetItemValuesOnly(item);
     const productName = item.product_name_zh || item.product_erp_code || '';
     const label = [specValues, productName].filter(Boolean).join(' ');
     const qtyText = `--${item.quantity}${item.unit || ''}`;
-    const oneLineText = label + qtyText;
-
-    const measurer = document.createElement('span');
-    measurer.style.cssText = 'position:fixed;left:-9999px;top:0;white-space:nowrap;font-weight:700;font-size:26px;';
-    measurer.textContent = oneLineText;
-    document.body.appendChild(measurer);
-    const fitsOneLine = measurer.getBoundingClientRect().width <= columnWidthPx;
-    document.body.removeChild(measurer);
-
-    if (fitsOneLine) {
-        return `<div style="font-weight:700;font-size:26px;word-break:keep-all;margin-top:10px;">${escapeHtml(oneLineText)}</div>`;
-    }
     return `
-        <div style="font-weight:700;font-size:26px;word-break:keep-all;margin-top:10px;">${escapeHtml(label)}</div>
-        <div style="font-weight:700;font-size:26px;text-align:right;">${escapeHtml(qtyText)}</div>`;
+        <div style="font-weight:700;font-size:26px;word-break:keep-all;margin-top:10px;display:flow-root;">
+            ${escapeHtml(label)}<span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
+        </div>`;
 }
 
 function runSheetEntryHtml(entry) {
     const c = entry.customer || {};
     const items = entry.items || [];
     const nameLine = [c.name, c.site_name].filter(Boolean).join('-');
-    const columnWidthPx = runSheetColumnWidthPx(RUN_SHEET_COLUMN_COUNT);
 
-    const itemsHtml = items.map(item => runSheetItemLineHtml(item, columnWidthPx)).join('');
+    const itemsHtml = items.map(item => runSheetItemLineHtml(item)).join('');
 
     const phoneLine = `${c.phone || ''}${c.contact_person ? '（' + c.contact_person + '）' : ''}`;
 
