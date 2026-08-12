@@ -110,6 +110,28 @@ function applyFilter() {
 
 document.getElementById('search-btn').addEventListener('click', applyFilter);
 
+// 「前天」「昨天」：把起訖兩組日期都填成同一天（只查那一天），按下去馬上查詢，
+// 不用自己手動改日期再按查詢——跟「查詢」按鈕一樣要求先選好區域。
+function fillMinguoOffsetDays(daysAgo) {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    const yyy = d.getFullYear() - 1911;
+    const mm = d.getMonth() + 1;
+    const dd = d.getDate();
+    ['q-date-from-yyy', 'q-date-to-yyy'].forEach(id => { document.getElementById(id).value = yyy; });
+    ['q-date-from-mm', 'q-date-to-mm'].forEach(id => { document.getElementById(id).value = mm; });
+    ['q-date-from-dd', 'q-date-to-dd'].forEach(id => { document.getElementById(id).value = dd; });
+}
+
+document.getElementById('date-yesterday-btn').addEventListener('click', () => {
+    fillMinguoOffsetDays(1);
+    applyFilter();
+});
+document.getElementById('date-day-before-yesterday-btn').addEventListener('click', () => {
+    fillMinguoOffsetDays(2);
+    applyFilter();
+});
+
 generateBtn.addEventListener('click', async () => {
     if (!matchedOrders.length) return;
 

@@ -277,7 +277,15 @@ customerSearchInput.addEventListener('blur', () => {
 });
 
 newCustomerToggle.addEventListener('click', () => {
+    const opening = newCustomerPanel.classList.contains('hidden');
     newCustomerPanel.classList.toggle('hidden');
+    // 如果目前有用區域篩選客戶，新增客戶就順便幫忙把「區域」填好，不用自己再打一次；
+    // 「未分類」是給沒填區域的客戶用的特殊分類名稱，不是真的區域值，不用帶進去。
+    // 每次打開都重新照目前的篩選狀態設定，不要留著上次沒存就關掉的舊內容。
+    if (opening) {
+        const prefillRegion = (selectedRegionFilter && selectedRegionFilter !== '未分類') ? selectedRegionFilter : '';
+        document.getElementById('nc-region').value = prefillRegion;
+    }
 });
 
 document.getElementById('nc-save-btn').addEventListener('click', async () => {
