@@ -306,10 +306,10 @@ function renderCartCustomerInfo(c) {
     }
     const nameLine = c.site_name ? `${c.name || ''} -- ${c.site_name}` : (c.name || '');
     el.innerHTML = `
-        <p class="text-lg font-bold text-gray-900">${escapeHtml(c.region || '（無）')}</p>
-        <p class="text-sm font-bold text-gray-800 mt-1">${escapeHtml(nameLine)}</p>
-        <p class="text-xs text-gray-500 mt-1">地址：${escapeHtml(c.address || '（無）')}</p>
-        <p class="text-xs text-gray-500">電話：${escapeHtml(c.phone || '（無）')}</p>
+        <p class="text-2xl font-bold text-gray-900">${escapeHtml(c.region || '（無）')}</p>
+        <p class="text-lg font-bold text-gray-800 mt-1">${escapeHtml(nameLine)}</p>
+        <p class="text-sm text-gray-500 mt-1">地址：${escapeHtml(c.address || '（無）')}</p>
+        <p class="text-sm text-gray-500">電話：${escapeHtml(c.phone || '（無）')}</p>
     `;
 }
 
