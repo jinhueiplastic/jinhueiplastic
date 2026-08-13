@@ -304,9 +304,19 @@ table tbody tr:hover {
 .pickup-tag-tile:nth-of-type(3n+3) { background: #dcfce7; border-color: #4ade80; }
 .pickup-tag-tile:nth-of-type(3n+3) span { color: #15803d; }
 
-.pickup-tag-tile.selected {
+/* 選到的話直接反白（深色底＋白字＋勾勾），跟其他兩個沒選到的彩色標籤一眼就能分出來——
+   原本只有把邊框改深色，跟標籤本來就有顏色的邊框放在一起太不明顯，使用者常常按了卻看不出差別。
+   選擇器把 .pickup-tag-tile 重複一次來提高權重，蓋過上面各種顏色的 background/border-color，不用 !important。 */
+.pickup-tag-tile.pickup-tag-tile.selected {
+    background: #111827;
     border-color: #111827;
-    box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.18);
+    box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.25);
+}
+.pickup-tag-tile.pickup-tag-tile.selected span {
+    color: #fff;
+}
+.pickup-tag-tile.pickup-tag-tile.selected span::before {
+    content: "✓ ";
 }
 
 .cart-item-name {

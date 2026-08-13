@@ -316,11 +316,10 @@ function renderCartCustomerInfo(c) {
 function selectCustomer(id) {
     selectedCustomerId = id;
     const c = customers.find(x => String(x.id) === String(id));
-    // 搜尋框裡還是放純公司名稱（不是「公司--工地」），不然選完之後如果又點進這個框，
-    // 會拿「公司--工地」這串完整文字去比對，反而搜不到任何客戶，要先手動刪字才行。
-    customerSearchInput.value = c ? c.name : '';
+    customerSearchInput.value = c ? customerListLabel(c) : '';
     customerSearchResults.classList.add('hidden');
     renderCartCustomerInfo(c);
+    document.getElementById('edit-customer-panel').classList.add('hidden'); // 換了客戶，之前開著的編輯表單就不是同一位了
 }
 
 function deselectCustomer() {
@@ -328,6 +327,7 @@ function deselectCustomer() {
     customerSearchInput.value = '';
     customerSearchResults.classList.add('hidden');
     renderCartCustomerInfo(null);
+    document.getElementById('edit-customer-panel').classList.add('hidden');
 }
 
 customerSearchInput.addEventListener('input', () => {
@@ -335,7 +335,15 @@ customerSearchInput.addEventListener('input', () => {
     renderCustomerSearchResults(customerSearchInput.value);
 });
 customerSearchInput.addEventListener('focus', () => {
-    renderCustomerSearchResults(customerSearchInput.value);
+    // 已經選定客戶的話，框裡放的是「公司--工地」這種顯示用文字，不是使用者正在打的搜尋字，
+    // 拿去搜尋反而配不到任何客戶；重新聚焦時改成列出目前篩選範圍內的全部客戶方便重選，
+    // 並把文字整個選起來，直接打字就能取代掉，不用自己手動刪。
+    if (selectedCustomerId) {
+        renderCustomerSearchResults('');
+        customerSearchInput.select();
+    } else {
+        renderCustomerSearchResults(customerSearchInput.value);
+    }
 });
 customerSearchInput.addEventListener('blur', () => {
     setTimeout(() => customerSearchResults.classList.add('hidden'), 100);
@@ -344,6 +352,7 @@ customerSearchInput.addEventListener('blur', () => {
 newCustomerToggle.addEventListener('click', () => {
     const opening = newCustomerPanel.classList.contains('hidden');
     newCustomerPanel.classList.toggle('hidden');
+    document.getElementById('edit-customer-panel').classList.add('hidden'); // 兩個表單不用同時開著
     // 如果目前有用區域篩選客戶，新增客戶就順便幫忙把「區域」填好，不用自己再打一次；
     // 「未分類」是給沒填區域的客戶用的特殊分類名稱，不是真的區域值，不用帶進去。
     // 每次打開都重新照目前的篩選狀態設定，不要留著上次沒存就關掉的舊內容。
@@ -375,6 +384,53 @@ document.getElementById('nc-save-btn').addEventListener('click', async () => {
     selectCustomer(data.id);
     newCustomerPanel.classList.add('hidden');
     ['nc-name', 'nc-site-name', 'nc-region', 'nc-address', 'nc-phone'].forEach(id => { document.getElementById(id).value = ''; });
+});
+
+// 編輯客戶：直接在 POS 下單這頁修改目前選定客戶的資料，不用跳去「客戶資訊」頁——
+// 存檔後馬上更新左邊浮動框跟客戶清單，接著下單就是用最新的資料。
+const editCustomerToggle = document.getElementById('edit-customer-toggle');
+const editCustomerPanel  = document.getElementById('edit-customer-panel');
+
+editCustomerToggle.addEventListener('click', () => {
+    if (!selectedCustomerId) { alert('請先選擇要編輯的客戶'); return; }
+    const c = customers.find(x => String(x.id) === String(selectedCustomerId));
+    if (!c) return;
+
+    const opening = editCustomerPanel.classList.contains('hidden');
+    editCustomerPanel.classList.toggle('hidden');
+    newCustomerPanel.classList.add('hidden'); // 兩個表單不用同時開著
+
+    if (opening) {
+        document.getElementById('ec-name').value = c.name || '';
+        document.getElementById('ec-site-name').value = c.site_name || '';
+        document.getElementById('ec-region').value = c.region || '';
+        document.getElementById('ec-address').value = c.address || '';
+        document.getElementById('ec-phone').value = c.phone || '';
+    }
+});
+
+document.getElementById('ec-save-btn').addEventListener('click', async () => {
+    if (!selectedCustomerId) return;
+    const name = document.getElementById('ec-name').value.trim();
+    if (!name) { alert('請輸入客戶名稱'); return; }
+    const payload = {
+        name,
+        site_name: document.getElementById('ec-site-name').value.trim(),
+        region: document.getElementById('ec-region').value.trim(),
+        address: document.getElementById('ec-address').value.trim(),
+        phone: document.getElementById('ec-phone').value.trim(),
+    };
+    const { data, error } = await sb.from('customers').update(payload).eq('id', selectedCustomerId).select().single();
+    if (error) { alert('修改客戶失敗：' + error.message); return; }
+
+    const idx = customers.findIndex(x => String(x.id) === String(selectedCustomerId));
+    if (idx !== -1) customers[idx] = data;
+    customers.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    renderRegionTiles();
+    renderRegionDatalist();
+    customerSearchInput.value = customerListLabel(data);
+    renderCartCustomerInfo(data); // 馬上反映在左邊浮動框，不用重新選一次客戶
+    editCustomerPanel.classList.add('hidden');
 });
 
 // ===== 商品瀏覽：目錄 → 商品圖片 → 規格 =====

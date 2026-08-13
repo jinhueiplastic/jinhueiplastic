@@ -76,6 +76,7 @@
                                 <input type="text" id="customer-search-input" class="field-input" placeholder="輸入客戶名稱／電話搜尋…" autocomplete="off">
                                 <div id="customer-search-results" class="customer-search-results hidden"></div>
                             </div>
+                            <button type="button" id="edit-customer-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100">編輯客戶</button>
                             <button type="button" id="new-customer-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100">+ 新增客戶</button>
                         </div>
                         <div id="new-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
@@ -89,6 +90,17 @@
                             <div><label class="field-label">地址</label><input type="text" id="nc-address" class="field-input"></div>
                             <div><label class="field-label">電話</label><input type="text" id="nc-phone" class="field-input"></div>
                             <button type="button" id="nc-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 md:col-span-5 w-fit">新增並選用</button>
+                        </div>
+                        <div id="edit-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                            <div><label class="field-label">客戶名稱</label><input type="text" id="ec-name" class="field-input"></div>
+                            <div><label class="field-label">工地名稱</label><input type="text" id="ec-site-name" class="field-input"></div>
+                            <div>
+                                <label class="field-label">區域</label>
+                                <input type="text" id="ec-region" class="field-input" list="nc-region-datalist">
+                            </div>
+                            <div><label class="field-label">地址</label><input type="text" id="ec-address" class="field-input"></div>
+                            <div><label class="field-label">電話</label><input type="text" id="ec-phone" class="field-input"></div>
+                            <button type="button" id="ec-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 md:col-span-5 w-fit">儲存修改</button>
                         </div>
                     </div>
 
