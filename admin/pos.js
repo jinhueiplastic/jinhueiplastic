@@ -15,6 +15,8 @@ let allUnits = []; // 所有出現過的單位（來自 pos_units），商品自
 let unitsByErp = {}; // erp_code -> [{name, ratio}]，每個商品各自記住自己常用的單位跟換算比例
 let selectedUnit = ''; // 目前規格畫面上，用按鈕點選的單位
 let selectedRegionFilter = new URLSearchParams(location.search).get('region') || null; // 依區域篩選客戶，null＝全部
+let allPickupTags = []; // 取貨標籤固定清單（來自 order_pickup_tags），跟 allUnits 是同一套「打字新增會記住」的邏輯
+let selectedPickupTag = ''; // 目前用按鈕選到的取貨標籤；打字框有輸入的話以打字為準（跟規格軸同一套規則）
 
 // 瀏覽狀態：categories（分類卡片）→ products（該分類/搜尋結果的商品卡片）→ variant（選規格數量）
 let browseMode = 'categories';
@@ -45,7 +47,7 @@ const saveOrderBtn       = document.getElementById('save-order-btn');
 async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }, { data: itemUnitData, error: iuErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }, { data: itemUnitData, error: iuErr }, { data: tagData, error: tagErr }] = await Promise.all([
         // row_index 是 Google Sheet「POS items」分頁同步過來的列順序，讓同分類底下的商品
         // 排列跟 Sheet 上到下的順序一致；沒跑過同步、手動新增的商品 row_index 預設 0，
         // 排在同分類最前面。
@@ -61,6 +63,7 @@ async function initPos() {
         fetchAllRows(() => sb.from('pos_item_variants').select('*').order('sort_order', { ascending: true }).order('id', { ascending: true })),
         sb.from('pos_units').select('*').order('sort_order', { ascending: true }),
         sb.from('pos_item_units').select('*').order('sort_order', { ascending: true }),
+        sb.from('order_pickup_tags').select('*').order('sort_order', { ascending: true }),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
@@ -68,9 +71,11 @@ async function initPos() {
     if (vErr) console.error(vErr);
     if (uErr) console.error(uErr);
     if (iuErr) console.error(iuErr);
+    if (tagErr) console.error(tagErr);
     products = productData || [];
     customers = customerData || [];
     allUnits = (unitData || []).map(u => u.name);
+    allPickupTags = (tagData || []).map(t => t.name);
 
     unitsByErp = {};
     (itemUnitData || []).forEach(u => {
@@ -109,6 +114,7 @@ async function initPos() {
 
     renderRegionTiles();
     renderRegionDatalist();
+    renderPickupTagTiles();
     initOrderDateField();
 
     cart = [];
@@ -195,6 +201,57 @@ function renderRegionDatalist() {
     const regions = [...new Set(customers.map(c => (c.region || '').trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
     regionList.innerHTML = regions.map(r => `<option value="${escapeHtml(r)}">`).join('');
+}
+
+// 取貨標籤：固定清單（自取／放車自取／明早自取…）用按鈕點，也可以直接打字輸入清單以外的
+// 值——跟規格軸選擇是同一套規則（點按鈕的話清掉打字框；打字的話按鈕自動取消選取，
+// 以打字為準，不會兩邊同時生效搞不清楚）。選填，不選也可以送出訂單。
+function renderPickupTagTiles() {
+    const container = document.getElementById('pickup-tag-tiles');
+    container.innerHTML = allPickupTags.map(name => `
+        <button type="button" class="variant-tile pickup-tag-tile${selectedPickupTag === name ? ' selected' : ''}" data-value="${escapeHtml(name)}">
+            <span>${escapeHtml(name)}</span>
+        </button>`).join('');
+
+    container.querySelectorAll('.pickup-tag-tile').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const value = btn.dataset.value;
+            selectedPickupTag = (selectedPickupTag === value) ? '' : value; // 再點一次取消選取
+            container.querySelectorAll('.pickup-tag-tile').forEach(b => {
+                b.classList.toggle('selected', b.dataset.value === selectedPickupTag);
+            });
+            document.getElementById('pickup-tag-text-input').value = '';
+        });
+    });
+}
+
+document.getElementById('pickup-tag-text-input').addEventListener('input', (e) => {
+    if (e.target.value.trim() && selectedPickupTag) {
+        selectedPickupTag = '';
+        document.querySelectorAll('.pickup-tag-tile').forEach(b => b.classList.remove('selected'));
+    }
+});
+
+// 目前選到的取貨標籤：按鈕優先，沒按按鈕才看有沒有打字；都沒有就回傳空字串（選填欄位）。
+function currentPickupTag() {
+    if (selectedPickupTag) return selectedPickupTag;
+    return document.getElementById('pickup-tag-text-input').value.trim();
+}
+
+function resetPickupTag() {
+    selectedPickupTag = '';
+    document.getElementById('pickup-tag-text-input').value = '';
+    document.querySelectorAll('.pickup-tag-tile').forEach(b => b.classList.remove('selected'));
+}
+
+// 打了新標籤但不在固定清單裡的話，訂單存檔成功後順便學起來，下次就有按鈕可以直接點
+// （跟 learnNewUnits 是同一套「保險機制」）。
+async function learnNewPickupTag(tag) {
+    if (!tag || allPickupTags.includes(tag)) return;
+    const { error } = await sb.from('order_pickup_tags').insert({ name: tag, sort_order: allPickupTags.length });
+    if (error) { console.error('自動學習取貨標籤失敗：', error); return; }
+    allPickupTags.push(tag);
+    renderPickupTagTiles();
 }
 
 // ===== 客戶搜尋（即時打字篩選，取代原本的下拉選單） =====
@@ -1349,10 +1406,12 @@ saveOrderBtn.addEventListener('click', async () => {
     saveOrderBtn.disabled = true;
     saveOrderBtn.textContent = '儲存中…';
 
+    const pickupTag = currentPickupTag();
+
     try {
         const { data: order, error: orderErr } = await sb
             .from('orders')
-            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, created_at: createdAt })
+            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, created_at: createdAt, pickup_tag: pickupTag || null })
             .select()
             .single();
         if (orderErr) throw orderErr;
@@ -1374,6 +1433,7 @@ saveOrderBtn.addEventListener('click', async () => {
         if (itemsErr) throw itemsErr;
 
         await learnNewUnits(itemsPayload);
+        await learnNewPickupTag(pickupTag);
 
         // 訂單已經真的存進資料庫了，此時清空購物車，離開頁面的提醒才不會誤判成「還有未儲存的東西」。
         cart = [];
@@ -1383,6 +1443,7 @@ saveOrderBtn.addEventListener('click', async () => {
 
         // 出單後清空客戶，方便接著幫同一區域的下一位客戶下單；區域篩選（selectedRegionFilter）不受影響。
         deselectCustomer();
+        resetPickupTag(); // 取貨方式是每張訂單各自的，出單後清掉，不要沿用到下一張訂單
 
         await learnNewVariantOptions(learnPayload);
         resultBanner.classList.remove('hidden');
