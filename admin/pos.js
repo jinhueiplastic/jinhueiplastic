@@ -96,7 +96,7 @@ async function initPos() {
             const [name, value] = entries[0];
             if (!variantOptionsByErp[v.erp_code]) variantOptionsByErp[v.erp_code] = {};
             if (!variantOptionsByErp[v.erp_code][name]) variantOptionsByErp[v.erp_code][name] = [];
-            variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url });
+            variantOptionsByErp[v.erp_code][name].push({ value, image_url: v.image_url, show_in_name: !!v.show_in_name });
         } else {
             if (!combosByErp[v.erp_code]) combosByErp[v.erp_code] = [];
             combosByErp[v.erp_code].push({ values: v.axis_values, image_url: v.image_url, is_disabled: !!v.is_disabled, unit_ratios: v.unit_ratios || {} });
@@ -396,6 +396,23 @@ function groupProductsByCategory() {
 // 有設定「下單名稱」就用那個，沒有的話退回中文品名——POS 下單畫面上顯示商品名稱的地方都用這個。
 function orderDisplayName(p) {
     return (p.order_display_name || '').trim() || p.name_zh || '';
+}
+
+// 加入購物車那一刻，商品標題要不要加料：在「修改 POS 商品」被標記「顯示在下單名稱」的軸，
+// 把目前選到的值（照軸的順序）接在商品名稱前面，例如「4分 CD盒接」；沒有標記任何軸就跟以前一樣，
+// 只顯示商品名稱本身。
+function cartItemDisplayName(p, selectedValues) {
+    const opts = variantOptionsByErp[p.erp_code] || {};
+    const prefixParts = productAxisNames(p)
+        .map(axisName => {
+            const value = selectedValues[axisName];
+            if (!value) return null;
+            const opt = (opts[axisName] || []).find(o => o.value === value);
+            return (opt && opt.show_in_name) ? value : null;
+        })
+        .filter(Boolean);
+    const baseName = orderDisplayName(p);
+    return prefixParts.length ? `${prefixParts.join(' ')} ${baseName}` : baseName;
 }
 
 function productMatches(p, q) {
@@ -1203,7 +1220,7 @@ function wireVariantPicker(p) {
         cart.push({
             rowId: ++cartCounter,
             erp: p.erp_code,
-            name_zh: orderDisplayName(p),
+            name_zh: cartItemDisplayName(p, variantValues),
             image_url: currentComboImage(p),
             variant_values: variantValues,
             selected_axis_values: selected, // 只用來之後「自動學習新選項」，不會存進訂單
@@ -1415,11 +1432,13 @@ saveOrderBtn.addEventListener('click', async () => {
     saveOrderBtn.textContent = '儲存中…';
 
     const pickupTag = currentPickupTag();
+    const noteInput = document.getElementById('order-note-input');
+    const note = noteInput ? noteInput.value.trim() : '';
 
     try {
         const { data: order, error: orderErr } = await sb
             .from('orders')
-            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, created_at: createdAt, pickup_tag: pickupTag || null })
+            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, created_at: createdAt, pickup_tag: pickupTag || null, note: note || null })
             .select()
             .single();
         if (orderErr) throw orderErr;
@@ -1452,6 +1471,7 @@ saveOrderBtn.addEventListener('click', async () => {
         // 出單後清空客戶，方便接著幫同一區域的下一位客戶下單；區域篩選（selectedRegionFilter）不受影響。
         deselectCustomer();
         resetPickupTag(); // 取貨方式是每張訂單各自的，出單後清掉，不要沿用到下一張訂單
+        if (noteInput) noteInput.value = ''; // 備註不留給下一張訂單沿用
 
         await learnNewVariantOptions(learnPayload);
         resultBanner.classList.remove('hidden');

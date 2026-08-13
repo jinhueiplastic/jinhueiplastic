@@ -927,6 +927,7 @@ function insertAxisOptionAt(name, tempId, position) {
     // 先照插入之前的資料把軸順序記下來，插入新選項只會動到這個軸內部的順序。
     const axisNames = currentAxisNamesInOrder(axisOptions);
 
+    const showInName = rows.every(r => r.show_in_name);
     const newRows = newValues.map(v => ({
         tempId: ++variantTempCounter,
         id: null,
@@ -935,6 +936,7 @@ function insertAxisOptionAt(name, tempId, position) {
         image_url: null,
         sort_order: 0,
         is_disabled: false,
+        show_in_name: showInName,
     }));
 
     const insertAt = position === 'before' ? idx : idx + 1;
@@ -1227,18 +1229,22 @@ function renderVariantSection() {
     if (!axisNames.length) {
         groupsEl.innerHTML = '<p class="text-xs text-gray-400">這個商品還沒有任何選項，在下面新增第一個軸吧（例如「規格」）。</p>';
     } else {
-        groupsEl.innerHTML = axisNames.map((name, axisIdx) => `
+        groupsEl.innerHTML = axisNames.map((name, axisIdx) => {
+            const showInName = axisOptions[name].every(r => r.show_in_name);
+            return `
             <div>
                 <div class="flex items-center justify-between gap-2">
                     <div class="flex items-center gap-1">
                         <button type="button" class="axis-group-move-up-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸上移">▲</button>
                         <button type="button" class="axis-group-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === axisNames.length - 1 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸下移">▼</button>
                         <button type="button" class="axis-rename-btn field-label mb-0 hover:underline hover:text-blue-600" data-axis-name="${escapeHtml(name)}" title="點一下改軸名稱">${escapeHtml(name)} ✎</button>
+                        <button type="button" class="axis-show-in-name-btn text-xs px-2 py-0.5 rounded-full border ${showInName ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-500'}" data-axis-name="${escapeHtml(name)}" title="開啟後，POS 下單購物車的商品標題會加上這個軸選到的值">${showInName ? '✓ 顯示在下單名稱' : '顯示在下單名稱'}</button>
                     </div>
                     <button type="button" class="axis-delete-all-btn text-xs text-red-600 hover:underline" data-axis-name="${escapeHtml(name)}">刪除整個軸</button>
                 </div>
                 <div class="space-y-1">${axisOptions[name].map((r, i) => axisChipHtml(r, name, i === 0, i === axisOptions[name].length - 1)).join('')}</div>
-            </div>`).join('');
+            </div>`;
+        }).join('');
     }
     wireAxisChips(groupsEl);
 
@@ -1250,6 +1256,16 @@ function renderVariantSection() {
     });
     groupsEl.querySelectorAll('.axis-rename-btn').forEach(btn => {
         btn.addEventListener('click', () => renameAxis(btn.dataset.axisName));
+    });
+    groupsEl.querySelectorAll('.axis-show-in-name-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const name = btn.dataset.axisName;
+            const rows = axisOptions[name] || [];
+            const turnOn = !rows.every(r => r.show_in_name);
+            rows.forEach(r => { r.show_in_name = turnOn; });
+            modalDirty = true;
+            renderVariantSection();
+        });
     });
 
     groupsEl.querySelectorAll('.axis-delete-all-btn').forEach(btn => {
@@ -1307,6 +1323,7 @@ function splitVariantRow(axisName, tempId) {
             axis_values: { [axisName]: v },
             image_url: null,
             sort_order: 0,
+            show_in_name: !!row.show_in_name,
         });
     });
     axisOptions[axisName] = [...existingRows, ...newRows];
@@ -1866,6 +1883,7 @@ async function saveVariantChanges() {
             sort_order: r.sort_order || 0,
             is_disabled: !!r.is_disabled,
             unit_ratios: r.unit_ratios || {},
+            show_in_name: !!r.show_in_name,
         }));
         const { error } = await sb.from('pos_item_variants').upsert(rows, { onConflict: 'erp_code,axis_values' });
         if (error) throw error;
