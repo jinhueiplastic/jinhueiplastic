@@ -221,6 +221,7 @@ function renderPickupTagTiles() {
                 b.classList.toggle('selected', b.dataset.value === selectedPickupTag);
             });
             document.getElementById('pickup-tag-text-input').value = '';
+            refreshCartCustomerInfo(); // 左邊浮動框那行標籤要跟著更新
         });
     });
 }
@@ -230,6 +231,7 @@ document.getElementById('pickup-tag-text-input').addEventListener('input', (e) =
         selectedPickupTag = '';
         document.querySelectorAll('.pickup-tag-tile').forEach(b => b.classList.remove('selected'));
     }
+    refreshCartCustomerInfo();
 });
 
 // 目前選到的取貨標籤：按鈕優先，沒按按鈕才看有沒有打字；都沒有就回傳空字串（選填欄位）。
@@ -242,6 +244,15 @@ function resetPickupTag() {
     selectedPickupTag = '';
     document.getElementById('pickup-tag-text-input').value = '';
     document.querySelectorAll('.pickup-tag-tile').forEach(b => b.classList.remove('selected'));
+    refreshCartCustomerInfo();
+}
+
+// 左邊浮動框（cart-customer-info）除了客戶本身的資料，第一行右側還會顯示目前選到的取貨標籤，
+// 這個標籤是獨立於客戶的訂單層級狀態，選標籤的當下客戶物件不會變，所以不能只在選客戶時畫一次，
+// 標籤一改也要重畫；用目前的 selectedCustomerId 找回客戶物件，沒選客戶就傳 null。
+function refreshCartCustomerInfo() {
+    const c = selectedCustomerId ? customers.find(x => String(x.id) === String(selectedCustomerId)) : null;
+    renderCartCustomerInfo(c || null);
 }
 
 // 打了新標籤但不在固定清單裡的話，訂單存檔成功後順便學起來，下次就有按鈕可以直接點
@@ -305,8 +316,12 @@ function renderCartCustomerInfo(c) {
         return;
     }
     const nameLine = c.site_name ? `${c.name || ''} -- ${c.site_name}` : (c.name || '');
+    const tag = currentPickupTag();
     el.innerHTML = `
-        <p class="text-2xl font-bold text-gray-900">${escapeHtml(c.region || '（無）')}</p>
+        <div class="flex items-baseline justify-between gap-2">
+            <p class="text-2xl font-bold text-gray-900">${escapeHtml(c.region || '（無）')}</p>
+            ${tag ? `<p class="text-sm font-bold text-blue-700 whitespace-nowrap">${escapeHtml(tag)}</p>` : ''}
+        </div>
         <p class="text-lg font-bold text-gray-800 mt-1">${escapeHtml(nameLine)}</p>
         <p class="text-sm text-gray-500 mt-1">地址：${escapeHtml(c.address || '（無）')}</p>
         <p class="text-sm text-gray-500">電話：${escapeHtml(c.phone || '（無）')}</p>
