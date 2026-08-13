@@ -195,13 +195,9 @@ function distributeEntriesIntoPages(entries, heights, columnCount, columnCapacit
     return pages;
 }
 
-// 只顯示規格的值（不顯示軸名稱標籤），跟打腳通知那邊「只顯示排好序的值」是同樣的呈現方式；
-// itemVariantEntries（shared.js）已經處理好新舊訂單兩種資料格式，這裡直接取值就好。
-function runSheetItemValuesOnly(item) {
-    return itemVariantEntries(item).map(([, v]) => v).join(' ');
-}
-
-// 「規格值＋商品名稱」接數量：數量固定貼右邊，前面的文字正常排、太長會自動換行。
+// 商品名稱接數量：數量固定貼右邊，前面的文字正常排、太長會自動換行。名稱本身（product_name_zh）
+// 已經含有商品自己設定「顯示在下單名稱」的軸值（例如「4分 CD盒接」），這裡不再另外列出完整規格，
+// 不然同一個值會在名稱裡跟規格列表裡各出現一次。
 // 關鍵是 float 的 <span> 要放在文字「後面」（不是前面）：CSS float 的規則是浮動元素的
 // 頂端不能高於「它前面那些行內內容所在行框的頂端」——文字先照正常寬度排好版（不受 float
 // 影響，因為 float 還沒出現），排到第幾行、換到哪裡都跟平常一樣；float 最後才貼到「文字
@@ -209,17 +205,15 @@ function runSheetItemValuesOnly(item) {
 // 效果：整行塞得下就同一行靠右；文字本身很短不用換行的話，數量就跟在後面同一行；
 // 文字本身就需要換到第二行（跟數量無關），數量就接在文字實際排完的最後一行後面，
 // 不會為了讓數量擠上去而把商品名稱從中間拆開。
-// word-break:keep-all 讓商品名稱本身（含中英文混排，例如「PVC清潔口」）只在規格值／名稱
-// 之間的空白處換行，不會被硬拆到不自然的地方；display:flow-root 讓這個 div 的高度確實把
-// 浮動的數量包住，不然數量比文字還高的話下面會塌陷、蓋到下一筆的分隔線。
+// word-break:keep-all 讓商品名稱本身（含中英文混排，例如「PVC清潔口」）只在字詞之間的空白處
+// 換行，不會被硬拆到不自然的地方；display:flow-root 讓這個 div 的高度確實把浮動的數量包住，
+// 不然數量比文字還高的話下面會塌陷、蓋到下一筆的分隔線。
 function runSheetItemLineHtml(item) {
-    const specValues = runSheetItemValuesOnly(item);
     const productName = item.product_name_zh || item.product_erp_code || '';
-    const label = [specValues, productName].filter(Boolean).join(' ');
     const qtyText = `--${item.quantity}${item.unit || ''}`;
     return `
         <div style="font-weight:700;font-size:26px;word-break:keep-all;margin-top:10px;display:flow-root;">
-            ${escapeHtml(label)}<span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
+            ${escapeHtml(productName)}<span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
         </div>`;
 }
 
