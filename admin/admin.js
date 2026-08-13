@@ -2098,6 +2098,13 @@ async function saveUnitChanges() {
 
 async function initProductsPage() {
     await Promise.all([loadProducts(), loadKnownUnits(), loadKnownAxisNames()]);
+
+    // 從 POS 下單商品卡片按「編輯」過來的話，網址會帶 ?edit=<id>，直接幫忙把那個商品的
+    // 編輯視窗打開，不用自己在一長串商品清單裡找。
+    const editId = new URLSearchParams(location.search).get('edit');
+    if (editId && allProducts.some(p => String(p.id) === String(editId))) {
+        openEditModal(editId);
+    }
 }
 
 initScrollRestoration('products');
