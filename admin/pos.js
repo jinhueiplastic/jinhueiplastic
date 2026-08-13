@@ -259,6 +259,11 @@ let selectedCustomerId = '';
 const customerSearchInput   = document.getElementById('customer-search-input');
 const customerSearchResults = document.getElementById('customer-search-results');
 
+// 客戶下拉選單／搜尋框裡顯示的名稱：有工地名稱的話「公司--工地」，沒有的話就只顯示公司名稱。
+function customerListLabel(c) {
+    return c.site_name ? `${c.name}--${c.site_name}` : c.name;
+}
+
 function customersInCurrentRegion() {
     return selectedRegionFilter
         ? customers.filter(c => ((c.region || '').trim() || '未分類') === selectedRegionFilter)
@@ -278,7 +283,7 @@ function renderCustomerSearchResults(query) {
     } else {
         customerSearchResults.innerHTML = sorted.map(c => `
             <div class="customer-search-item" data-id="${c.id}">
-                <div class="font-medium">${escapeHtml(c.name)}</div>
+                <div class="font-medium">${escapeHtml(customerListLabel(c))}</div>
                 <div class="text-xs text-gray-400">${escapeHtml(c.phone || '')}${c.region ? '　' + escapeHtml(c.region) : ''}</div>
             </div>`).join('');
         customerSearchResults.querySelectorAll('.customer-search-item').forEach(el => {
@@ -310,6 +315,8 @@ function renderCartCustomerInfo(c) {
 function selectCustomer(id) {
     selectedCustomerId = id;
     const c = customers.find(x => String(x.id) === String(id));
+    // 搜尋框裡還是放純公司名稱（不是「公司--工地」），不然選完之後如果又點進這個框，
+    // 會拿「公司--工地」這串完整文字去比對，反而搜不到任何客戶，要先手動刪字才行。
     customerSearchInput.value = c ? c.name : '';
     customerSearchResults.classList.add('hidden');
     renderCartCustomerInfo(c);
