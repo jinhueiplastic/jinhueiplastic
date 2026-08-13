@@ -227,18 +227,19 @@ function runSheetEntryHtml(entry) {
 
     const phoneLine = `${c.phone || ''}${c.contact_person ? '（' + c.contact_person + '）' : ''}`;
 
-    // 取貨標籤、備註是揀貨/送貨時要注意的事，印在客戶資訊下面、商品明細上面，顏色跟字體
-    // 都跟其他資訊不同，讓揀貨的人一眼就能看到，不會被一長串商品明細洗掉。
-    const noteLine = [
-        order.pickup_tag ? `取貨：${order.pickup_tag}` : '',
-        order.note ? `備註：${order.note}` : '',
-    ].filter(Boolean).join('　');
+    // 取貨標籤、備註是揀貨/送貨時要注意的事，用同一個顏色跟其他資訊區分開來，讓揀貨的人
+    // 一眼就能看到、不會被一長串商品明細洗掉。取貨標籤貼在客戶名稱那行右邊（float 的 <span>
+    // 要放在文字後面，理由跟 runSheetItemLineHtml 一樣：讓它貼著名稱目前排到的那一行，
+    // 不會把名稱那行的可用寬度縮小）；備註單獨一行，不用再加「備註：」這種標籤文字。
+    const pickupTagHtml = order.pickup_tag
+        ? `<span style="float:right;white-space:nowrap;color:#b45309;">${escapeHtml(order.pickup_tag)}</span>`
+        : '';
 
     return `
         <div style="margin-bottom:14px;font-weight:700;">
-            <div>${escapeHtml(nameLine || '（未知客戶）')}</div>
+            <div style="display:flow-root;">${escapeHtml(nameLine || '（未知客戶）')}${pickupTagHtml}</div>
             <div>${escapeHtml(phoneLine)}</div>
-            ${noteLine ? `<div style="color:#b45309;">${escapeHtml(noteLine)}</div>` : ''}
+            ${order.note ? `<div style="color:#b45309;">${escapeHtml(order.note)}</div>` : ''}
             ${itemsHtml}
             <div style="border-top:2px dashed #6b7280;margin-top:10px;"></div>
         </div>`;
