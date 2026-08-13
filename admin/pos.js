@@ -18,6 +18,11 @@ let selectedRegionFilter = new URLSearchParams(location.search).get('region') ||
 let allPickupTags = []; // 取貨標籤固定清單（來自 order_pickup_tags），跟 allUnits 是同一套「打字新增會記住」的邏輯
 let selectedPickupTag = ''; // 目前用按鈕選到的取貨標籤；打字框有輸入的話以打字為準（跟規格軸同一套規則）
 
+// 從「查詢訂單」按編輯過來的話網址會帶 ?edit=<order id>，這頁就從「建立新訂單」切換成
+// 「編輯這張既有訂單」：客戶/取貨標籤/備註/日期/購物車都會先帶入這張訂單原本的內容，
+// 選購商品的瀏覽、加入購物車都跟平常一樣，存檔時改成覆蓋這張訂單而不是另外新增一張。
+let editingOrderId = new URLSearchParams(location.search).get('edit') || null;
+
 // 瀏覽狀態：categories（分類卡片）→ products（該分類/搜尋結果的商品卡片）→ variant（選規格數量）
 let browseMode = 'categories';
 let browseCategory = null; // 目前瀏覽的分類名稱；搜尋結果時為 null
@@ -125,6 +130,69 @@ async function initPos() {
     renderCartCustomerInfo(null);
 
     setupLeaveGuards();
+
+    if (editingOrderId) await loadOrderForEditing(editingOrderId);
+}
+
+// 把一張既有訂單的內容帶進畫面：客戶、取貨標籤、備註、訂單日期、購物車（用訂單存的
+// product_erp_code/product_name_zh/variant_values/unit/quantity 直接還原成購物車項目，
+// 不用重新透過規格畫面一個個選過）。載入失敗（訂單被刪了／網址亂打）就退回一般新增模式。
+async function loadOrderForEditing(id) {
+    const { data: order, error } = await sb
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('id', id)
+        .single();
+    if (error || !order) {
+        alert('讀取訂單失敗：' + (error ? error.message : '找不到這張訂單'));
+        editingOrderId = null;
+        return;
+    }
+
+    const customer = customers.find(c => String(c.id) === String(order.customer_id)) || null;
+    if (customer) {
+        selectCustomer(customer.id);
+    } else {
+        deselectCustomer();
+    }
+
+    if (order.pickup_tag && allPickupTags.includes(order.pickup_tag)) {
+        selectedPickupTag = order.pickup_tag;
+        document.getElementById('pickup-tag-text-input').value = '';
+    } else {
+        selectedPickupTag = '';
+        document.getElementById('pickup-tag-text-input').value = order.pickup_tag || '';
+    }
+    renderPickupTagTiles();
+    refreshCartCustomerInfo();
+
+    document.getElementById('order-note-input').value = order.note || '';
+
+    if (order.created_at) setOrderDate(order.created_at.slice(0, 10));
+
+    cart = (order.order_items || []).map(it => ({
+        rowId: ++cartCounter,
+        erp: it.product_erp_code,
+        name_zh: it.product_name_zh,
+        image_url: it.product_image_url,
+        variant_values: it.variant_values || {},
+        selected_axis_values: it.variant_values || {},
+        unit: it.unit,
+        qty: it.quantity,
+    }));
+    renderCart();
+
+    saveOrderBtn.textContent = '儲存修改';
+    renderEditOrderBanner(order);
+}
+
+function renderEditOrderBanner(order) {
+    const el = document.getElementById('edit-order-banner');
+    el.classList.remove('hidden');
+    el.innerHTML = `
+        <span>✎ 正在編輯訂單 <strong>${escapeHtml(order.order_no || '')}</strong>，修改後按下面「儲存修改」會覆蓋這張訂單原本的內容。</span>
+        <a href="/admin/orders.html" class="text-sm text-amber-800 underline hover:text-amber-900 whitespace-nowrap">取消編輯，回查詢訂單</a>
+    `;
 }
 
 // 購物車裡還有東西時，離開這頁（點導覽列、關分頁、重新整理、打網址列）都先提醒一下，
@@ -1507,6 +1575,43 @@ saveOrderBtn.addEventListener('click', async () => {
     const note = noteInput ? noteInput.value.trim() : '';
 
     try {
+        // 編輯既有訂單：覆蓋這張訂單本身的欄位，商品明細不去比對哪些有改、哪些沒改，
+        // 直接整批刪掉重新存目前的購物車內容，比較不容易漏改或留下孤兒列。存好後直接
+        // 回「查詢訂單」，不像新增訂單那樣留在這頁繼續選下一位客戶。
+        if (editingOrderId) {
+            const { error: updateErr } = await sb
+                .from('orders')
+                .update({ customer_id: customerId, created_at: createdAt, pickup_tag: pickupTag || null, note: note || null })
+                .eq('id', editingOrderId);
+            if (updateErr) throw updateErr;
+
+            const { error: delErr } = await sb.from('order_items').delete().eq('order_id', editingOrderId);
+            if (delErr) throw delErr;
+
+            const editItemsPayload = cart.map(item => ({
+                order_id: editingOrderId,
+                product_erp_code: item.erp,
+                product_name_zh: item.name_zh,
+                product_image_url: item.image_url,
+                variant_values: item.variant_values || {},
+                unit: item.unit,
+                quantity: item.qty,
+            }));
+            const { error: editItemsErr } = await sb.from('order_items').insert(editItemsPayload);
+            if (editItemsErr) throw editItemsErr;
+
+            await learnNewUnits(editItemsPayload);
+            await learnNewPickupTag(pickupTag);
+            await learnNewVariantOptions(cart.map(item => ({
+                product_erp_code: item.erp,
+                selected_axis_values: item.selected_axis_values || {},
+            })));
+
+            cart = []; // 已經存進資料庫了，離開頁面才不會被「還有未儲存商品」的提醒攔下來
+            location.href = '/admin/orders.html';
+            return;
+        }
+
         const { data: order, error: orderErr } = await sb
             .from('orders')
             .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, created_at: createdAt, pickup_tag: pickupTag || null, note: note || null })
@@ -1565,7 +1670,7 @@ saveOrderBtn.addEventListener('click', async () => {
         alert('儲存失敗：' + e.message);
     } finally {
         saveOrderBtn.disabled = false;
-        saveOrderBtn.textContent = '儲存訂單並出單';
+        saveOrderBtn.textContent = editingOrderId ? '儲存修改' : '儲存訂單並出單';
     }
 });
 

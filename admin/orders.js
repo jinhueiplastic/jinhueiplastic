@@ -93,6 +93,7 @@ function renderResults(orders) {
                     ${o.customers && o.customers.site_name ? `<p class="text-sm text-gray-700">　工地：${escapeHtml(o.customers.site_name)}</p>` : ''}
                 </div>
                 <div class="flex gap-2">
+                    <a href="/admin/pos.html?edit=${encodeURIComponent(o.id)}" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯</a>
                     <button data-id="${o.id}" class="pdf-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">下載 PDF</button>
                     <button data-id="${o.id}" class="delete-btn px-3 py-1.5 text-sm rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">刪除</button>
                 </div>
