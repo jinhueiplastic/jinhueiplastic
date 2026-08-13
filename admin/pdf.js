@@ -219,6 +219,7 @@ function runSheetItemLineHtml(item) {
 
 function runSheetEntryHtml(entry) {
     const c = entry.customer || {};
+    const order = entry.order || {};
     const items = entry.items || [];
     const nameLine = [c.name, c.site_name].filter(Boolean).join('-');
 
@@ -226,10 +227,18 @@ function runSheetEntryHtml(entry) {
 
     const phoneLine = `${c.phone || ''}${c.contact_person ? '（' + c.contact_person + '）' : ''}`;
 
+    // 取貨標籤、備註是揀貨/送貨時要注意的事，印在客戶資訊下面、商品明細上面，顏色跟字體
+    // 都跟其他資訊不同，讓揀貨的人一眼就能看到，不會被一長串商品明細洗掉。
+    const noteLine = [
+        order.pickup_tag ? `取貨：${order.pickup_tag}` : '',
+        order.note ? `備註：${order.note}` : '',
+    ].filter(Boolean).join('　');
+
     return `
         <div style="margin-bottom:14px;font-weight:700;">
             <div>${escapeHtml(nameLine || '（未知客戶）')}</div>
             <div>${escapeHtml(phoneLine)}</div>
+            ${noteLine ? `<div style="color:#b45309;">${escapeHtml(noteLine)}</div>` : ''}
             ${itemsHtml}
             <div style="border-top:2px dashed #6b7280;margin-top:10px;"></div>
         </div>`;
