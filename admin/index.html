@@ -67,8 +67,8 @@
     </div>
 
     <div id="edit-modal" class="fixed inset-0 bg-black/40 hidden items-start justify-center z-50 p-4 overflow-y-auto">
-        <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[calc(100vh-4rem)] overflow-y-auto">
-            <div class="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white">
+        <div id="edit-modal-panel" class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[calc(100vh-4rem)] overflow-y-auto">
+            <div class="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
                 <h2 id="modal-title" class="font-bold text-lg">編輯商品</h2>
                 <button id="modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
             </div>
@@ -134,7 +134,7 @@
                 <div id="form-fields-bottom" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2"></div>
 
                 <p id="form-error" class="text-sm text-red-600 hidden"></p>
-                <div class="flex justify-end gap-2 pt-2">
+                <div class="flex justify-end gap-2 py-3 px-6 -mx-6 -mb-4 border-t sticky bottom-0 bg-white z-10">
                     <button type="button" id="modal-cancel-btn" class="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50">
                         取消
                     </button>

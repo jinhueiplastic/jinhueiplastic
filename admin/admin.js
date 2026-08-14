@@ -6,16 +6,10 @@ const PRODUCT_FIELDS = [
     { key: 'name_zh',          label: '中文品名' },
     { key: 'name_en',          label: '英文品名' },
     { key: 'order_display_name', label: '下單名稱（不填的話 POS 下單／查詢訂單／區域表單顯示中文品名）' },
+    { key: 'keywords',         label: '關鍵字（別名，幫助 POS 下單搜尋到，不會顯示在畫面上）' },
     { key: 'image_url',        label: '圖片網址' },
     { key: 'desc_zh',          label: '中文說明', textarea: true },
     { key: 'desc_en',          label: '英文說明', textarea: true },
-    { key: 'pcs_per_pack',     label: '包裝規格' },
-    { key: 'unit',             label: '單位' },
-    { key: 'keywords',         label: '關鍵字' },
-    { key: 'store1_url',       label: '賣場網址 1' },
-    { key: 'store2_url',       label: '賣場網址 2' },
-    { key: 'store3_url',       label: '賣場網址 3' },
-    { key: 'store4_url',       label: '賣場網址 4' },
 ];
 
 let allProducts = [];
@@ -646,6 +640,15 @@ function renderTableToolPanel(key) {
     syncTextarea(key);
 }
 
+// 每次打開編輯視窗（不管是編輯既有商品還是新增商品）都從最上面開始顯示，不要保留上一個
+// 商品關掉當下捲到的位置——不然編輯完一個商品在很下面的地方按儲存/取消，馬上接著編輯
+// 下一個商品時畫面會莫名其妙從中間開始，看不到最上面的分類/名稱欄位。
+function resetModalScroll() {
+    modal.scrollTop = 0;
+    const panel = document.getElementById('edit-modal-panel');
+    if (panel) panel.scrollTop = 0;
+}
+
 function openEditModal(id) {
     const product = allProducts.find(p => String(p.id) === String(id));
     editingId = id;
@@ -658,6 +661,7 @@ function openEditModal(id) {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     modalDirty = false;
+    resetModalScroll();
 }
 
 document.getElementById('new-product-btn').addEventListener('click', () => {
@@ -669,6 +673,7 @@ document.getElementById('new-product-btn').addEventListener('click', () => {
     formError.classList.add('hidden');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    resetModalScroll();
     modalDirty = false;
 });
 
