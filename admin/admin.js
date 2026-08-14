@@ -809,15 +809,22 @@ function renumberVariantSortOrders(axisNamesInOrder, axisOptionsMap) {
     });
 }
 
-// 目前的軸順序：照各軸選項裡最小的 sort_order 排（之前搬移過的話會照那個順序），
-// 還沒被排過序、大家都還是預設值的話用軸名稱排序當備援。
+// 目前的軸順序：照各軸選項裡最小的 sort_order 排（之前搬移過的話會照那個順序）。
+// sort_order 平手的話（例如都還沒被排過序、大家還是預設值 0）不能用軸名稱排序當備援——
+// 這樣跟 POS 下單那邊的順序會對不起來。POS 下單是直接照資料庫查詢結果（sort_order 排序、
+// id 當第二排序依據）第一次遇到某個軸名稱的順序，所以這裡也改成比對「各軸 sort_order
+// 最小的那一列」的 id（axisOptions[name] 已經照 sort_order／id 排過序，[0] 就是那一列），
+// 兩邊排序邏輯才會一致。
 function currentAxisNamesInOrder(axisOptions) {
     return Object.keys(axisOptions).sort((a, b) => {
-        const rowsA = axisOptions[a], rowsB = axisOptions[b];
-        const orderA = rowsA.length ? Math.min(...rowsA.map(r => r.sort_order || 0)) : 0;
-        const orderB = rowsB.length ? Math.min(...rowsB.map(r => r.sort_order || 0)) : 0;
+        const firstA = axisOptions[a][0];
+        const firstB = axisOptions[b][0];
+        const orderA = firstA ? (firstA.sort_order || 0) : 0;
+        const orderB = firstB ? (firstB.sort_order || 0) : 0;
         if (orderA !== orderB) return orderA - orderB;
-        return a.localeCompare(b, 'zh-Hant');
+        const idA = firstA ? String(firstA.id || '') : '';
+        const idB = firstB ? String(firstB.id || '') : '';
+        return idA < idB ? -1 : idA > idB ? 1 : 0;
     });
 }
 
@@ -1000,11 +1007,15 @@ async function loadVariantSection(product) {
     section.classList.remove('opacity-50', 'pointer-events-none');
     document.getElementById('variant-combo-list').innerHTML = '<p class="text-xs text-gray-400">載入中…</p>';
 
+    // 加上 id 當第二個排序依據：sort_order 平手時（例如都還沒被排序過、預設值都是 0），
+    // 沒有這個的話資料庫不保證每次查詢回傳的順序一樣，會跟 POS 下單那邊（有加 id 排序）
+    // 顯示的順序對不起來。
     const { data, error } = await sb
         .from('pos_item_variants')
         .select('*')
         .eq('erp_code', product.erp_code)
-        .order('sort_order', { ascending: true });
+        .order('sort_order', { ascending: true })
+        .order('id', { ascending: true });
 
     if (error) {
         document.getElementById('variant-combo-list').innerHTML =
