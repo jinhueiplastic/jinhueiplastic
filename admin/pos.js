@@ -638,9 +638,6 @@ function renderProductGridHtml(items) {
                 <div class="category-img-container">
                     <img src="${escapeHtml(thumbOf(p))}" alt="${escapeHtml(orderDisplayName(p))}" style="background:#f3f4f6;">
                 </div>
-                <div class="px-2 pt-1 text-left bg-white">
-                    <a href="/admin/index.html?edit=${encodeURIComponent(p.id)}" class="product-edit-link text-xs text-blue-600 hover:underline">編輯</a>
-                </div>
                 <div class="p-3 text-center bg-white border-t">
                     <p class="text-xs text-blue-600 font-bold mb-0.5">${escapeHtml(p.erp_code || '')}</p>
                     <h4 class="font-bold text-gray-800 text-sm">${escapeHtml(orderDisplayName(p))}</h4>
@@ -816,11 +813,6 @@ function renderBrowseArea() {
                 browseMode = 'variant';
                 renderBrowseArea();
             });
-        });
-        // 「編輯」是商品卡片裡的連結，點下去要跳去修改 POS 商品那頁，不能被外層卡片的
-        // click 監聽器攔截、當成「點了這張卡片要進規格畫面」處理。
-        browseArea.querySelectorAll('.product-edit-link').forEach(el => {
-            el.addEventListener('click', (e) => e.stopPropagation());
         });
         return;
     }
