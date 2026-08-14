@@ -1396,12 +1396,16 @@ function wireVariantPicker(p) {
         const values = splitBulkValues(valueInput.value);
         if (!values.length) { valueInput.focus(); return; }
 
-        const existing = new Set(((variantOptionsByErp[p.erp_code] || {})[axisName] || []).map(o => o.value));
+        const existingOptions = (variantOptionsByErp[p.erp_code] || {})[axisName] || [];
+        const existing = new Set(existingOptions.map(o => o.value));
         const newValues = values.filter(v => !existing.has(v));
         if (!newValues.length) { valueInput.value = ''; return; }
 
+        // 全新的軸預設「顯示在下單名稱」是開的；加值到既有的軸的話跟著那個軸目前的設定走。
+        const showInName = existingOptions.length ? existingOptions.every(o => o.show_in_name) : true;
+
         statusEl.textContent = '新增中…';
-        const rows = newValues.map(v => ({ erp_code: p.erp_code, axis_values: { [axisName]: v }, sort_order: 0 }));
+        const rows = newValues.map(v => ({ erp_code: p.erp_code, axis_values: { [axisName]: v }, sort_order: 0, show_in_name: showInName }));
         const { error } = await sb.from('pos_item_variants').insert(rows);
         if (error) {
             statusEl.textContent = '';
@@ -1412,7 +1416,7 @@ function wireVariantPicker(p) {
         // 新增成功，直接更新本地資料重畫一次，不用整頁重新整理——馬上就能在上面看到、選用這個軸。
         if (!variantOptionsByErp[p.erp_code]) variantOptionsByErp[p.erp_code] = {};
         if (!variantOptionsByErp[p.erp_code][axisName]) variantOptionsByErp[p.erp_code][axisName] = [];
-        newValues.forEach(v => variantOptionsByErp[p.erp_code][axisName].push({ value: v, image_url: '' }));
+        newValues.forEach(v => variantOptionsByErp[p.erp_code][axisName].push({ value: v, image_url: '', show_in_name: showInName }));
 
         statusEl.textContent = `已新增「${axisName}」的 ${newValues.length} 個選項。`;
         nameInput.value = '';

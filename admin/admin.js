@@ -1818,6 +1818,9 @@ document.getElementById('add-axis-value-btn').addEventListener('click', () => {
     const axisNames = currentAxisNamesInOrder(axisOptions);
     if (!axisNames.includes(axisName)) axisNames.push(axisName); // 全新的軸排在最後面
 
+    // 全新的軸預設「顯示在下單名稱」是開的，使用者自己再把不需要的軸關掉；
+    // 如果是加值到「既有的軸」，跟其他新增選項的地方一樣改成跟著這個軸目前的設定走。
+    const showInName = existingRows.length ? existingRows.every(r => r.show_in_name) : true;
     const newRows = newValues.map(v => ({
         tempId: ++variantTempCounter,
         id: null,
@@ -1826,6 +1829,7 @@ document.getElementById('add-axis-value-btn').addEventListener('click', () => {
         image_url: null,
         sort_order: 0,
         is_disabled: false,
+        show_in_name: showInName,
     }));
     axisOptions[axisName] = [...existingRows, ...newRows];
     localVariantRows.push(...newRows);
