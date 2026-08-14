@@ -24,6 +24,11 @@ let modalDirty = false; // 表單或規格選項有沒有還沒儲存的修改
 let selectedCategoryFilter = null; // null = 全部
 let showOnlyPendingPos = false; // 只顯示「來自 POS 下單，待補齊資料」的商品（點那個標記進來的）
 
+// 從 POS 下單商品卡片按「編輯」過來的話網址會帶 ?edit=<id>：進頁面時自動打開那個商品的編輯
+// 視窗（initProductsPage），存檔成功後也直接導回 POS 下單（productForm 的 submit handler），
+// 不用使用者自己再點導覽列切回去。
+const editIdFromUrl = new URLSearchParams(location.search).get('edit');
+
 const statusMsg   = document.getElementById('status-msg');
 const tbody       = document.getElementById('product-tbody');
 const searchInput = document.getElementById('search-input');
@@ -712,6 +717,13 @@ productForm.addEventListener('submit', async (e) => {
     }
 
     modalDirty = false;
+
+    // 這個編輯視窗是從 POS 下單那頁的「編輯」連結開過來的話，存檔成功後直接導回去，
+    // 不用使用者自己點導覽列切回 POS 下單——回去的時候商品資料本來就會重新讀最新的。
+    if (editIdFromUrl && String(editingId) === String(editIdFromUrl)) {
+        location.href = '/admin/pos.html';
+        return;
+    }
 
     closeModal();
     loadProducts();
@@ -2099,11 +2111,9 @@ async function saveUnitChanges() {
 async function initProductsPage() {
     await Promise.all([loadProducts(), loadKnownUnits(), loadKnownAxisNames()]);
 
-    // 從 POS 下單商品卡片按「編輯」過來的話，網址會帶 ?edit=<id>，直接幫忙把那個商品的
-    // 編輯視窗打開，不用自己在一長串商品清單裡找。
-    const editId = new URLSearchParams(location.search).get('edit');
-    if (editId && allProducts.some(p => String(p.id) === String(editId))) {
-        openEditModal(editId);
+    // 直接幫忙把那個商品的編輯視窗打開，不用自己在一長串商品清單裡找。
+    if (editIdFromUrl && allProducts.some(p => String(p.id) === String(editIdFromUrl))) {
+        openEditModal(editIdFromUrl);
     }
 }
 
