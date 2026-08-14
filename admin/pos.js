@@ -755,9 +755,12 @@ function renderVariantFieldsHtml(p) {
 function renderVariantPickerHtml(p) {
     return `
         <div class="flex gap-4 flex-col sm:flex-row">
-            <img id="variant-preview-img" src="${escapeHtml(thumbOf(p))}" alt=""
-                 style="width:140px;height:140px;object-fit:cover;flex-shrink:0;background:#f3f4f6;"
-                 class="rounded-lg border">
+            <div class="flex flex-col items-start" style="width:140px;flex-shrink:0;">
+                <img id="variant-preview-img" src="${escapeHtml(thumbOf(p))}" alt=""
+                     style="width:140px;height:140px;object-fit:cover;background:#f3f4f6;"
+                     class="rounded-lg border">
+                <a href="/admin/index.html?edit=${encodeURIComponent(p.id)}" class="text-xs text-blue-600 hover:underline mt-1">編輯</a>
+            </div>
             <div class="flex-1">
                 <p class="text-xs text-blue-600 font-bold">${escapeHtml(p.erp_code || '')}</p>
                 <div id="variant-product-name-wrap" class="mb-3">${variantProductNameHtml(p)}</div>
