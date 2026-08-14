@@ -559,7 +559,10 @@ function productMatches(p, q) {
     return String(p.erp_code || '').toLowerCase().includes(query)
         || String(p.name_zh || '').toLowerCase().includes(query)
         || String(p.name_en || '').toLowerCase().includes(query)
-        || String(p.order_display_name || '').toLowerCase().includes(query);
+        || String(p.order_display_name || '').toLowerCase().includes(query)
+        // 關鍵字（商品別名）只用來幫忙搜尋找到這個商品，不影響畫面上顯示的名稱——
+        // 顯示名稱一律還是走 orderDisplayName（下單名稱優先，沒設定才用中文品名）。
+        || String(p.keywords || '').toLowerCase().includes(query);
 }
 
 searchInput.addEventListener('input', () => {
