@@ -131,7 +131,78 @@ async function initPos() {
 
     setupLeaveGuards();
 
-    if (editingOrderId) await loadOrderForEditing(editingOrderId);
+    const resumeRaw = sessionStorage.getItem(POS_RESUME_STORAGE_KEY);
+    sessionStorage.removeItem(POS_RESUME_STORAGE_KEY); // 只用這一次，不管有沒有成功還原都清掉，不留到下次進頁面
+    if (resumeRaw) {
+        try {
+            restoreResumeState(JSON.parse(resumeRaw));
+        } catch (e) {
+            console.error('還原編輯狀態失敗：', e);
+        }
+    } else if (editingOrderId) {
+        await loadOrderForEditing(editingOrderId);
+    }
+}
+
+// 從 POS 下單規格選擇畫面按「編輯」跳去「修改 POS 商品」改這個商品的資料，離開前先把目前
+// 正在做的事（購物車、客戶、取貨標籤、備註、日期、正在編輯哪張訂單、看到哪個商品）存到
+// sessionStorage，商品存檔成功導回 POS 下單時就能接著做，不用重新選一次。
+const POS_RESUME_STORAGE_KEY = 'posResumeState';
+
+function saveResumeStateBeforeLeaving(p) {
+    const snapshot = {
+        cart,
+        selectedCustomerId,
+        pickupTag: currentPickupTag(),
+        note: (document.getElementById('order-note-input') || {}).value || '',
+        orderDateIso: document.getElementById('order-date-input').value,
+        editingOrderId,
+        resumeErp: p ? p.erp_code : null,
+        resumeCategory: browseCategory,
+    };
+    sessionStorage.setItem(POS_RESUME_STORAGE_KEY, JSON.stringify(snapshot));
+    leavingConfirmed = true; // 已經存好可以還原的狀態，不用再跳瀏覽器原生的「確定要離開？」提示
+}
+
+function restoreResumeState(resume) {
+    cart = resume.cart || [];
+    cart.forEach(item => { if (item.rowId > cartCounter) cartCounter = item.rowId; });
+    renderCart();
+
+    editingOrderId = resume.editingOrderId || null;
+    if (editingOrderId) {
+        saveOrderBtn.textContent = '儲存修改';
+        // 訂單編號只是拿來顯示提示橫幅用，抓不到（例如訂單被刪了）也不影響繼續編輯購物車內容。
+        sb.from('orders').select('order_no').eq('id', editingOrderId).single().then(({ data }) => {
+            if (data) renderEditOrderBanner(data);
+        });
+    }
+
+    if (resume.selectedCustomerId) selectCustomer(resume.selectedCustomerId);
+
+    if (resume.pickupTag) {
+        if (allPickupTags.includes(resume.pickupTag)) {
+            selectedPickupTag = resume.pickupTag;
+            document.getElementById('pickup-tag-text-input').value = '';
+        } else {
+            selectedPickupTag = '';
+            document.getElementById('pickup-tag-text-input').value = resume.pickupTag;
+        }
+        renderPickupTagTiles();
+        refreshCartCustomerInfo();
+    }
+
+    if (resume.note) document.getElementById('order-note-input').value = resume.note;
+    if (resume.orderDateIso) setOrderDate(resume.orderDateIso);
+
+    // 回到跳轉前正在看的那個商品的規格選擇畫面（用剛重新讀好的 products 找，商品資料就是最新的）。
+    const product = resume.resumeErp ? products.find(p => p.erp_code === resume.resumeErp) : null;
+    if (product) {
+        browseCategory = resume.resumeCategory || null;
+        browseProduct = product;
+        browseMode = 'variant';
+        renderBrowseArea();
+    }
 }
 
 // 把一張既有訂單的內容帶進畫面：客戶、取貨標籤、備註、訂單日期、購物車（用訂單存的
@@ -759,7 +830,7 @@ function renderVariantPickerHtml(p) {
                 <img id="variant-preview-img" src="${escapeHtml(thumbOf(p))}" alt=""
                      style="width:140px;height:140px;object-fit:cover;background:#f3f4f6;"
                      class="rounded-lg border">
-                <a href="/admin/index.html?edit=${encodeURIComponent(p.id)}" class="text-xs text-blue-600 hover:underline mt-1">編輯</a>
+                <a href="/admin/index.html?edit=${encodeURIComponent(p.id)}" id="variant-edit-link" class="text-xs text-blue-600 hover:underline mt-1">編輯</a>
             </div>
             <div class="flex-1">
                 <p class="text-xs text-blue-600 font-bold">${escapeHtml(p.erp_code || '')}</p>
@@ -1339,6 +1410,9 @@ function refreshVariantFieldsOnly(p) {
 function wireVariantPicker(p) {
     const nameEditBtn = document.getElementById('variant-name-edit-btn');
     if (nameEditBtn) nameEditBtn.addEventListener('click', () => editProductOrderDisplayName(p));
+
+    const editLink = document.getElementById('variant-edit-link');
+    if (editLink) editLink.addEventListener('click', () => saveResumeStateBeforeLeaving(p));
 
     selectedVariant = {};
     autoSelectedAxes = new Set();
