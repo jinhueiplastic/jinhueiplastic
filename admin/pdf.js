@@ -251,13 +251,15 @@ function buildRunSheetPageHtml(pageColumns, title) {
         + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;'
         + 'font-size:17px;font-weight:700;line-height:1.5;';
 
-    const columnsHtml = pageColumns.map(col => `
-        <div style="flex:1;min-width:0;">${col.map(runSheetEntryHtml).join('')}</div>
+    // 欄與欄之間除了留白，還加一條直線分隔——用第 2、3 欄的左邊框畫線（不是 flex gap），
+    // 這樣線會剛好落在留白正中間，也不會影響 runSheetColumnWidthPx() 算出來的欄寬。
+    const columnsHtml = pageColumns.map((col, i) => `
+        <div style="flex:1;min-width:0;${i > 0 ? `border-left:1px solid #9ca3af;padding-left:${RUN_SHEET_COLUMN_GAP_PX}px;` : ''}">${col.map(runSheetEntryHtml).join('')}</div>
     `).join('');
 
     container.innerHTML = `
         ${title ? `<h1 style="font-size:30px;font-weight:700;margin:0 0 16px;">${escapeHtml(title)}</h1>` : ''}
-        <div style="display:flex;gap:${RUN_SHEET_COLUMN_GAP_PX}px;align-items:flex-start;">${columnsHtml}</div>
+        <div style="display:flex;align-items:flex-start;">${columnsHtml}</div>
     `;
     return container;
 }
