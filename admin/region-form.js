@@ -138,7 +138,10 @@ generateBtn.addEventListener('click', async () => {
     generateBtn.disabled = true;
     generateBtn.textContent = '產生中…';
     try {
-        const entries = matchedOrders.map(o => ({
+        // 畫面上的清單（matchedOrders）維持新到舊排序方便瀏覽，但合併 PDF 要照時間先後——
+        // 舊的在前、新的接在後面，所以這裡另外複製一份排成正序，不動到原本的畫面順序。
+        const sortedOrders = [...matchedOrders].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        const entries = sortedOrders.map(o => ({
             order: o,
             customer: o.customers,
             items: o.order_items || [],
