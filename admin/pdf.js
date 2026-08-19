@@ -264,19 +264,31 @@ function buildRunSheetPageHtml(pageColumns, title) {
     return container;
 }
 
-// entries: [{ order, customer, items }, ...] —— 全部訂單排成出貨清單，合併成同一份 PDF。
-// 一頁的三欄都裝滿的話會自動另開一頁（一樣是三欄），每頁都印標題，不會有某一欄爆版爆到頁面外的狀況。
-async function generateCombinedOrdersPdf(entries, filename, title) {
+// groups: [{ title, entries }, ...] —— 每組（例如每個區域）各自的標題跟已經排好序的訂單，
+// 各自從新的一頁開始排版（不會跟上一組擠在同一頁），組跟組之間合併成同一份 PDF 檔案。
+// 沒有訂單的組會自動跳過，不會生出空白頁。
+async function generateCombinedOrdersPdfByGroup(groups, filename) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-
     const columnCount = RUN_SHEET_COLUMN_COUNT;
-    const heights = measureRunSheetEntryHeights(entries, columnCount);
-    const pages = distributeEntriesIntoPages(entries, heights, columnCount, runSheetColumnCapacityPx(Boolean(title)));
 
-    for (let i = 0; i < pages.length; i++) {
-        await renderHtmlPagesInto(doc, buildRunSheetPageHtml(pages[i], title), i === 0);
+    let isFirstPageOfDoc = true;
+    for (const group of groups) {
+        if (!group.entries.length) continue;
+        const heights = measureRunSheetEntryHeights(group.entries, columnCount);
+        const pages = distributeEntriesIntoPages(group.entries, heights, columnCount, runSheetColumnCapacityPx(Boolean(group.title)));
+        for (let i = 0; i < pages.length; i++) {
+            await renderHtmlPagesInto(doc, buildRunSheetPageHtml(pages[i], group.title), isFirstPageOfDoc);
+            isFirstPageOfDoc = false;
+        }
     }
 
     doc.save(filename);
+}
+
+// entries: [{ order, customer, items }, ...] —— 全部訂單排成出貨清單，合併成同一份 PDF。
+// 一頁的三欄都裝滿的話會自動另開一頁（一樣是三欄），每頁都印標題，不會有某一欄爆版爆到頁面外的狀況。
+// 單一區域（不是「全部區域」）的情況用這個，本質上就是只有一組的 generateCombinedOrdersPdfByGroup。
+async function generateCombinedOrdersPdf(entries, filename, title) {
+    await generateCombinedOrdersPdfByGroup([{ title, entries }], filename);
 }

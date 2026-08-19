@@ -156,14 +156,26 @@ generateBtn.addEventListener('click', async () => {
         // 畫面上的清單（matchedOrders）維持新到舊排序方便瀏覽，但合併 PDF 要照時間先後——
         // 舊的在前、新的接在後面，所以這裡另外複製一份排成正序，不動到原本的畫面順序。
         const sortedOrders = [...matchedOrders].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        const entries = sortedOrders.map(o => ({
-            order: o,
-            customer: o.customers,
-            items: o.order_items || [],
-        }));
         const today = new Date().toISOString().slice(0, 10);
-        const label = selectedRegion || '全部區域';
-        await generateCombinedOrdersPdf(entries, `區域出貨單-${label}-${today}.pdf`, `${label}出貨清單－${today}`);
+        const toEntry = (o) => ({ order: o, customer: o.customers, items: o.order_items || [] });
+
+        if (selectedRegion === '') {
+            // 「全部區域」：不能把不同區域的訂單混在一起排版，還是要分區域各自成一個區塊
+            // （各自從新的一頁開始），區塊內部一樣照時間排序。沒有「未分類」客戶區域的話
+            // 用「未分類」當分組名稱，跟客戶資訊頁的慣例一致。
+            const regionsInOrder = [...new Set(sortedOrders.map(o => (o.customers && o.customers.region || '').trim() || '未分類'))]
+                .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+            const groups = regionsInOrder.map(region => ({
+                title: `${region}出貨清單－${today}`,
+                entries: sortedOrders
+                    .filter(o => ((o.customers && o.customers.region || '').trim() || '未分類') === region)
+                    .map(toEntry),
+            }));
+            await generateCombinedOrdersPdfByGroup(groups, `區域出貨單-全部區域-${today}.pdf`);
+        } else {
+            const entries = sortedOrders.map(toEntry);
+            await generateCombinedOrdersPdf(entries, `區域出貨單-${selectedRegion}-${today}.pdf`, `${selectedRegion}出貨清單－${today}`);
+        }
     } catch (e) {
         alert('產生 PDF 失敗：' + e.message);
     } finally {
