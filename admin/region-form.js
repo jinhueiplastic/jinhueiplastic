@@ -1,7 +1,7 @@
 let allOrders = [];
 let matchedOrders = [];
 let allRegions = [];
-let selectedRegion = null;
+let selectedRegion = ''; // 預設就選「全部」，不用每次進頁面都自己先點一次
 
 const statusMsg        = document.getElementById('status-msg');
 const resultsContainer = document.getElementById('results-container');
@@ -198,7 +198,7 @@ async function initRegionForm() {
     statusMsg.textContent = '載入中…';
     await Promise.all([loadRegions(), loadOrders()]);
     renderRegionTiles();
-    statusMsg.textContent = '請先選擇區域';
+    applyFilter(); // 預設選「全部」，載入完直接查一次今天的訂單，不用自己先點區域
 }
 
 initScrollRestoration('region');
