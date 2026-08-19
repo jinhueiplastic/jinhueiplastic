@@ -110,6 +110,15 @@ function applyFilter() {
 
 document.getElementById('search-btn').addEventListener('click', applyFilter);
 
+// 起（民國年/月/日）打完，迄自動帶入同一天，大部分時候都是查單一天，省得再打一次；
+// 需要查一段區間的話，迄還是可以再手動改成別的日期。
+['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd'].forEach((fromId, i) => {
+    const toId = ['q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'][i];
+    document.getElementById(fromId).addEventListener('input', () => {
+        document.getElementById(toId).value = document.getElementById(fromId).value;
+    });
+});
+
 // 「前天」「昨天」：把起訖兩組日期都填成同一天（只查那一天），按下去馬上查詢，
 // 不用自己手動改日期再按查詢——跟「查詢」按鈕一樣要求先選好區域。
 function fillMinguoOffsetDays(daysAgo) {
