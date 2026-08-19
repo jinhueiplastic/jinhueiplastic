@@ -119,6 +119,12 @@ document.getElementById('search-btn').addEventListener('click', applyFilter);
     });
 });
 
+// 日期格子點下去（或用鍵盤 Tab 切過來）就整格文字選起來，直接打新的數字就會取代掉，
+// 不用自己先刪原本的值。
+['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
+    document.getElementById(id).addEventListener('focus', (e) => e.target.select());
+});
+
 // 「前天」「昨天」：把起訖兩組日期都填成同一天（只查那一天），按下去馬上查詢，
 // 不用自己手動改日期再按查詢——跟「查詢」按鈕一樣要求先選好區域。
 function fillMinguoOffsetDays(daysAgo) {
