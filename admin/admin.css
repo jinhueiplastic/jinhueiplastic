@@ -1,3 +1,11 @@
+/* 後台文字整體放大 25%，畫面比較貼近瀏覽器縮放 125% 的觀感。Tailwind 的字級/間距/
+   容器寬度工具類別（text-sm、p-4、max-w-4xl…）幾乎都是用 rem 定義、相對 html 的字級，
+   直接把 html 的基準字級調高，全站文字、間距、容器寬度就會等比例放大，不用一個個類別改。
+   只影響有載入這個檔案的 /admin 系列頁面，公版官網（style.css）不受影響。 */
+html {
+    font-size: 125%;
+}
+
 body {
     font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
 }
