@@ -39,6 +39,7 @@ function buildInvoiceHtml(order, customer, items) {
                     <div style="font-weight:700;font-size:14px;">${escapeHtml(item.product_name_zh || item.product_erp_code || '')}</div>
                     <div style="font-size:12px;color:#6b7280;margin-top:2px;">${escapeHtml(item.product_erp_code || '')}</div>
                     ${variant ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${escapeHtml(variant)}</div>` : ''}
+                    ${item.note ? `<div style="font-size:12px;color:#b45309;margin-top:2px;">備註：${escapeHtml(item.note)}</div>` : ''}
                 </td>
                 <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-size:14px;white-space:nowrap;vertical-align:top;">
                     數量：${escapeHtml(String(item.quantity))}${item.unit ? escapeHtml(item.unit) : ''}
@@ -214,7 +215,8 @@ function runSheetItemLineHtml(item) {
     return `
         <div style="font-weight:700;font-size:26px;word-break:keep-all;margin-top:10px;display:flow-root;">
             ${escapeHtml(productName)}<span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
-        </div>`;
+        </div>
+        ${item.note ? `<div style="font-weight:700;font-size:18px;color:#b45309;">${escapeHtml(item.note)}</div>` : ''}`;
 }
 
 function runSheetEntryHtml(entry) {

@@ -250,6 +250,7 @@ async function loadOrderForEditing(id) {
         selected_axis_values: it.variant_values || {},
         unit: it.unit,
         qty: it.quantity,
+        note: it.note || '',
     }));
     renderCart();
 
@@ -854,6 +855,10 @@ function renderVariantPickerHtml(p) {
                         <div id="unit-tiles" class="flex flex-wrap items-center gap-2"></div>
                     </div>
                     <p id="unit-ratio-hint" class="text-xs text-gray-400"></p>
+                    <div>
+                        <label class="field-label">商品備註（選填）</label>
+                        <input type="text" id="variant-note-input" class="field-input" placeholder="這項商品的備註">
+                    </div>
                 </div>
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
                     加入已選購商品
@@ -1252,6 +1257,8 @@ function resetVariantPicker(p) {
     if (p) applyDefaultVariantSelections(p);
     const qtyEl = document.getElementById('variant-qty');
     if (qtyEl) qtyEl.value = 1;
+    const noteEl = document.getElementById('variant-note-input');
+    if (noteEl) noteEl.value = '';
 
     selectedUnit = '';
     unitAddMode = false;
@@ -1437,6 +1444,7 @@ function wireVariantPicker(p) {
         const qty = Number(document.getElementById('variant-qty').value) || 1;
         const unitNewInput = document.getElementById('unit-new-input');
         const unit = selectedUnit || (unitNewInput ? unitNewInput.value.trim() : '');
+        const note = document.getElementById('variant-note-input').value.trim();
 
         // 訂單快照要記錄完整的一組值：使用者直接選的軸，加上符合的完整組合帶出來的其他軸
         // （例如選了型號，組合裡的 W/H/L 也要一起記進這張訂單，出貨單才看得到）。
@@ -1453,6 +1461,7 @@ function wireVariantPicker(p) {
             selected_axis_values: selected, // 只用來之後「自動學習新選項」，不會存進訂單
             unit,
             qty,
+            note,
         });
         renderCart();
 
@@ -1522,6 +1531,7 @@ function renderCart() {
                 <div class="flex-1 min-w-0">
                     <p class="cart-item-name">${escapeHtml(item.name_zh || item.erp || '')}</p>
                     <p class="cart-item-meta">${variant ? escapeHtml(variant) + '　' : ''}數量：${item.qty}${item.unit ? escapeHtml(item.unit) : ''}</p>
+                    ${item.note ? `<p class="text-sm text-amber-700 mt-0.5">備註：${escapeHtml(item.note)}</p>` : ''}
                 </div>
                 <button type="button" data-row-id="${item.rowId}" class="cart-del-btn text-red-400 hover:text-red-600 text-sm shrink-0">刪除</button>
             </div>`;
@@ -1688,6 +1698,7 @@ saveOrderBtn.addEventListener('click', async () => {
                 variant_values: item.variant_values || {},
                 unit: item.unit,
                 quantity: item.qty,
+                note: item.note || null,
             }));
             const { error: editItemsErr } = await sb.from('order_items').insert(editItemsPayload);
             if (editItemsErr) throw editItemsErr;
@@ -1719,6 +1730,7 @@ saveOrderBtn.addEventListener('click', async () => {
             variant_values: item.variant_values || {},
             unit: item.unit,
             quantity: item.qty,
+            note: item.note || null,
         }));
         const learnPayload = cart.map(item => ({
             product_erp_code: item.erp,

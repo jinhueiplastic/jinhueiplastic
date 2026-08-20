@@ -78,7 +78,8 @@ function renderResults(orders) {
         const itemsSummary = items.map(it => {
             const variant = formatVariantSummary(it);
             const name = it.product_name_zh || it.product_erp_code || '';
-            return `${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''} x${it.quantity}${it.unit ? escapeHtml(it.unit) : ''}`;
+            const noteText = it.note ? `［備註：${it.note}］` : '';
+            return `${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''}${escapeHtml(noteText)} x${it.quantity}${it.unit ? escapeHtml(it.unit) : ''}`;
         }).join('、');
 
         return `
