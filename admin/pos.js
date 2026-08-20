@@ -373,6 +373,11 @@ document.getElementById('pickup-tag-text-input').addEventListener('input', (e) =
     refreshCartCustomerInfo();
 });
 
+// 備註打字的當下也要即時反映到左邊浮動框，跟取貨標籤同一套做法。
+document.getElementById('order-note-input').addEventListener('input', () => {
+    refreshCartCustomerInfo();
+});
+
 // 目前選到的取貨標籤：按鈕優先，沒按按鈕才看有沒有打字；都沒有就回傳空字串（選填欄位）。
 function currentPickupTag() {
     if (selectedPickupTag) return selectedPickupTag;
@@ -456,6 +461,8 @@ function renderCartCustomerInfo(c) {
     }
     const nameLine = c.site_name ? `${c.name || ''} -- ${c.site_name}` : (c.name || '');
     const tag = currentPickupTag();
+    const noteInput = document.getElementById('order-note-input');
+    const note = noteInput ? noteInput.value.trim() : '';
     el.innerHTML = `
         <div class="flex items-baseline justify-between gap-2">
             <p class="text-2xl font-bold text-gray-900">${escapeHtml(c.region || '（無）')}</p>
@@ -464,6 +471,7 @@ function renderCartCustomerInfo(c) {
         <p class="text-lg font-bold text-gray-800 mt-1">${escapeHtml(nameLine)}</p>
         <p class="text-sm text-gray-500 mt-1">地址：${escapeHtml(c.address || '（無）')}</p>
         <p class="text-sm text-gray-500">電話：${escapeHtml(c.phone || '（無）')}</p>
+        ${note ? `<p class="text-sm text-amber-700 mt-1">備註：${escapeHtml(note)}</p>` : ''}
     `;
 }
 
