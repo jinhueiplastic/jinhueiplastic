@@ -13,6 +13,7 @@ const ADMIN_PAGES = [
     { key: 'pos',       href: '/admin/pos.html',         label: 'POS 下單' },
     { key: 'orders',    href: '/admin/orders.html',      label: '查詢訂單' },
     { key: 'region',    href: '/admin/region-form.html', label: '區域表單' },
+    { key: 'stats',     href: '/admin/stats.html',       label: '統計' },
     { key: 'customers', href: '/admin/customers.html',   label: '客戶資訊' },
     { key: 'products',  href: '/admin/',                 label: '修改 POS 商品' },
     { key: 'houjiao',   href: '/admin/metalstud.html',   label: '打腳通知' },

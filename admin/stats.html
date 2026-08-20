@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>統計 | 錦輝後台</title>
+    <link rel="icon" href="/logo.png" type="image/png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans min-h-screen">
+
+    <div id="login-view" class="min-h-screen flex items-center justify-center px-4 hidden">
+        <form id="login-form" class="bg-white shadow-md rounded-lg p-8 w-full max-w-sm space-y-4">
+            <h1 class="text-xl font-bold text-center">錦輝後台登入</h1>
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">Email</label>
+                <input type="email" id="login-email" required autocomplete="username"
+                       class="w-full border rounded px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">密碼</label>
+                <input type="password" id="login-password" required autocomplete="current-password"
+                       class="w-full border rounded px-3 py-2">
+            </div>
+            <p id="login-error" class="text-sm text-red-600 hidden"></p>
+            <button type="submit" class="w-full bg-blue-600 text-white rounded py-2 font-medium hover:bg-blue-700">
+                登入
+            </button>
+        </form>
+    </div>
+
+    <div id="app-view" class="hidden">
+        <header class="bg-white border-b sticky top-0 z-10">
+            <div class="container mx-auto px-4 py-3 flex justify-between items-center gap-4 flex-wrap">
+                <h1 class="text-lg font-bold">錦輝後台</h1>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <span id="user-email" class="text-sm text-gray-500"></span>
+                    <button id="edit-display-name-btn" class="text-xs text-blue-600 hover:underline">設定顯示名稱</button>
+                    <button id="logout-btn" class="text-sm text-gray-500 hover:text-red-600 underline">登出</button>
+                </div>
+            </div>
+            <nav id="admin-nav" class="admin-nav"></nav>
+        </header>
+
+        <main class="container mx-auto px-4 py-6 max-w-5xl">
+            <h2 class="text-lg font-bold mb-4">統計</h2>
+            <p class="text-sm text-gray-500 mb-4">依日期區間統計每天出貨量、每商品出貨量、每區域出貨量與地點數（不填日期就是全部訂單）。</p>
+
+            <div class="bg-white border rounded-lg p-4 mb-4 flex flex-wrap items-end gap-x-6 gap-y-3">
+                <div>
+                    <label class="field-label">起（民國年/月/日）</label>
+                    <div class="flex gap-1 items-center">
+                        <input type="number" id="q-date-from-yyy" class="field-input" style="width:4.5rem" placeholder="YYY" min="1">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-from-mm" class="field-input" style="width:3.5rem" placeholder="MM" min="1" max="12">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-from-dd" class="field-input" style="width:3.5rem" placeholder="DD" min="1" max="31">
+                    </div>
+                </div>
+                <div>
+                    <label class="field-label">迄（民國年/月/日）</label>
+                    <div class="flex gap-1 items-center">
+                        <input type="number" id="q-date-to-yyy" class="field-input" style="width:4.5rem" placeholder="YYY" min="1">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-to-mm" class="field-input" style="width:3.5rem" placeholder="MM" min="1" max="12">
+                        <span class="text-gray-400">/</span>
+                        <input type="number" id="q-date-to-dd" class="field-input" style="width:3.5rem" placeholder="DD" min="1" max="31">
+                    </div>
+                </div>
+                <button type="button" id="search-btn" class="px-4 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">
+                    查詢
+                </button>
+                <button type="button" id="reset-btn" class="px-4 py-2 text-sm rounded border bg-white hover:bg-gray-100">
+                    清除日期
+                </button>
+            </div>
+
+            <p id="status-msg" class="text-sm text-gray-500 mb-4"></p>
+
+            <div class="bg-white border rounded-lg p-4 mb-4 overflow-x-auto">
+                <h3 class="font-bold text-sm text-gray-700 mb-2">每天出貨量</h3>
+                <div id="daily-stats-table"></div>
+            </div>
+
+            <div class="bg-white border rounded-lg p-4 mb-4 overflow-x-auto">
+                <h3 class="font-bold text-sm text-gray-700 mb-2">每商品出貨量</h3>
+                <div id="product-stats-table"></div>
+            </div>
+
+            <div class="bg-white border rounded-lg p-4 mb-4 overflow-x-auto">
+                <h3 class="font-bold text-sm text-gray-700 mb-2">每區域出貨量與地點數</h3>
+                <div id="region-stats-table"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/shared.js"></script>
+    <script src="/admin/stats.js"></script>
+</body>
+</html>
