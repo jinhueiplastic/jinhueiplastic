@@ -85,7 +85,6 @@ function computeProductStats(orders) {
             if (!byProduct.has(key)) {
                 byProduct.set(key, {
                     name: it.product_name_zh || it.product_erp_code || '（未知商品）',
-                    erp: it.product_erp_code || '',
                     orderIds: new Set(),
                     unitTotals: {},
                 });
@@ -153,11 +152,10 @@ function renderProductTable(rows) {
     const trs = rows.map(r => `
         <tr class="border-b">
             <td class="py-1.5 pr-4">${escapeHtml(r.name)}</td>
-            <td class="py-1.5 pr-4 text-gray-400">${escapeHtml(r.erp)}</td>
             <td class="py-1.5 pr-4">${r.orderIds.size}</td>
             <td class="py-1.5 pr-4">${unitTotalsLabel(r.unitTotals)}</td>
         </tr>`);
-    document.getElementById('product-stats-table').innerHTML = statsTableHtml(['商品', '貨號', '訂單數', '出貨數量'], trs);
+    document.getElementById('product-stats-table').innerHTML = statsTableHtml(['商品', '訂單數', '出貨數量'], trs);
 }
 
 function renderRegionTable(rows) {
