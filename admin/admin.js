@@ -828,17 +828,13 @@ function currentAxisNamesInOrder(axisOptions) {
     });
 }
 
-// 上移／下移：整個軸跟前一個或後一個軸交換順序。
-function moveAxisGroup(name, direction) {
+// 拖曳整個軸的把手調整順序：newAxisNameOrder 是拖曳後、畫面上由上到下的軸名稱順序。
+function reorderAxisGroups(newAxisNameOrder) {
     const { axisOptions } = categorizeVariantRows(localVariantRows);
-    const axisNames = currentAxisNamesInOrder(axisOptions);
-    const idx = axisNames.indexOf(name);
-    const swapIdx = idx + direction;
-    if (idx === -1 || swapIdx < 0 || swapIdx >= axisNames.length) return;
+    const validNames = newAxisNameOrder.filter(n => axisOptions[n]);
+    if (validNames.length !== Object.keys(axisOptions).length) return; // 防呆，理論上不會發生
 
-    [axisNames[idx], axisNames[swapIdx]] = [axisNames[swapIdx], axisNames[idx]];
-    renumberVariantSortOrders(axisNames, axisOptions);
-
+    renumberVariantSortOrders(validNames, axisOptions);
     modalDirty = true;
     renderVariantSection();
 }
@@ -916,15 +912,16 @@ function editAxisOptionValue(name, tempId) {
     renderVariantSection();
 }
 
-// 上移／下移：同一個軸裡，跟前一個或後一個選項交換位置。
-function moveAxisOption(name, tempId, direction) {
+// 拖曳同一個軸裡選項的把手調整順序：tempIdOrder 是拖曳後、畫面上由上到下的 tempId 順序
+// （字串，因為是直接從 DOM 的 data-temp-id 讀出來的）。
+function reorderAxisOption(name, tempIdOrder) {
     const { axisOptions } = categorizeVariantRows(localVariantRows);
     const rows = axisOptions[name] || [];
-    const idx = rows.findIndex(r => r.tempId === tempId);
-    const swapIdx = idx + direction;
-    if (idx === -1 || swapIdx < 0 || swapIdx >= rows.length) return;
+    const byTempId = new Map(rows.map(r => [String(r.tempId), r]));
+    const newRows = tempIdOrder.map(id => byTempId.get(id)).filter(Boolean);
+    if (newRows.length !== rows.length) return; // 防呆，理論上不會發生
 
-    [rows[idx], rows[swapIdx]] = [rows[swapIdx], rows[idx]];
+    axisOptions[name] = newRows;
     const axisNames = currentAxisNamesInOrder(axisOptions);
     renumberVariantSortOrders(axisNames, axisOptions);
 
@@ -1040,15 +1037,12 @@ function unitRatioSummary(unitRatios) {
     return entries.length ? `比例：${entries.map(([n, v]) => `${n}=${v}`).join('、')}` : '單位比例';
 }
 
-function axisChipHtml(r, name, isFirst, isLast) {
+function axisChipHtml(r, name) {
     const rawValue = r.axis_values[name];
     const splitCount = splitBulkValues(rawValue).length;
     return `
         <div class="flex items-center gap-2 border rounded-lg p-2" data-temp-id="${r.tempId}" data-axis-name="${escapeHtml(name)}">
-            <div class="flex flex-col gap-0.5">
-                <button type="button" class="axis-move-up-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${isFirst ? 'opacity-30 pointer-events-none' : ''}" title="上移">▲</button>
-                <button type="button" class="axis-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${isLast ? 'opacity-30 pointer-events-none' : ''}" title="下移">▼</button>
-            </div>
+            <span class="drag-handle text-lg leading-none px-1" title="按住拖曳排序">⠿</span>
             <img src="${escapeHtml(r.image_url || '')}" alt="" class="product-thumb axis-option-thumb" style="width:32px;height:32px;">
             <button type="button" class="axis-value-edit-btn flex-1 text-sm text-left hover:underline hover:text-blue-600" title="點一下改這個選項的值">${escapeHtml(rawValue)} ✎</button>
             <span class="axis-upload-status text-xs text-gray-400"></span>
@@ -1182,18 +1176,6 @@ function wireAxisChips(scopeEl) {
         });
     });
 
-    scopeEl.querySelectorAll('.axis-move-up-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const rowEl = btn.closest('[data-temp-id]');
-            moveAxisOption(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), -1);
-        });
-    });
-    scopeEl.querySelectorAll('.axis-move-down-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const rowEl = btn.closest('[data-temp-id]');
-            moveAxisOption(rowEl.dataset.axisName, Number(rowEl.dataset.tempId), 1);
-        });
-    });
     scopeEl.querySelectorAll('.axis-insert-before-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const rowEl = btn.closest('[data-temp-id]');
@@ -1257,31 +1239,39 @@ function renderVariantSection() {
     if (!axisNames.length) {
         groupsEl.innerHTML = '<p class="text-xs text-gray-400">這個商品還沒有任何選項，在下面新增第一個軸吧（例如「規格」）。</p>';
     } else {
-        groupsEl.innerHTML = axisNames.map((name, axisIdx) => {
+        groupsEl.innerHTML = axisNames.map((name) => {
             const showInName = axisOptions[name].every(r => r.show_in_name);
             return `
-            <div>
+            <div class="axis-group-card" data-axis-name="${escapeHtml(name)}">
                 <div class="flex items-center justify-between gap-2">
                     <div class="flex items-center gap-1">
-                        <button type="button" class="axis-group-move-up-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸上移">▲</button>
-                        <button type="button" class="axis-group-move-down-btn px-1 text-xs rounded border bg-white hover:bg-gray-100 ${axisIdx === axisNames.length - 1 ? 'opacity-30 pointer-events-none' : ''}" data-axis-name="${escapeHtml(name)}" title="整個軸下移">▼</button>
+                        <span class="drag-handle axis-group-drag-handle text-lg leading-none px-1" title="按住拖曳排序整個軸">⠿</span>
                         <button type="button" class="axis-rename-btn field-label mb-0 hover:underline hover:text-blue-600" data-axis-name="${escapeHtml(name)}" title="點一下改軸名稱">${escapeHtml(name)} ✎</button>
                         <button type="button" class="axis-show-in-name-btn text-xs px-2 py-0.5 rounded-full border ${showInName ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-500'}" data-axis-name="${escapeHtml(name)}" title="開啟後，POS 下單購物車的商品標題會加上這個軸選到的值">${showInName ? '✓ 顯示在下單名稱' : '顯示在下單名稱'}</button>
                     </div>
                     <button type="button" class="axis-delete-all-btn text-xs text-red-600 hover:underline" data-axis-name="${escapeHtml(name)}">刪除整個軸</button>
                 </div>
-                <div class="space-y-1">${axisOptions[name].map((r, i) => axisChipHtml(r, name, i === 0, i === axisOptions[name].length - 1)).join('')}</div>
+                <div class="space-y-1 axis-chip-list" data-axis-name="${escapeHtml(name)}">${axisOptions[name].map(r => axisChipHtml(r, name)).join('')}</div>
             </div>`;
         }).join('');
     }
     wireAxisChips(groupsEl);
 
-    groupsEl.querySelectorAll('.axis-group-move-up-btn').forEach(btn => {
-        btn.addEventListener('click', () => moveAxisGroup(btn.dataset.axisName, -1));
+    enableDragReorder(groupsEl, {
+        itemSelector: '.axis-group-card',
+        handleSelector: '.axis-group-drag-handle',
+        dragIdAttr: 'data-axis-name',
+        onReorder: (order) => reorderAxisGroups(order),
     });
-    groupsEl.querySelectorAll('.axis-group-move-down-btn').forEach(btn => {
-        btn.addEventListener('click', () => moveAxisGroup(btn.dataset.axisName, 1));
+    groupsEl.querySelectorAll('.axis-chip-list').forEach(listEl => {
+        enableDragReorder(listEl, {
+            itemSelector: '[data-temp-id]',
+            handleSelector: '.drag-handle',
+            dragIdAttr: 'data-temp-id',
+            onReorder: (order) => reorderAxisOption(listEl.dataset.axisName, order),
+        });
     });
+
     groupsEl.querySelectorAll('.axis-rename-btn').forEach(btn => {
         btn.addEventListener('click', () => renameAxis(btn.dataset.axisName));
     });

@@ -179,9 +179,16 @@ function enableDragReorder(container, { itemSelector, handleSelector, dragIdAttr
         item.classList.add('drag-item-active');
 
         const onMove = (ev) => {
-            const target = document.elementFromPoint(ev.clientX, ev.clientY);
-            const overItem = target && target.closest(itemSelector);
-            if (!overItem || overItem === item || !container.contains(overItem)) return;
+            // 不用 document.elementFromPoint 找指標下方是哪個項目：卡片內容常常有圖片、按鈕等
+            // 子元素，命中測試到的可能是某個子元素而不是整張卡片，還要另外處理。直接比對
+            // container 底下每個「其他項目」目前的版面位置（getBoundingClientRect）跟指標 Y
+            // 座標，看指標落在哪個項目的範圍內，判斷比較直接可靠。
+            const others = [...container.querySelectorAll(itemSelector)].filter(el => el !== item);
+            const overItem = others.find(el => {
+                const rect = el.getBoundingClientRect();
+                return ev.clientY >= rect.top && ev.clientY <= rect.bottom;
+            });
+            if (!overItem) return;
             const rect = overItem.getBoundingClientRect();
             const before = ev.clientY < rect.top + rect.height / 2;
             container.insertBefore(item, before ? overItem : overItem.nextSibling);
