@@ -88,17 +88,39 @@ function computeProductStats(orders) {
     return [...byProduct.values()].sort((a, b) => b.orderIds.size - a.orderIds.size);
 }
 
+// 區域的出貨數量不能全部商品混在一起加總（不然看不出來是哪個商品出了多少），
+// 改成每個商品各自一行：{商品名稱: {name, unitTotals}}，同一個商品底下再依單位分開加總。
 function computeRegionStats(orders) {
     const byRegion = new Map();
     orders.forEach(o => {
         const region = ((o.customers && o.customers.region) || '').trim() || '未分類';
-        if (!byRegion.has(region)) byRegion.set(region, { orderCount: 0, unitTotals: {}, customerIds: new Set() });
+        if (!byRegion.has(region)) byRegion.set(region, { orderCount: 0, customerIds: new Set(), productTotals: new Map() });
         const bucket = byRegion.get(region);
         bucket.orderCount += 1;
         bucket.customerIds.add(o.customer_id);
-        (o.order_items || []).forEach(it => addQuantity(bucket.unitTotals, it.unit, it.quantity));
+        (o.order_items || []).forEach(it => {
+            const key = it.product_erp_code || it.product_name_zh || '（未知商品）';
+            if (!bucket.productTotals.has(key)) {
+                bucket.productTotals.set(key, { name: it.product_name_zh || it.product_erp_code || '（未知商品）', unitTotals: {} });
+            }
+            addQuantity(bucket.productTotals.get(key).unitTotals, it.unit, it.quantity);
+        });
     });
     return [...byRegion.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+}
+
+function sumUnitTotals(unitTotals) {
+    return Object.values(unitTotals).reduce((a, b) => a + b, 0);
+}
+
+// 一個區域底下每個商品各自一行「商品名稱 數量單位」，數量多的排前面。
+function regionProductLinesHtml(productTotals) {
+    const products = [...productTotals.values()];
+    if (!products.length) return '（無）';
+    return products
+        .sort((a, b) => sumUnitTotals(b.unitTotals) - sumUnitTotals(a.unitTotals))
+        .map(p => `${escapeHtml(p.name)} ${unitTotalsLabel(p.unitTotals)}`)
+        .join('<br>');
 }
 
 function statsTableHtml(headers, rows) {
@@ -138,10 +160,10 @@ function renderProductTable(rows) {
 function renderRegionTable(rows) {
     const trs = rows.map(([region, s]) => `
         <tr class="border-b">
-            <td class="py-1.5 pr-4">${escapeHtml(region)}</td>
-            <td class="py-1.5 pr-4">${s.customerIds.size}</td>
-            <td class="py-1.5 pr-4">${s.orderCount}</td>
-            <td class="py-1.5 pr-4">${unitTotalsLabel(s.unitTotals)}</td>
+            <td class="py-1.5 pr-4 align-top">${escapeHtml(region)}</td>
+            <td class="py-1.5 pr-4 align-top">${s.customerIds.size}</td>
+            <td class="py-1.5 pr-4 align-top">${s.orderCount}</td>
+            <td class="py-1.5 pr-4">${regionProductLinesHtml(s.productTotals)}</td>
         </tr>`);
     document.getElementById('region-stats-table').innerHTML = statsTableHtml(['區域', '地點數', '訂單數', '出貨數量'], trs);
 }
