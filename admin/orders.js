@@ -2,6 +2,15 @@ let allOrders = [];
 let allCustomersForFilter = [];
 let selectedRegionFilter = null; // null = 全部
 
+// 訂單本身已經照 created_at 新到舊查詢回來，這裡只是額外提供「最舊在上面」的選項；
+// 排序只影響畫面顯示順序，不影響查詢/篩選邏輯本身。
+function sortOrders(orders) {
+    const sorted = [...orders];
+    const dir = document.getElementById('sort-select').value === 'created_asc' ? 1 : -1;
+    sorted.sort((a, b) => dir * (new Date(a.created_at) - new Date(b.created_at)));
+    return sorted;
+}
+
 const statusMsg         = document.getElementById('status-msg');
 const resultsContainer  = document.getElementById('results-container');
 
@@ -67,7 +76,8 @@ async function loadOrders() {
     renderResults(allOrders);
 }
 
-function renderResults(orders) {
+function renderResults(unsortedOrders) {
+    const orders = sortOrders(unsortedOrders);
     if (!orders.length) {
         resultsContainer.innerHTML = `<p class="text-gray-400 text-center py-10">沒有符合的訂單</p>`;
         return;
@@ -168,6 +178,7 @@ function applyFilters() {
 }
 
 document.getElementById('search-btn').addEventListener('click', applyFilters);
+document.getElementById('sort-select').addEventListener('change', applyFilters);
 
 document.getElementById('reset-btn').addEventListener('click', () => {
     ['q-order-no', 'q-customer', 'q-product', 'q-date-from', 'q-date-to'].forEach(id => {

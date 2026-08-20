@@ -84,7 +84,16 @@
             </div>
             </div>
 
-            <p id="status-msg" class="text-sm text-gray-500 mb-3"></p>
+            <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                <p id="status-msg" class="text-sm text-gray-500"></p>
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-500" for="sort-select">排序</label>
+                    <select id="sort-select" class="field-input" style="width:auto;">
+                        <option value="created_desc">最新加入在上面</option>
+                        <option value="created_asc">最舊加入在上面</option>
+                    </select>
+                </div>
+            </div>
             <div id="results-container"></div>
         </main>
     </div>

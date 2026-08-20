@@ -908,7 +908,12 @@ function renderBrowseArea() {
         homeBtn.classList.remove('hidden');
         backBtn.classList.remove('hidden');
         breadcrumb.classList.remove('hidden');
-        breadcrumb.textContent = (browseCategory ? `分類：${categoryNameById[browseCategory] || browseCategory}　` : '') + `商品：${orderDisplayName(browseProduct) || browseProduct.erp_code}`;
+        // 從搜尋結果直接點進商品的話 browseCategory 是 null（沒有經過分類瀏覽），
+        // 這時候改用商品自己的 category_name_zh 當備援，分類還是要顯示出來。
+        const categoryLabel = browseCategory
+            ? (categoryNameById[browseCategory] || browseCategory)
+            : ((browseProduct.category_name_zh || '').trim() || '未分類');
+        breadcrumb.textContent = `分類：${categoryLabel}　商品：${orderDisplayName(browseProduct) || browseProduct.erp_code}`;
         browseArea.innerHTML = renderVariantPickerHtml(browseProduct);
         wireVariantPicker(browseProduct);
     }
