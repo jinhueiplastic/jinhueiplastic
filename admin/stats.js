@@ -52,15 +52,26 @@ function unitTotalsLabel(unitTotals) {
         .join('、');
 }
 
+// 同一個分組（某一天／某個區域）底下，出貨數量不能把所有商品混在一起加總
+// （不然看不出來是哪個商品出了多少），改成每個商品各自累加：
+// {商品key: {name, unitTotals}}，同一個商品底下再依單位分開加總。
+function addProductQuantity(productTotals, item) {
+    const key = item.product_erp_code || item.product_name_zh || '（未知商品）';
+    if (!productTotals.has(key)) {
+        productTotals.set(key, { name: item.product_name_zh || item.product_erp_code || '（未知商品）', unitTotals: {} });
+    }
+    addQuantity(productTotals.get(key).unitTotals, item.unit, item.quantity);
+}
+
 function computeDailyStats(orders) {
     const byDate = new Map();
     orders.forEach(o => {
         const date = o.created_at ? o.created_at.slice(0, 10) : '';
         if (!date) return;
-        if (!byDate.has(date)) byDate.set(date, { orderCount: 0, unitTotals: {} });
+        if (!byDate.has(date)) byDate.set(date, { orderCount: 0, productTotals: new Map() });
         const bucket = byDate.get(date);
         bucket.orderCount += 1;
-        (o.order_items || []).forEach(it => addQuantity(bucket.unitTotals, it.unit, it.quantity));
+        (o.order_items || []).forEach(it => addProductQuantity(bucket.productTotals, it));
     });
     // 舊到新排：由上往下看就是時間順序，跟合併 PDF 的排序邏輯一致。
     return [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
@@ -88,8 +99,6 @@ function computeProductStats(orders) {
     return [...byProduct.values()].sort((a, b) => b.orderIds.size - a.orderIds.size);
 }
 
-// 區域的出貨數量不能全部商品混在一起加總（不然看不出來是哪個商品出了多少），
-// 改成每個商品各自一行：{商品名稱: {name, unitTotals}}，同一個商品底下再依單位分開加總。
 function computeRegionStats(orders) {
     const byRegion = new Map();
     orders.forEach(o => {
@@ -98,13 +107,7 @@ function computeRegionStats(orders) {
         const bucket = byRegion.get(region);
         bucket.orderCount += 1;
         bucket.customerIds.add(o.customer_id);
-        (o.order_items || []).forEach(it => {
-            const key = it.product_erp_code || it.product_name_zh || '（未知商品）';
-            if (!bucket.productTotals.has(key)) {
-                bucket.productTotals.set(key, { name: it.product_name_zh || it.product_erp_code || '（未知商品）', unitTotals: {} });
-            }
-            addQuantity(bucket.productTotals.get(key).unitTotals, it.unit, it.quantity);
-        });
+        (o.order_items || []).forEach(it => addProductQuantity(bucket.productTotals, it));
     });
     return [...byRegion.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
 }
@@ -113,8 +116,8 @@ function sumUnitTotals(unitTotals) {
     return Object.values(unitTotals).reduce((a, b) => a + b, 0);
 }
 
-// 一個區域底下每個商品各自一行「商品名稱 數量單位」，數量多的排前面。
-function regionProductLinesHtml(productTotals) {
+// 一個分組（某一天／某個區域）底下每個商品各自一行「商品名稱 數量單位」，數量多的排前面。
+function productLinesHtml(productTotals) {
     const products = [...productTotals.values()];
     if (!products.length) return '（無）';
     return products
@@ -139,9 +142,9 @@ function statsTableHtml(headers, rows) {
 function renderDailyTable(rows) {
     const trs = rows.map(([date, s]) => `
         <tr class="border-b">
-            <td class="py-1.5 pr-4 whitespace-nowrap">${escapeHtml(isoDateToRocLabel(date))}</td>
-            <td class="py-1.5 pr-4">${s.orderCount}</td>
-            <td class="py-1.5 pr-4">${unitTotalsLabel(s.unitTotals)}</td>
+            <td class="py-1.5 pr-4 align-top whitespace-nowrap">${escapeHtml(isoDateToRocLabel(date))}</td>
+            <td class="py-1.5 pr-4 align-top">${s.orderCount}</td>
+            <td class="py-1.5 pr-4">${productLinesHtml(s.productTotals)}</td>
         </tr>`);
     document.getElementById('daily-stats-table').innerHTML = statsTableHtml(['日期', '訂單數', '出貨數量'], trs);
 }
@@ -163,7 +166,7 @@ function renderRegionTable(rows) {
             <td class="py-1.5 pr-4 align-top">${escapeHtml(region)}</td>
             <td class="py-1.5 pr-4 align-top">${s.customerIds.size}</td>
             <td class="py-1.5 pr-4 align-top">${s.orderCount}</td>
-            <td class="py-1.5 pr-4">${regionProductLinesHtml(s.productTotals)}</td>
+            <td class="py-1.5 pr-4">${productLinesHtml(s.productTotals)}</td>
         </tr>`);
     document.getElementById('region-stats-table').innerHTML = statsTableHtml(['區域', '地點數', '訂單數', '出貨數量'], trs);
 }
@@ -183,6 +186,15 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     applyFilter();
 });
 
+// 起（民國年/月/日）打完，迄自動帶入同一天，大部分時候都是查單一天，省得再打一次；
+// 需要查一段區間的話，迄還是可以再手動改成別的日期——跟區域表單同一套邏輯。
+['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd'].forEach((fromId, i) => {
+    const toId = ['q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'][i];
+    document.getElementById(fromId).addEventListener('input', () => {
+        document.getElementById(toId).value = document.getElementById(fromId).value;
+    });
+});
+
 // 日期格子點下去就整格文字選起來，按 Enter 直接查詢——跟區域表單同一套習慣。
 ['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
     const input = document.getElementById(id);
@@ -195,7 +207,31 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     });
 });
 
+// 「前天」「昨天」：把起訖兩組日期都填成同一天，按下去馬上查詢——跟區域表單同一套邏輯。
+function fillMinguoOffsetDays(daysAgo) {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    const yyy = d.getFullYear() - 1911;
+    const mm = d.getMonth() + 1;
+    const dd = d.getDate();
+    ['q-date-from-yyy', 'q-date-to-yyy'].forEach(id => { document.getElementById(id).value = yyy; });
+    ['q-date-from-mm', 'q-date-to-mm'].forEach(id => { document.getElementById(id).value = mm; });
+    ['q-date-from-dd', 'q-date-to-dd'].forEach(id => { document.getElementById(id).value = dd; });
+}
+document.getElementById('date-yesterday-btn').addEventListener('click', () => {
+    fillMinguoOffsetDays(1);
+    applyFilter();
+});
+document.getElementById('date-day-before-yesterday-btn').addEventListener('click', () => {
+    fillMinguoOffsetDays(2);
+    applyFilter();
+});
+
 async function initStatsPage() {
+    // 一進頁面先預設查「今天」（民國年/月/日）——跟區域表單同一套邏輯；要看全部訂單的話
+    // 把日期欄位清空、按查詢就可以。
+    fillTodayAsMinguo('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
+    fillTodayAsMinguo('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
     await loadOrders();
 }
 
