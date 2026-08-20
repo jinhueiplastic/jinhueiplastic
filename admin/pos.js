@@ -1307,7 +1307,11 @@ function renderUnitTiles() {
     const container = document.getElementById('unit-tiles');
     if (!container) return;
 
-    const unitBtnsHtml = currentUnitOptions().map(u => `
+    const options = currentUnitOptions();
+    // 只有一種單位可以選的話，跟只有一個選項的規格軸一樣，不用使用者特地點一下，直接預設選起來。
+    if (!selectedUnit && !unitAddMode && options.length === 1) selectedUnit = options[0].name;
+
+    const unitBtnsHtml = options.map(u => `
         <button type="button" class="category-filter-btn unit-btn${selectedUnit === u.name ? ' active' : ''}" data-unit="${escapeHtml(u.name)}">
             ${escapeHtml(u.name)}
         </button>`).join('');
