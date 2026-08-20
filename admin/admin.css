@@ -329,3 +329,21 @@ table tbody tr:hover {
     font-size: 14px;
     color: #6b7280;
 }
+
+/* 統計頁「每天 x 每區域」熱力圖的格子：固定高度置中數字，滑鼠移過去／鍵盤 Tab 過去
+   會浮現一圈深色外框，讓使用者確定自己選到哪一格（外框往內縮，不會把格子撐大）。 */
+.heatmap-cell {
+    height: 40px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+}
+.heatmap-cell:hover,
+.heatmap-cell:focus {
+    outline-color: #0b0b0b;
+}

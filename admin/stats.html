@@ -85,6 +85,15 @@
 
             <p id="status-msg" class="text-sm text-gray-500 mb-4"></p>
 
+            <div id="heatmap-section" class="hidden bg-white border rounded-lg p-4 mb-4">
+                <h3 class="font-bold text-sm text-gray-700 mb-1">每天 x 每區域 訂單數熱力圖</h3>
+                <p class="text-xs text-gray-400 mb-3">選了超過一天的區間才會顯示。顏色越深代表那天那個區域的訂單越多，滑鼠移到格子上（或用鍵盤 Tab）可以看訂單數跟地點數，方便比較同一天各區域夠不夠平均、同一個區域每天會不會忽多忽少。</p>
+                <div class="overflow-x-auto">
+                    <div id="heatmap-grid"></div>
+                </div>
+                <div id="heatmap-legend"></div>
+            </div>
+
             <div class="bg-white border rounded-lg p-4 mb-4 overflow-x-auto">
                 <h3 class="font-bold text-sm text-gray-700 mb-2">每天出貨量</h3>
                 <div id="daily-stats-table"></div>
