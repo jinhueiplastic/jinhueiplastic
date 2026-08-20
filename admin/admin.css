@@ -370,3 +370,37 @@ table tbody tr:hover {
     opacity: 0.6;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
+
+/* 點商品小圖看大圖的燈箱（區域表單等頁面共用）。 */
+.image-zoom-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.image-zoom-overlay img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #fff;
+}
+.image-zoom-close-btn {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    border: none;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 1rem;
+    cursor: pointer;
+}
+.image-zoom-close-btn:hover {
+    background: #fff;
+}

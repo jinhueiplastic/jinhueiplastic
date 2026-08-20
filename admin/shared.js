@@ -210,6 +210,22 @@ function enableDragReorder(container, { itemSelector, handleSelector, dragIdAttr
     });
 }
 
+// 通用的「點小圖看大圖」燈箱：背景全螢幕半透明黑，中間放大圖，點背景或按右上角的關閉鈕
+// 都能收掉。沒有網址（商品沒有圖片）就不用開。
+function openImageZoom(url) {
+    if (!url) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'image-zoom-overlay';
+    overlay.innerHTML = `
+        <img src="${escapeHtml(url)}" alt="">
+        <button type="button" class="image-zoom-close-btn" title="關閉" aria-label="關閉">✕</button>`;
+    document.body.appendChild(overlay);
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('.image-zoom-close-btn').addEventListener('click', close);
+}
+
 // Supabase/PostgREST 一次查詢預設最多只會回傳 1000 筆，資料量大的表格（例如累積很多商品規格的
 // pos_item_variants）只查一次可能會漏掉後面的資料，新增的東西剛好排在後面就會「看起來沒存到」。
 // buildQuery 是一個回傳全新查詢的函式（例如 () => sb.from('x').select('*').order(...)），
