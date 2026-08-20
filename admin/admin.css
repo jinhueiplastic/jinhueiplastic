@@ -347,3 +347,18 @@ table tbody tr:hover {
 .heatmap-cell:focus {
     outline-color: #0b0b0b;
 }
+
+/* 通用「按住拖曳排序」的把手跟正在拖曳中的項目樣式（購物車商品卡、規格軸/選項都共用）。 */
+.drag-handle {
+    cursor: grab;
+    touch-action: none; /* 手機上按住把手要直接開始拖曳，不要被瀏覽器當成頁面捲動 */
+    color: #d1d5db;
+    user-select: none;
+}
+.drag-handle:hover {
+    color: #9ca3af;
+}
+.drag-item-active {
+    opacity: 0.6;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

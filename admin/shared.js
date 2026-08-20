@@ -159,6 +159,50 @@ function formatVariantSummary(item) {
     return itemVariantEntries(item).map(([k, v]) => `${k}：${v}`).join('、');
 }
 
+// 通用的「按住拖曳排序」輔助函式：用 Pointer Events（不是 HTML5 的 drag-and-drop），
+// 滑鼠、觸控都能用。container 底下每個可拖曳項目要有 itemSelector 找得到、dragIdAttr
+// 屬性帶識別碼；handleSelector 是拖曳把手（按住那裡才會開始拖，不會跟點擊/打字誤觸）。
+// 拖曳中直接把 DOM 節點搬到指標所在的位置（用 elementFromPoint 找目前指標下方是哪個項目，
+// 用它的中線判斷要插在前面還是後面），底層資料陣列不會馬上變，放開滑鼠/手指時才呼叫
+// onReorder(newOrderOfDragIds) 一次性同步，呼叫方自己去重新排底層陣列。
+// 只在 container 綁一次事件（事件代理），renderXxx() 重畫子節點內容不用重新呼叫這個函式。
+function enableDragReorder(container, { itemSelector, handleSelector, dragIdAttr = 'data-drag-id', onReorder }) {
+    container.addEventListener('pointerdown', (e) => {
+        const handle = e.target.closest(handleSelector);
+        if (!handle || !container.contains(handle)) return;
+        const item = handle.closest(itemSelector);
+        if (!item || !container.contains(item)) return;
+
+        e.preventDefault();
+        const pointerId = e.pointerId;
+        item.setPointerCapture(pointerId);
+        item.classList.add('drag-item-active');
+
+        const onMove = (ev) => {
+            const target = document.elementFromPoint(ev.clientX, ev.clientY);
+            const overItem = target && target.closest(itemSelector);
+            if (!overItem || overItem === item || !container.contains(overItem)) return;
+            const rect = overItem.getBoundingClientRect();
+            const before = ev.clientY < rect.top + rect.height / 2;
+            container.insertBefore(item, before ? overItem : overItem.nextSibling);
+        };
+
+        const onUp = () => {
+            item.releasePointerCapture(pointerId);
+            item.classList.remove('drag-item-active');
+            container.removeEventListener('pointermove', onMove);
+            container.removeEventListener('pointerup', onUp);
+            container.removeEventListener('pointercancel', onUp);
+            const order = [...container.querySelectorAll(itemSelector)].map(el => el.getAttribute(dragIdAttr));
+            onReorder(order);
+        };
+
+        container.addEventListener('pointermove', onMove);
+        container.addEventListener('pointerup', onUp);
+        container.addEventListener('pointercancel', onUp);
+    });
+}
+
 // Supabase/PostgREST 一次查詢預設最多只會回傳 1000 筆，資料量大的表格（例如累積很多商品規格的
 // pos_item_variants）只查一次可能會漏掉後面的資料，新增的東西剛好排在後面就會「看起來沒存到」。
 // buildQuery 是一個回傳全新查詢的函式（例如 () => sb.from('x').select('*').order(...)），

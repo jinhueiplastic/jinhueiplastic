@@ -33,6 +33,21 @@ let browseProduct = null;  // variant 模式下選中的商品
 // 不然每次都會跳回最上面，選購清單長的話很不方便。
 let browseScrollY = { categories: 0, products: 0 };
 
+// 購物車裡點商品卡（不是刪除/編輯按鈕）可以直接跳到那個商品的規格畫面，並把上次選的軸值
+// 都預先帶入，方便連續加同一個商品的不同規格；「編輯」按鈕則是進同一個畫面但改成「儲存修改」，
+// 直接覆蓋購物車裡這個項目，而不是另外新增一筆。這幾個變數是規格畫面下一次打開時要用的「待套用」資料，
+// 用完（wireVariantPicker 套用一次）就清掉。
+let pendingVariantPrefill = null; // 軸的值：{ 軸名稱: 值 }
+let pendingVariantExtra = null; // 只有「編輯購物車項目」才會帶：{ qty, unit, note }
+let editingCartRowId = null; // 目前是不是在「編輯購物車裡的某一項」；不是 null 的話規格畫面的
+                              // 「加入已選購商品」按鈕會變成「儲存修改」
+
+function cancelCartItemEdit() {
+    editingCartRowId = null;
+    pendingVariantPrefill = null;
+    pendingVariantExtra = null;
+}
+
 function restoreScrollSoon(y) {
     // 等這次重畫完、瀏覽器把新內容的高度算出來之後才捲，不然畫面還是舊的高度，捲不到。
     requestAnimationFrame(() => window.scrollTo(0, y));
@@ -646,6 +661,7 @@ function productMatches(p, q) {
 }
 
 searchInput.addEventListener('input', () => {
+    cancelCartItemEdit(); // 離開規格畫面去搜尋別的商品，之前沒存的「編輯購物車項目」就取消掉
     const q = searchInput.value.trim();
     if (!q) {
         browseMode = 'categories';
@@ -659,6 +675,7 @@ searchInput.addEventListener('input', () => {
 });
 
 backBtn.addEventListener('click', () => {
+    cancelCartItemEdit();
     let restoreY;
     if (browseMode === 'variant') {
         browseMode = 'products';
@@ -673,6 +690,7 @@ backBtn.addEventListener('click', () => {
 });
 
 homeBtn.addEventListener('click', () => {
+    cancelCartItemEdit();
     browseMode = 'categories';
     browseCategory = null;
     searchInput.value = '';
@@ -832,8 +850,18 @@ function renderVariantFieldsHtml(p) {
     return productAxisNames(p).map(name => variantFieldHtml(name, p)).join('');
 }
 
+function editingCartBannerHtml() {
+    if (!editingCartRowId) return '';
+    return `
+        <div class="mb-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-2 flex items-center justify-between gap-2 flex-wrap">
+            <span class="text-sm">正在編輯購物車裡的這項商品，填好後按下面「儲存修改」會直接覆蓋它。</span>
+            <button type="button" id="cancel-cart-edit-btn" class="text-xs text-blue-600 hover:underline whitespace-nowrap">取消編輯</button>
+        </div>`;
+}
+
 function renderVariantPickerHtml(p) {
     return `
+        ${editingCartBannerHtml()}
         <div class="flex gap-4 flex-col sm:flex-row">
             <div class="flex flex-col items-start" style="width:140px;flex-shrink:0;">
                 <img id="variant-preview-img" src="${escapeHtml(thumbOf(p))}" alt=""
@@ -861,7 +889,7 @@ function renderVariantPickerHtml(p) {
                     </div>
                 </div>
                 <button type="button" id="add-to-cart-btn" class="mt-4 px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">
-                    加入已選購商品
+                    ${editingCartRowId ? '儲存修改' : '加入已選購商品'}
                 </button>
             </div>
         </div>`;
@@ -875,6 +903,7 @@ function renderBrowseArea() {
         browseArea.innerHTML = renderCategoryGridHtml();
         browseArea.querySelectorAll('[data-cat]').forEach(el => {
             el.addEventListener('click', () => {
+                cancelCartItemEdit();
                 browseScrollY.categories = window.scrollY;
                 browseCategory = el.dataset.cat;
                 browseItems = products.filter(p => (p.category_name_zh || '').trim() === browseCategory);
@@ -895,6 +924,7 @@ function renderBrowseArea() {
         browseArea.innerHTML = renderProductGridHtml(browseItems);
         browseArea.querySelectorAll('[data-erp]').forEach(el => {
             el.addEventListener('click', () => {
+                cancelCartItemEdit();
                 browseScrollY.products = window.scrollY;
                 browseProduct = products.find(p => p.erp_code === el.dataset.erp);
                 browseMode = 'variant';
@@ -986,6 +1016,7 @@ document.getElementById('np-save-btn').addEventListener('click', async () => {
 
     // 新增完直接進去這個商品的選規格畫面，跟平常點商品卡片是一樣的流程——新商品通常還沒有
     // 規格資料，這裡的軸清單會是空的，直接看得到數量/單位可以填、加入購物車。
+    cancelCartItemEdit();
     browseProduct = data;
     browseMode = 'variant';
     renderBrowseArea();
@@ -1445,9 +1476,59 @@ function wireVariantPicker(p) {
     renderUnitTiles();
     applyDefaultVariantSelections(p);
 
+    // 從購物車卡片點進來的話（複製相似商品／編輯既有項目），把上次選的軸值套用回來——
+    // 只套用「有按鈕選項可以對到」或「打字輸入」這兩種畫面上找得到欄位的軸，組合帶出來的
+    // 資訊軸（例如型號帶出來的 W/H/L）不是按鈕，不用特地套用，加入購物車時會自動重新算出來。
+    if (pendingVariantPrefill) {
+        const prefill = pendingVariantPrefill;
+        pendingVariantPrefill = null;
+        productAxisNames(p).forEach(axis => {
+            const value = prefill[axis];
+            if (!value) return;
+            const options = (variantOptionsByErp[p.erp_code] && variantOptionsByErp[p.erp_code][axis]) || [];
+            if (options.some(o => o.value === value)) {
+                selectedVariant[axis] = value;
+                autoSelectedAxes.delete(axis);
+            } else {
+                const textEl = document.querySelector(`.variant-text-input[data-axis="${CSS.escape(axis)}"]`);
+                if (textEl) textEl.value = value;
+            }
+        });
+    }
+
     wireVariantFieldInteractions(p);
 
+    // 「編輯購物車項目」才會帶：數量／單位／備註也要照原本這筆的值還原。
+    if (pendingVariantExtra) {
+        const extra = pendingVariantExtra;
+        pendingVariantExtra = null;
+        const qtyEl = document.getElementById('variant-qty');
+        if (qtyEl && extra.qty) qtyEl.value = extra.qty;
+        if (extra.unit) {
+            const known = currentUnitOptions().some(u => u.name === extra.unit);
+            if (known) {
+                selectedUnit = extra.unit;
+                renderUnitTiles();
+            } else {
+                unitAddMode = true;
+                renderUnitTiles();
+                const newInput = document.getElementById('unit-new-input');
+                if (newInput) newInput.value = extra.unit;
+            }
+        }
+        const noteEl = document.getElementById('variant-note-input');
+        if (noteEl) noteEl.value = extra.note || '';
+    }
+
     updateVariantPreviewImage(p);
+
+    const cancelEditBtn = document.getElementById('cancel-cart-edit-btn');
+    if (cancelEditBtn) {
+        cancelEditBtn.addEventListener('click', () => {
+            cancelCartItemEdit();
+            renderBrowseArea();
+        });
+    }
 
     document.getElementById('add-to-cart-btn').addEventListener('click', () => {
         const qty = Number(document.getElementById('variant-qty').value) || 1;
@@ -1461,8 +1542,7 @@ function wireVariantPicker(p) {
         const combo = findBestCombo(p.erp_code, selected);
         const variantValues = combo ? { ...selected, ...combo.values } : selected;
 
-        cart.push({
-            rowId: ++cartCounter,
+        const itemData = {
             erp: p.erp_code,
             name_zh: cartItemDisplayName(p, variantValues),
             image_url: currentComboImage(p),
@@ -1471,7 +1551,19 @@ function wireVariantPicker(p) {
             unit,
             qty,
             note,
-        });
+        };
+
+        if (editingCartRowId) {
+            // 編輯模式：直接覆蓋購物車裡原本那一筆，不是新增一筆新的。
+            const idx = cart.findIndex(item => item.rowId === editingCartRowId);
+            if (idx !== -1) cart[idx] = { rowId: editingCartRowId, ...itemData };
+            editingCartRowId = null;
+            renderCart();
+            backBtn.click(); // 存完直接回到商品清單，跟編輯的起點（購物車）比較接近
+            return;
+        }
+
+        cart.push({ rowId: ++cartCounter, ...itemData });
         renderCart();
 
         // 加入後留在同一個商品的規格畫面，方便同一項商品連續加不同規格；
@@ -1527,6 +1619,44 @@ function wireVariantPicker(p) {
 
 // ===== 已選購商品（購物車） =====
 
+// 點購物車卡片本身（不是拖曳把手／編輯／刪除按鈕）：跳到這個商品的規格畫面，
+// 並把這一項選過的軸值都預先帶入，方便連續加同一個商品的不同規格（例如同商品換個尺寸）。
+// 只是「複製去新增」，不會動到購物車裡原本這一筆。
+function addSimilarFromCartItem(rowId) {
+    const item = cart.find(i => i.rowId === rowId);
+    if (!item) return;
+    const product = products.find(p => p.erp_code === item.erp);
+    if (!product) { alert('找不到這個商品的資料，可能已經下架或刪除了。'); return; }
+
+    cancelCartItemEdit();
+    pendingVariantPrefill = { ...(item.selected_axis_values || item.variant_values || {}) };
+    browseScrollY.products = window.scrollY;
+    browseCategory = null;
+    browseProduct = product;
+    browseMode = 'variant';
+    renderBrowseArea();
+    restoreScrollSoon(0);
+}
+
+// 點購物車卡片的「編輯」：一樣跳到規格畫面、帶入軸值，但連數量／單位／備註也一起帶入，
+// 而且畫面上的「加入已選購商品」會變成「儲存修改」，存的時候直接覆蓋購物車裡這一筆。
+function openCartItemForEdit(rowId) {
+    const item = cart.find(i => i.rowId === rowId);
+    if (!item) return;
+    const product = products.find(p => p.erp_code === item.erp);
+    if (!product) { alert('找不到這個商品的資料，可能已經下架或刪除了。'); return; }
+
+    editingCartRowId = rowId;
+    pendingVariantPrefill = { ...(item.selected_axis_values || item.variant_values || {}) };
+    pendingVariantExtra = { qty: item.qty, unit: item.unit, note: item.note || '' };
+    browseScrollY.products = window.scrollY;
+    browseCategory = null;
+    browseProduct = product;
+    browseMode = 'variant';
+    renderBrowseArea();
+    restoreScrollSoon(0);
+}
+
 function renderCart() {
     if (!cart.length) {
         cartContainer.innerHTML = `<p class="text-gray-400 text-sm">尚未加入商品</p>`;
@@ -1535,24 +1665,51 @@ function renderCart() {
     cartContainer.innerHTML = cart.map(item => {
         const variant = formatVariantSummary(item);
         return `
-            <div class="flex items-center gap-3 bg-white border rounded-lg p-3 mb-2">
+            <div class="cart-item-card flex items-center gap-2 bg-white border rounded-lg p-3 mb-2" data-drag-id="${item.rowId}">
+                <span class="drag-handle text-lg leading-none px-1" title="按住拖曳排序">⠿</span>
                 <img src="${escapeHtml(item.image_url)}" alt="" class="product-thumb" style="width:48px;height:48px;flex-shrink:0;">
-                <div class="flex-1 min-w-0">
+                <div class="flex-1 min-w-0 cart-item-body" data-row-id="${item.rowId}" title="點一下複製這項商品的規格，方便加相似的一項">
                     <p class="cart-item-name">${escapeHtml(item.name_zh || item.erp || '')}</p>
                     <p class="cart-item-meta">${variant ? escapeHtml(variant) + '　' : ''}數量：${item.qty}${item.unit ? escapeHtml(item.unit) : ''}</p>
                     ${item.note ? `<p class="text-sm text-amber-700 mt-0.5">備註：${escapeHtml(item.note)}</p>` : ''}
                 </div>
-                <button type="button" data-row-id="${item.rowId}" class="cart-del-btn text-red-400 hover:text-red-600 text-sm shrink-0">刪除</button>
+                <div class="flex flex-col items-end gap-1 shrink-0">
+                    <button type="button" data-row-id="${item.rowId}" class="cart-edit-btn text-blue-600 hover:text-blue-800 text-sm">編輯</button>
+                    <button type="button" data-row-id="${item.rowId}" class="cart-del-btn text-red-400 hover:text-red-600 text-sm">刪除</button>
+                </div>
             </div>`;
     }).join('');
 
     cartContainer.querySelectorAll('.cart-del-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
             cart = cart.filter(item => item.rowId !== Number(btn.dataset.rowId));
             renderCart();
         });
     });
+
+    cartContainer.querySelectorAll('.cart-edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openCartItemForEdit(Number(btn.dataset.rowId));
+        });
+    });
+
+    cartContainer.querySelectorAll('.cart-item-body').forEach(el => {
+        el.addEventListener('click', () => addSimilarFromCartItem(Number(el.dataset.rowId)));
+    });
 }
+
+// 購物車卡片拖曳排序：DOM 順序決定後直接同步回 cart 陣列的順序，
+// 存訂單時 order_items 也是照 cart 陣列的順序存，出貨單上的順序才會跟著調整。
+enableDragReorder(cartContainer, {
+    itemSelector: '.cart-item-card',
+    handleSelector: '.drag-handle',
+    onReorder: (orderIds) => {
+        const byId = new Map(cart.map(item => [String(item.rowId), item]));
+        cart = orderIds.map(id => byId.get(id)).filter(Boolean);
+    },
+});
 
 // ===== 儲存訂單 =====
 
