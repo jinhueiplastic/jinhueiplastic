@@ -254,7 +254,10 @@ async function loadOrderForEditing(id) {
 
     document.getElementById('order-note-input').value = order.note || '';
 
-    if (order.created_at) setOrderDate(order.created_at.slice(0, 10));
+    // order_date 是使用者在 POS 挑的訂單日期，跟 created_at（這筆訂單真正存進資料庫的時間，
+    // 編輯訂單不會去動它）分開存；order.created_at 這裡當備援，只有還沒跑過
+    // orders-add-order-date.sql 遷移、order_date 還是空的舊資料才會用到。
+    if (order.order_date || order.created_at) setOrderDate(order.order_date || order.created_at.slice(0, 10));
 
     cart = (order.order_items || []).map(it => ({
         rowId: ++cartCounter,
@@ -1813,16 +1816,11 @@ function initOrderDateField() {
     });
 }
 
-// 訂單日期欄位選的是「哪一天」，時分秒還是用當下實際存檔的時間，
-// 這樣同一天存好幾張訂單，排序還是看得出先後順序。
-function orderCreatedAtFromDateFields() {
-    const isoDate = document.getElementById('order-date-input').value;
-    if (!isoDate) return null;
-    const [y, m, d] = isoDate.split('-').map(Number);
-    if (!y || !m || !d) return null;
-    const now = new Date();
-    const combined = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
-    return combined.toISOString();
+// 訂單日期欄位選的是使用者想要這張訂單算哪一天的（可以補登較早之前的、或先建立晚一點的），
+// 跟這筆訂單「真正存進資料庫」的時間（orders.created_at，資料庫存檔時自動帶入現在時間，
+// 編輯訂單不會去動它）是兩回事，分開存進 order_date 欄位。
+function orderDateFromDateField() {
+    return document.getElementById('order-date-input').value || null;
 }
 
 saveOrderBtn.addEventListener('click', async () => {
@@ -1832,8 +1830,8 @@ saveOrderBtn.addEventListener('click', async () => {
     if (!customerId) { alert('請先選擇客戶'); return; }
     if (!cart.length) { alert('請至少加入一項商品'); return; }
 
-    const createdAt = orderCreatedAtFromDateFields();
-    if (!createdAt) { alert('請選擇訂單日期'); return; }
+    const orderDate = orderDateFromDateField();
+    if (!orderDate) { alert('請選擇訂單日期'); return; }
 
     saveOrderBtn.disabled = true;
     saveOrderBtn.textContent = '儲存中…';
@@ -1849,7 +1847,7 @@ saveOrderBtn.addEventListener('click', async () => {
         if (editingOrderId) {
             const { error: updateErr } = await sb
                 .from('orders')
-                .update({ customer_id: customerId, created_at: createdAt, pickup_tag: pickupTag || null, note: note || null })
+                .update({ customer_id: customerId, order_date: orderDate, pickup_tag: pickupTag || null, note: note || null })
                 .eq('id', editingOrderId);
             if (updateErr) throw updateErr;
 
@@ -1883,7 +1881,7 @@ saveOrderBtn.addEventListener('click', async () => {
 
         const { data: order, error: orderErr } = await sb
             .from('orders')
-            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, created_at: createdAt, pickup_tag: pickupTag || null, note: note || null })
+            .insert({ customer_id: customerId, created_by_email: currentUserEmail, created_by_name: currentUserDisplayName, order_date: orderDate, pickup_tag: pickupTag || null, note: note || null })
             .select()
             .single();
         if (orderErr) throw orderErr;

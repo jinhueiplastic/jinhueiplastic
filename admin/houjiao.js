@@ -2396,7 +2396,7 @@ function findNewAxisValues(values, axisOptions) {
 function dedupeAxisValueEntries(entries) {
     const seen = new Set();
     return entries.filter(([name, value]) => {
-        const key = name + ' ' + value;
+        const key = name + '' + value;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;

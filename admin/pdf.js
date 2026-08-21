@@ -18,9 +18,20 @@ function buildInvoiceHtml(order, customer, items) {
     container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:40px;'
         + 'font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#111;box-sizing:border-box;';
 
-    const dateStr = order.created_at
-        ? new Date(order.created_at).toLocaleDateString('zh-TW')
-        : new Date().toLocaleDateString('zh-TW');
+    // 用訂單日期（POS 下單挑的），不是建立日期（created_at，訂單真正存進資料庫的時間，
+    // 編輯訂單不會去動它）——訂單被改過日期的話，出貨單上要看得到改過的那個日期。
+    // order.order_date 是純日期字串（'YYYY-MM-DD'，不含時區資訊），直接拆開組字串，
+    // 不透過 new Date() 轉換，避免時區不同的瀏覽器把日期換算成前一天。
+    // order.created_at 是還沒跑過 order_date 遷移的舊資料備援，本身是 timestamptz，維持原本用 new Date() 轉換。
+    let dateStr;
+    if (order.order_date) {
+        const [y, m, d] = order.order_date.split('-').map(Number);
+        dateStr = `${y}/${m}/${d}`;
+    } else {
+        dateStr = order.created_at
+            ? new Date(order.created_at).toLocaleDateString('zh-TW')
+            : new Date().toLocaleDateString('zh-TW');
+    }
 
     const itemsHtml = items.map(item => {
         const variant = formatVariantSummary(item);

@@ -87,7 +87,10 @@ function renderResults(unsortedOrders) {
         const items = o.order_items || [];
         const c = o.customers || {};
         const nameLine = c.site_name ? `${c.name || ''}--${c.site_name}` : (c.name || '（未知客戶）');
-        const dateLabel = o.created_at ? isoDateToRocLabel(o.created_at.slice(0, 10)) : '';
+        // 訂單日期（POS 下單挑的，可以補登/預先建立）跟建立日期（這筆訂單真正存進資料庫的
+        // 時間，編輯訂單不會去動它）是兩回事，分開顯示。order_date 是舊資料還沒跑過遷移時的備援。
+        const orderDateLabel = isoDateToRocLabel(o.order_date || (o.created_at ? o.created_at.slice(0, 10) : ''));
+        const createdLabel = isoDateTimeToRocLabel(o.created_at);
         const creatorText = o.created_by_name || o.created_by_email;
         const itemsHtml = items.length
             ? items.map(orderItemLineHtml).join('')
@@ -97,12 +100,13 @@ function renderResults(unsortedOrders) {
         <div class="bg-white border rounded-lg p-4 mb-3">
             <div class="flex items-center justify-between gap-2">
                 ${c.region ? `<span class="region-badge">${escapeHtml(c.region)}</span>` : '<span></span>'}
-                <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(dateLabel)}</p>
+                <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(orderDateLabel)}</p>
             </div>
             <div class="flex items-start justify-between gap-2 mt-2">
                 <p class="text-lg font-bold text-gray-900">${escapeHtml(nameLine)}</p>
                 <div class="text-right shrink-0">
                     <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(o.order_no || '')}</p>
+                    ${createdLabel ? `<p class="text-xs text-gray-400 whitespace-nowrap">建立日期：${escapeHtml(createdLabel)}</p>` : ''}
                     ${creatorText ? `<p class="text-xs text-gray-400 whitespace-nowrap">建立者：${escapeHtml(creatorText)}</p>` : ''}
                 </div>
             </div>
@@ -173,7 +177,8 @@ function applyFilters() {
             if (!hit) return false;
         }
 
-        const orderDate = o.created_at ? o.created_at.slice(0, 10) : '';
+        // 用日期搜尋是搜「訂單日期」（POS 下單挑的），不是建立日期。
+        const orderDate = o.order_date || (o.created_at ? o.created_at.slice(0, 10) : '');
         if (dateFrom && orderDate < dateFrom) return false;
         if (dateTo && orderDate > dateTo) return false;
 

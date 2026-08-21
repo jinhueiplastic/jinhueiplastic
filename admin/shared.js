@@ -333,6 +333,18 @@ function isoDateToRocLabel(isoDate) {
     return `${y - 1911}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
 }
 
+// timestamptz（例如 orders.created_at）轉成「YYY/MM/DD HH:MM」（民國年＋時分），
+// 用來顯示「建立日期」這種需要看得出確切存檔時間、不只是日期的欄位。
+function isoDateTimeToRocLabel(isoDateTime) {
+    if (!isoDateTime) return '';
+    const d = new Date(isoDateTime);
+    if (Number.isNaN(d.getTime())) return '';
+    const dateLabel = isoDateToRocLabel(d.toLocaleDateString('en-CA'));
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${dateLabel} ${hh}:${mm}`;
+}
+
 // Cloud name 和 unsigned upload preset 都不是密鑰，可以放在前端程式碼裡；
 // 真正的 API Secret 絕對不能出現在這裡（那個要保密，用在伺服器端）。
 const CLOUDINARY_CLOUD_NAME = 'dhnctvjs8';
