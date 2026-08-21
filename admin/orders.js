@@ -99,13 +99,15 @@ function renderResults(unsortedOrders) {
                 ${c.region ? `<span class="region-badge">${escapeHtml(c.region)}</span>` : '<span></span>'}
                 <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(dateLabel)}</p>
             </div>
-            <div class="flex items-baseline justify-between gap-2 mt-2">
+            <div class="flex items-start justify-between gap-2 mt-2">
                 <p class="text-lg font-bold text-gray-900">${escapeHtml(nameLine)}</p>
-                <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(o.order_no || '')}</p>
+                <div class="text-right shrink-0">
+                    <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(o.order_no || '')}</p>
+                    ${creatorText ? `<p class="text-xs text-gray-400 whitespace-nowrap">建立者：${escapeHtml(creatorText)}</p>` : ''}
+                </div>
             </div>
             <p class="text-sm text-gray-600 mt-1">電話：${escapeHtml(c.phone || '（無）')}</p>
             <p class="text-sm text-gray-600">地址：${escapeHtml(c.address || '（無）')}</p>
-            ${creatorText ? `<p class="text-xs text-gray-400 mt-1">建立者：${escapeHtml(creatorText)}</p>` : ''}
             <div class="mt-2 border-t pt-2">${itemsHtml}</div>
             <div class="flex justify-end gap-2 mt-3">
                 <a href="/admin/pos.html?edit=${encodeURIComponent(o.id)}" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯</a>
