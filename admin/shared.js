@@ -210,6 +210,39 @@ function enableDragReorder(container, { itemSelector, handleSelector, dragIdAttr
     });
 }
 
+// 一項商品一行：小圖（可以點開看大圖，要搭配 openImageZoom 一起用）＋ 商品名稱（含規格）
+// ---數量，跟合併 PDF 出貨清單同一套排版邏輯（pdf.js 的 runSheetItemLineHtml）；有備註的話
+// 另外提醒色顯示一行。查詢訂單、區域表單的訂單卡片共用。
+function orderItemLineHtml(item) {
+    const variant = formatVariantSummary(item);
+    const name = item.product_name_zh || item.product_erp_code || '';
+    const qtyText = `--${item.quantity}${item.unit || ''}`;
+    const thumbUrl = item.product_image_url || '';
+    const thumbHtml = thumbUrl
+        ? `<button type="button" class="order-item-thumb-btn shrink-0" data-url="${escapeHtml(thumbUrl)}" title="點一下看大圖">
+               <img src="${escapeHtml(thumbUrl)}" alt="" class="product-thumb" style="width:40px;height:40px;">
+           </button>`
+        : `<div class="product-thumb shrink-0" style="width:40px;height:40px;"></div>`;
+    return `
+        <div class="flex items-center gap-2 py-1">
+            ${thumbHtml}
+            <div class="flex-1 min-w-0">
+                <p class="text-sm text-gray-700" style="display:flow-root;">
+                    ${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''}<span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
+                </p>
+                ${item.note ? `<p class="text-xs text-amber-700">備註：${escapeHtml(item.note)}</p>` : ''}
+            </div>
+        </div>`;
+}
+
+// 訂單卡片點圖片放大都是同一個 class，統一在這裡綁一次事件代理，查詢訂單、區域表單
+// 重畫卡片清單之後都呼叫這個，不用各自重複寫同樣的 querySelectorAll+addEventListener。
+function wireOrderItemThumbZoom(scopeEl) {
+    scopeEl.querySelectorAll('.order-item-thumb-btn').forEach(btn => {
+        btn.addEventListener('click', () => openImageZoom(btn.dataset.url));
+    });
+}
+
 // 通用的「點小圖看大圖」燈箱：背景全螢幕半透明黑，中間放大圖，點背景或按右上角的關閉鈕
 // 都能收掉。沒有網址（商品沒有圖片）就不用開。
 function openImageZoom(url) {

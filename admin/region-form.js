@@ -51,27 +51,6 @@ async function loadOrders() {
     allOrders = data || [];
 }
 
-// 一項商品一行：小圖（可以點開看大圖）＋ 商品名稱（含規格）---數量，跟合併 PDF 出貨清單
-// 同一套排版邏輯（pdf.js 的 runSheetItemLineHtml），方便對照。
-function regionOrderItemLineHtml(item) {
-    const variant = formatVariantSummary(item);
-    const name = item.product_name_zh || item.product_erp_code || '';
-    const qtyText = `--${item.quantity}${item.unit || ''}`;
-    const thumbUrl = item.product_image_url || '';
-    const thumbHtml = thumbUrl
-        ? `<button type="button" class="region-item-thumb-btn shrink-0" data-url="${escapeHtml(thumbUrl)}" title="點一下看大圖">
-               <img src="${escapeHtml(thumbUrl)}" alt="" class="product-thumb" style="width:40px;height:40px;">
-           </button>`
-        : `<div class="product-thumb shrink-0" style="width:40px;height:40px;"></div>`;
-    return `
-        <div class="flex items-center gap-2 py-1">
-            ${thumbHtml}
-            <p class="flex-1 text-sm text-gray-700" style="display:flow-root;">
-                ${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''}<span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
-            </p>
-        </div>`;
-}
-
 function renderResults(orders) {
     if (!orders.length) {
         resultsContainer.innerHTML = `<p class="text-gray-400 text-center py-10">沒有符合的訂單</p>`;
@@ -83,7 +62,7 @@ function renderResults(orders) {
         const nameLine = c.site_name ? `${c.name || ''}--${c.site_name}` : (c.name || '（未知客戶）');
         const dateLabel = o.created_at ? isoDateToRocLabel(o.created_at.slice(0, 10)) : '';
         const itemsHtml = items.length
-            ? items.map(regionOrderItemLineHtml).join('')
+            ? items.map(orderItemLineHtml).join('')
             : `<p class="text-sm text-gray-400">（無商品明細）</p>`;
         return `
         <div class="bg-white border rounded-lg p-4 mb-3">
@@ -101,9 +80,7 @@ function renderResults(orders) {
         </div>`;
     }).join('');
 
-    resultsContainer.querySelectorAll('.region-item-thumb-btn').forEach(btn => {
-        btn.addEventListener('click', () => openImageZoom(btn.dataset.url));
-    });
+    wireOrderItemThumbZoom(resultsContainer);
 }
 
 function applyFilter() {

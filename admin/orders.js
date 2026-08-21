@@ -85,33 +85,37 @@ function renderResults(unsortedOrders) {
 
     resultsContainer.innerHTML = orders.map(o => {
         const items = o.order_items || [];
-        const itemsSummary = items.map(it => {
-            const variant = formatVariantSummary(it);
-            const name = it.product_name_zh || it.product_erp_code || '';
-            const noteText = it.note ? `［備註：${it.note}］` : '';
-            return `${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''}${escapeHtml(noteText)} x${it.quantity}${it.unit ? escapeHtml(it.unit) : ''}`;
-        }).join('、');
+        const c = o.customers || {};
+        const nameLine = c.site_name ? `${c.name || ''}--${c.site_name}` : (c.name || '（未知客戶）');
+        const dateLabel = o.created_at ? isoDateToRocLabel(o.created_at.slice(0, 10)) : '';
+        const creatorText = o.created_by_name || o.created_by_email;
+        const itemsHtml = items.length
+            ? items.map(orderItemLineHtml).join('')
+            : `<p class="text-sm text-gray-400">（無商品明細）</p>`;
 
         return `
         <div class="bg-white border rounded-lg p-4 mb-3">
-            <div class="flex justify-between items-start flex-wrap gap-2">
-                <div>
-                    <p class="font-bold text-blue-700">${escapeHtml(o.order_no || '')}</p>
-                    <p class="text-sm text-gray-500">${new Date(o.created_at).toLocaleString('zh-TW')}${(o.created_by_name || o.created_by_email) ? '　建立者：' + escapeHtml(o.created_by_name || o.created_by_email) : ''}</p>
-                    <p class="text-sm text-gray-700 mt-1">
-                        客戶：${escapeHtml(o.customers && o.customers.name || '（未知）')}${o.customers && o.customers.phone ? '　' + escapeHtml(o.customers.phone) : ''}${o.customers && o.customers.contact_person ? '（' + escapeHtml(o.customers.contact_person) + '）' : ''}
-                    </p>
-                    ${o.customers && o.customers.site_name ? `<p class="text-sm text-gray-700">　工地：${escapeHtml(o.customers.site_name)}</p>` : ''}
-                </div>
-                <div class="flex gap-2">
-                    <a href="/admin/pos.html?edit=${encodeURIComponent(o.id)}" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯</a>
-                    <button data-id="${o.id}" class="pdf-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">下載 PDF</button>
-                    <button data-id="${o.id}" class="delete-btn px-3 py-1.5 text-sm rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">刪除</button>
-                </div>
+            <div class="flex items-center justify-between gap-2">
+                ${c.region ? `<span class="region-badge">${escapeHtml(c.region)}</span>` : '<span></span>'}
+                <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(dateLabel)}</p>
             </div>
-            <p class="text-sm text-gray-600 mt-2">${itemsSummary || '（無商品明細）'}</p>
+            <div class="flex items-baseline justify-between gap-2 mt-2">
+                <p class="text-lg font-bold text-gray-900">${escapeHtml(nameLine)}</p>
+                <p class="text-sm text-gray-500 whitespace-nowrap">${escapeHtml(o.order_no || '')}</p>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">電話：${escapeHtml(c.phone || '（無）')}</p>
+            <p class="text-sm text-gray-600">地址：${escapeHtml(c.address || '（無）')}</p>
+            ${creatorText ? `<p class="text-xs text-gray-400 mt-1">建立者：${escapeHtml(creatorText)}</p>` : ''}
+            <div class="mt-2 border-t pt-2">${itemsHtml}</div>
+            <div class="flex justify-end gap-2 mt-3">
+                <a href="/admin/pos.html?edit=${encodeURIComponent(o.id)}" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯</a>
+                <button data-id="${o.id}" class="pdf-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">下載 PDF</button>
+                <button data-id="${o.id}" class="delete-btn px-3 py-1.5 text-sm rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">刪除</button>
+            </div>
         </div>`;
     }).join('');
+
+    wireOrderItemThumbZoom(resultsContainer);
 
     resultsContainer.querySelectorAll('.pdf-btn').forEach(btn => {
         btn.addEventListener('click', () => {
