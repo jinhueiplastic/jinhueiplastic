@@ -310,11 +310,10 @@ function buildFormFields(product) {
     };
 
     formFieldsTop.innerHTML = topFields.map(renderField).join('');
-    formFieldsBottom.innerHTML = bottomFields.map(renderField).join('') + `
-        <div class="sm:col-span-2 flex items-center gap-2 pt-1">
-            <input type="checkbox" id="form-is-active" ${product && product.is_active === false ? '' : 'checked'}>
-            <label for="form-is-active" class="text-sm text-gray-600">上架顯示於官網</label>
-        </div>`;
+    formFieldsBottom.innerHTML = bottomFields.map(renderField).join('');
+
+    // 上架開關搬到彈窗標題列（不是動態重畫的欄位區塊），這裡照商品資料把勾選狀態設好。
+    document.getElementById('form-is-active').checked = !(product && product.is_active === false);
 
     wireClickToEditFields();
 
@@ -647,7 +646,27 @@ function resetModalScroll() {
     modal.scrollTop = 0;
     const panel = document.getElementById('edit-modal-panel');
     if (panel) panel.scrollTop = 0;
+    switchEditTab('basic'); // 每次開編輯視窗都從「基本資料」分頁開始，不要停在上一個商品關掉時的分頁
 }
+
+// 編輯視窗拆成分頁（基本資料／規格選項／訂單單位／商品說明），分頁本身只是切換
+// CSS 顯示/隱藏，底下的欄位、規格軸、單位清單一直都在 DOM 裡，切分頁不會清空已經改好的內容。
+function switchEditTab(target) {
+    document.querySelectorAll('#edit-tabbar .modal-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tabTarget === target);
+    });
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.classList.toggle('hidden', panel.dataset.tabPanel !== target);
+    });
+}
+
+document.querySelectorAll('#edit-tabbar .modal-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchEditTab(btn.dataset.tabTarget));
+});
+
+// 上架開關現在是彈窗標題列的固定元素，不在 <form id="product-form"> 裡面，
+// 不會被下面 productForm 的 input/change 事件代理抓到，另外接一個監聽器標記未儲存修改。
+document.getElementById('form-is-active').addEventListener('change', () => { modalDirty = true; });
 
 function openEditModal(id) {
     const product = allProducts.find(p => String(p.id) === String(id));

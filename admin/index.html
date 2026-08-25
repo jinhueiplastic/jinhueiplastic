@@ -68,73 +68,98 @@
 
     <div id="edit-modal" class="fixed inset-0 bg-black/40 hidden items-start justify-center z-50 p-4 overflow-y-auto">
         <div id="edit-modal-panel" class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[calc(100vh-4rem)] overflow-y-auto">
-            <div class="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
-                <h2 id="modal-title" class="font-bold text-lg">編輯商品</h2>
-                <button id="modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            <div class="px-6 py-4 border-b flex justify-between items-center gap-3 sticky top-0 bg-white z-10">
+                <h2 id="modal-title" class="font-bold text-lg truncate">編輯商品</h2>
+                <div class="flex items-center gap-3 shrink-0">
+                    <label class="flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap" title="上架商品才會顯示在官網跟 POS 下單">
+                        <input type="checkbox" id="form-is-active">
+                        上架
+                    </label>
+                    <button id="modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+                </div>
             </div>
-            <form id="product-form" class="px-6 py-4 space-y-3">
-                <div id="form-fields-top" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+            <form id="product-form" class="px-6 py-4">
+                <div id="edit-tabbar" class="flex gap-1 border-b mb-4 overflow-x-auto">
+                    <button type="button" class="modal-tab active" data-tab-target="basic">基本資料</button>
+                    <button type="button" class="modal-tab" data-tab-target="variant">規格選項</button>
+                    <button type="button" class="modal-tab" data-tab-target="unit">訂單單位</button>
+                    <button type="button" class="modal-tab" data-tab-target="desc">商品說明</button>
+                </div>
 
-                <div id="variant-section" class="border-t pt-4 mt-2">
-                    <h3 class="font-bold text-sm text-gray-700 mb-2">POS 選項（規格／孔徑／顏色…可自訂任意軸）</h3>
-                    <p class="text-xs text-gray-400 mb-2">
-                        每個軸（例如「規格」「顏色」，或自己命名的「W」「型號」）底下可以新增好幾個可以點選的值，每個值都能各自上傳圖片。
-                        如果好幾種軸要「綁在一起」（例如某個型號固定搭配某個 W／H／L），在下面「完整組合」新增。
-                    </p>
+                <div class="tab-panel" data-tab-panel="basic">
+                    <div id="form-fields-top" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                </div>
 
-                    <div id="axis-groups" class="space-y-2 mb-3"></div>
-
-                    <div class="flex flex-wrap gap-2 items-end border-t pt-3">
-                        <div class="flex-1 min-w-[8rem]">
-                            <label class="field-label">軸名稱</label>
-                            <input type="text" id="axis-name-input" class="field-input" placeholder="例如：規格、顏色、W" list="known-axis-names">
-                            <datalist id="known-axis-names"></datalist>
-                        </div>
-                        <div class="flex-1 min-w-[8rem]">
-                            <label class="field-label">值（用 / 分隔，可一次加多個）</label>
-                            <input type="text" id="axis-value-input" class="field-input" placeholder="例如 1/2/3">
-                        </div>
-                        <button type="button" id="add-axis-value-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增選項</button>
-                    </div>
-
-                    <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">完整組合（同一列同時記錄好幾個軸的值，至少要填兩個軸；有照片時優先顯示這張）</h4>
-                    <div id="variant-combo-list" class="space-y-2 mb-2"></div>
-                    <div id="combo-builder"></div>
-
-                    <div class="border-t pt-3 mt-3">
-                        <p class="text-xs text-gray-500 mb-1">
-                            從表格貼上快速新增多筆完整組合（跟中文說明欄位裡的表格格式一樣：第一列是軸名稱，之後每一列是一筆組合）：
+                <div class="tab-panel hidden" data-tab-panel="variant">
+                    <div id="variant-section">
+                        <h3 class="font-bold text-sm text-gray-700 mb-2">POS 選項（規格／孔徑／顏色…可自訂任意軸）</h3>
+                        <p class="text-xs text-gray-400 mb-2">
+                            每個軸（例如「規格」「顏色」，或自己命名的「W」「型號」）底下可以新增好幾個可以點選的值，每個值都能各自上傳圖片。
+                            如果好幾種軸要「綁在一起」（例如某個型號固定搭配某個 W／H／L），在下面「完整組合」新增。
                         </p>
-                        <textarea id="combo-table-paste" class="field-input" rows="3" placeholder="|型號|W|H|L|A排水孔位|備註|&#10;|A1|10|20|30|top|-|"></textarea>
-                        <button type="button" id="combo-table-import-btn" class="mt-1 px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">解析並新增組合</button>
-                        <p id="combo-table-import-status" class="text-xs text-gray-400 mt-1"></p>
+
+                        <div id="axis-groups" class="space-y-2 mb-3"></div>
+
+                        <div class="flex flex-wrap gap-2 items-end border-t pt-3">
+                            <div class="flex-1 min-w-[8rem]">
+                                <label class="field-label">軸名稱</label>
+                                <input type="text" id="axis-name-input" class="field-input" placeholder="例如：規格、顏色、W" list="known-axis-names">
+                                <datalist id="known-axis-names"></datalist>
+                            </div>
+                            <div class="flex-1 min-w-[8rem]">
+                                <label class="field-label">值（用 / 分隔，可一次加多個）</label>
+                                <input type="text" id="axis-value-input" class="field-input" placeholder="例如 1/2/3">
+                            </div>
+                            <button type="button" id="add-axis-value-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增選項</button>
+                        </div>
+
+                        <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">完整組合（同一列同時記錄好幾個軸的值，至少要填兩個軸；有照片時優先顯示這張）</h4>
+                        <div id="variant-combo-list" class="space-y-2 mb-2"></div>
+
+                        <details class="border-t pt-3 mt-3">
+                            <summary class="text-xs text-blue-600 hover:underline cursor-pointer">進階：手動新增組合／貼上表格匯入</summary>
+                            <div id="combo-builder" class="mt-3"></div>
+
+                            <div class="border-t pt-3 mt-3">
+                                <p class="text-xs text-gray-500 mb-1">
+                                    從表格貼上快速新增多筆完整組合（跟中文說明欄位裡的表格格式一樣：第一列是軸名稱，之後每一列是一筆組合）：
+                                </p>
+                                <textarea id="combo-table-paste" class="field-input" rows="3" placeholder="|型號|W|H|L|A排水孔位|備註|&#10;|A1|10|20|30|top|-|"></textarea>
+                                <button type="button" id="combo-table-import-btn" class="mt-1 px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">解析並新增組合</button>
+                                <p id="combo-table-import-status" class="text-xs text-gray-400 mt-1"></p>
+                            </div>
+                        </details>
                     </div>
                 </div>
 
-                <div id="unit-section" class="border-t pt-4 mt-2">
-                    <div class="flex items-center justify-between mb-2">
-                        <h3 class="font-bold text-sm text-gray-700">訂單單位</h3>
-                        <button type="button" id="unit-apply-category-btn" class="text-xs text-blue-600 hover:underline">套用到整個分類</button>
-                    </div>
-                    <p class="text-xs text-gray-400 mb-2">
-                        這項商品在 POS 下單「數量」旁邊可以選的單位，是這個商品專屬的（不是全店共用）。
-                        跟規格選項一樣，要按最下面「儲存」才會真正生效。
-                    </p>
-                    <div id="unit-chips" class="flex flex-wrap gap-1 mb-2"></div>
+                <div class="tab-panel hidden" data-tab-panel="unit">
+                    <div id="unit-section">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-bold text-sm text-gray-700">訂單單位</h3>
+                            <button type="button" id="unit-apply-category-btn" class="text-xs text-blue-600 hover:underline">套用到整個分類</button>
+                        </div>
+                        <p class="text-xs text-gray-400 mb-2">
+                            這項商品在 POS 下單「數量」旁邊可以選的單位，是這個商品專屬的（不是全店共用）。
+                            跟規格選項一樣，要按最下面「儲存」才會真正生效。
+                        </p>
+                        <div id="unit-chips" class="flex flex-wrap gap-1 mb-2"></div>
 
-                    <p class="text-xs text-gray-500 mb-1">快速加入（點一下就加進這項商品，不用重新打字）：</p>
-                    <div id="unit-quick-add" class="flex flex-wrap gap-1 mb-2"></div>
+                        <p class="text-xs text-gray-500 mb-1">快速加入（點一下就加進這項商品，不用重新打字）：</p>
+                        <div id="unit-quick-add" class="flex flex-wrap gap-1 mb-2"></div>
 
-                    <div class="flex gap-2">
-                        <input type="text" id="unit-new-input" class="field-input" placeholder="輸入全新的單位，例如：箱">
-                        <button type="button" id="unit-add-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                        <div class="flex gap-2">
+                            <input type="text" id="unit-new-input" class="field-input" placeholder="輸入全新的單位，例如：箱">
+                            <button type="button" id="unit-add-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                        </div>
                     </div>
                 </div>
 
-                <div id="form-fields-bottom" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2"></div>
+                <div class="tab-panel hidden" data-tab-panel="desc">
+                    <div id="form-fields-bottom" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                </div>
 
-                <p id="form-error" class="text-sm text-red-600 hidden"></p>
-                <div class="flex justify-end gap-2 py-3 px-6 -mx-6 -mb-4 border-t sticky bottom-0 bg-white z-10">
+                <p id="form-error" class="text-sm text-red-600 hidden mt-3"></p>
+                <div class="flex justify-end gap-2 py-3 px-6 -mx-6 -mb-4 border-t sticky bottom-0 bg-white z-10 mt-4">
                     <button type="button" id="modal-cancel-btn" class="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50">
                         取消
                     </button>

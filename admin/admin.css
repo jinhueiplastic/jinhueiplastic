@@ -119,6 +119,27 @@ table tbody tr:hover {
     font-weight: 600;
 }
 
+/* 編輯商品彈窗的分頁列（基本資料／規格選項／訂單單位／商品說明），
+   跟上面導覽列（.admin-nav-link）同一套底線切換樣式，只是縮小一點放進彈窗裡。 */
+.modal-tab {
+    padding: 8px 14px;
+    font-size: 0.8125rem;
+    color: #6b7280;
+    border: none;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    background: none;
+    cursor: pointer;
+}
+.modal-tab:hover {
+    color: #1f2937;
+}
+.modal-tab.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    font-weight: 600;
+}
+
 .table-tool-panel button:disabled {
     opacity: 0.25;
     cursor: not-allowed;
