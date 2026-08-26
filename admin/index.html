@@ -93,7 +93,7 @@
                 <div class="tab-panel hidden" data-tab-panel="variant">
                     <div id="variant-section">
                         <div class="flex items-center gap-1.5 mb-2">
-                            <h3 class="font-bold text-sm text-gray-700">POS 選項（規格／孔徑／顏色…可自訂任意軸）</h3>
+                            <h3 class="font-bold text-sm text-gray-700">POS 選項</h3>
                             <span class="info-tip" tabindex="0">
                                 <span>!</span>
                                 <span class="info-tip-text">每個軸（例如「規格」「顏色」，或自己命名的「W」「型號」）底下可以新增好幾個可以點選的值，每個值都能各自上傳圖片。如果好幾種軸要「綁在一起」（例如某個型號固定搭配某個 W／H／L），在下面「完整組合」新增。</span>
@@ -109,44 +109,44 @@
                                 <datalist id="known-axis-names"></datalist>
                             </div>
                             <div class="flex-1 min-w-[8rem]">
-                                <label class="field-label">值（用 / 分隔，可一次加多個）</label>
+                                <label class="field-label flex items-center gap-1">
+                                    值
+                                    <span class="info-tip" tabindex="0">
+                                        <span>!</span>
+                                        <span class="info-tip-text">用 / 分隔，可一次加多個</span>
+                                    </span>
+                                </label>
                                 <input type="text" id="axis-value-input" class="field-input" placeholder="例如 1/2/3">
                             </div>
                             <button type="button" id="add-axis-value-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增選項</button>
                         </div>
 
-                        <h4 class="font-bold text-xs text-gray-600 mt-4 mb-2">完整組合（同一列同時記錄好幾個軸的值，至少要填兩個軸；有照片時優先顯示這張）</h4>
+                        <div class="flex items-center gap-1.5 mt-4 mb-2">
+                            <h4 class="font-bold text-xs text-gray-600">完整組合</h4>
+                            <span class="info-tip" tabindex="0">
+                                <span>!</span>
+                                <span class="info-tip-text">同一列同時記錄好幾個軸的值，至少要填兩個軸；有照片時優先顯示這張。至少要有兩個軸都新增過選項，才會自動列出組合。</span>
+                            </span>
+                        </div>
                         <div id="variant-combo-list" class="space-y-2 mb-2"></div>
-
-                        <details class="border-t pt-3 mt-3">
-                            <summary class="text-xs text-blue-600 hover:underline cursor-pointer">進階：手動新增組合／貼上表格匯入</summary>
-                            <div id="combo-builder" class="mt-3"></div>
-
-                            <div class="border-t pt-3 mt-3">
-                                <p class="text-xs text-gray-500 mb-1">
-                                    從表格貼上快速新增多筆完整組合（跟中文說明欄位裡的表格格式一樣：第一列是軸名稱，之後每一列是一筆組合）：
-                                </p>
-                                <textarea id="combo-table-paste" class="field-input" rows="3" placeholder="|型號|W|H|L|A排水孔位|備註|&#10;|A1|10|20|30|top|-|"></textarea>
-                                <button type="button" id="combo-table-import-btn" class="mt-1 px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">解析並新增組合</button>
-                                <p id="combo-table-import-status" class="text-xs text-gray-400 mt-1"></p>
-                            </div>
-                        </details>
                     </div>
                 </div>
 
                 <div class="tab-panel hidden" data-tab-panel="unit">
                     <div id="unit-section">
                         <div class="flex items-center justify-between mb-2">
-                            <h3 class="font-bold text-sm text-gray-700">訂單單位</h3>
+                            <div class="flex items-center gap-1.5">
+                                <h3 class="font-bold text-sm text-gray-700">訂單單位</h3>
+                                <span class="info-tip" tabindex="0">
+                                    <span>!</span>
+                                    <span class="info-tip-text">跟規格選項一樣，要按最下面「儲存」才會真正生效。</span>
+                                </span>
+                            </div>
                             <button type="button" id="unit-apply-category-btn" class="text-xs text-blue-600 hover:underline">套用到整個分類</button>
                         </div>
-                        <p class="text-xs text-gray-400 mb-2">
-                            這項商品在 POS 下單「數量」旁邊可以選的單位，是這個商品專屬的（不是全店共用）。
-                            跟規格選項一樣，要按最下面「儲存」才會真正生效。
-                        </p>
                         <div id="unit-chips" class="flex flex-wrap gap-1 mb-2"></div>
 
-                        <p class="text-xs text-gray-500 mb-1">快速加入（點一下就加進這項商品，不用重新打字）：</p>
+                        <p class="text-xs text-gray-500 mb-1">快速加入：</p>
                         <div id="unit-quick-add" class="flex flex-wrap gap-1 mb-2"></div>
 
                         <div class="flex gap-2">

@@ -5,8 +5,8 @@ const PRODUCT_FIELDS = [
     { key: 'catalog_code',     label: '型錄貨號' },
     { key: 'name_zh',          label: '中文品名' },
     { key: 'name_en',          label: '英文品名' },
-    { key: 'order_display_name', label: '下單名稱（不填的話 POS 下單／查詢訂單／區域表單顯示中文品名）' },
-    { key: 'keywords',         label: '關鍵字（別名，幫助 POS 下單搜尋到，不會顯示在畫面上）' },
+    { key: 'order_display_name', label: '下單名稱', hint: '不填的話 POS 下單／查詢訂單／區域表單顯示中文品名' },
+    { key: 'keywords',         label: '關鍵字', hint: '別名，幫助 POS 下單搜尋到，不會顯示在畫面上' },
     { key: 'image_url',        label: '圖片網址' },
     { key: 'desc_zh',          label: '中文說明', textarea: true },
     { key: 'desc_en',          label: '英文說明', textarea: true },
@@ -303,7 +303,7 @@ function buildFormFields(product) {
         }
         return `
             <div>
-                <label class="field-label">${f.label}</label>
+                ${fieldLabelHtml(f)}
                 ${fieldDisplayHtml(f.key, escaped)}
                 <input type="text" class="field-input hidden" data-key="${f.key}" value="${escaped}">
             </div>`;
@@ -352,6 +352,20 @@ const FIELD_EMPTY_PLACEHOLDER = '<span class="text-gray-400">（點一下輸入�
 
 function fieldDisplayHtml(key, escapedValue) {
     return `<div class="field-display-text" data-display-for="${key}">${escapedValue || FIELD_EMPTY_PLACEHOLDER}</div>`;
+}
+
+// 欄位標籤本身；有 hint（比較長的用法補充說明）的話，額外補一個小圓框「!」，
+// 滑鼠移過去才彈出來，不要讓每個欄位下面都掛一長串說明文字。
+function fieldLabelHtml(f) {
+    if (!f.hint) return `<label class="field-label">${f.label}</label>`;
+    return `
+        <label class="field-label flex items-center gap-1">
+            ${f.label}
+            <span class="info-tip" tabindex="0">
+                <span>!</span>
+                <span class="info-tip-text">${f.hint}</span>
+            </span>
+        </label>`;
 }
 
 function wireClickToEditFields() {
@@ -1015,7 +1029,6 @@ async function loadVariantSection(product) {
         document.getElementById('axis-groups').innerHTML = '';
         document.getElementById('variant-combo-list').innerHTML =
             '<p class="text-xs text-gray-400">請先儲存商品，才能新增選項。</p>';
-        document.getElementById('combo-builder').innerHTML = '';
         return;
     }
 
@@ -1321,7 +1334,6 @@ function renderVariantSection() {
     });
 
     renderComboList(combos, axisOptions, axisNames);
-    renderComboBuilder(axisOptions);
 }
 
 function removeVariantRow(tempId) {
@@ -1510,9 +1522,8 @@ function renderComboList(combos, axisOptions, axisNames) {
     }
 
     if (!cells.length) {
-        container.innerHTML = axisNames.length < 2
-            ? '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才會自動列出組合；也可以用下面「手動新增一筆完整組合」直接建立。</p>'
-            : '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
+        // 「至少要兩個軸才會自動列出組合」這個原因已經收進標題旁邊的「!」提示裡，這裡不用重複顯示。
+        container.innerHTML = '<p class="text-xs text-gray-400">目前沒有完整組合。</p>';
         return;
     }
 
@@ -1757,69 +1768,6 @@ function renderComboList(combos, axisOptions, axisNames) {
     });
 }
 
-// 手動新增一筆完整組合：每個「目前已經有選項」的軸各自一個下拉選單（選項就是那個軸現有的值）。
-// 這些下拉選單完全跟著目前的軸選項連動——新增一個軸的第一個選項，這裡就多一欄；
-// 把某個軸的選項全部刪光，這裡對應的那一欄也會跟著消失。
-function renderComboBuilder(axisOptions) {
-    const el = document.getElementById('combo-builder');
-    const axisNames = Object.keys(axisOptions).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-
-    if (!currentVariantErp) { el.innerHTML = ''; return; }
-    if (axisNames.length < 2) {
-        el.innerHTML = '<p class="text-xs text-gray-400">至少要有兩個軸都新增過選項，才能在這裡手動組合。</p>';
-        return;
-    }
-
-    el.innerHTML = `
-        <div class="border rounded-lg p-3">
-            <p class="text-xs text-gray-500 mb-1">
-                手動新增一筆完整組合（至少選兩個軸；沒選的軸留「不指定」代表那個軸選什麼值都適用——
-                例如只選規格＋顏色、尺寸留不指定，就代表「這個規格配這個顏色」不管尺寸選什麼都套用，
-                不用每個尺寸都各建一筆）：
-            </p>
-            <div class="flex flex-wrap gap-2 mb-2">
-                ${axisNames.map(name => `
-                    <div>
-                        <label class="field-label">${escapeHtml(name)}</label>
-                        <select class="field-input combo-builder-select" data-axis="${escapeHtml(name)}" style="width:auto">
-                            <option value="">（不指定）</option>
-                            ${axisOptions[name].map(r => {
-                                const v = r.axis_values[name];
-                                return `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
-                            }).join('')}
-                        </select>
-                    </div>`).join('')}
-            </div>
-            <div class="flex gap-2">
-                <button type="button" id="combo-builder-submit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700">新增這筆組合</button>
-                <button type="button" id="combo-builder-submit-disabled" class="px-3 py-1.5 text-xs rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">新增並停用（不能選）</button>
-            </div>
-        </div>`;
-
-    function createComboFromBuilder(isDisabled) {
-        const values = {};
-        el.querySelectorAll('.combo-builder-select').forEach(sel => {
-            if (sel.value) values[sel.dataset.axis] = sel.value;
-        });
-        if (Object.keys(values).length < 2) { alert('至少要選兩個軸才算一筆組合'); return; }
-
-        localVariantRows.push({
-            tempId: ++variantTempCounter,
-            id: null,
-            erp_code: currentVariantErp,
-            axis_values: values,
-            image_url: null,
-            sort_order: 0,
-            is_disabled: isDisabled,
-        });
-        modalDirty = true;
-        renderVariantSection();
-    }
-
-    document.getElementById('combo-builder-submit').addEventListener('click', () => createComboFromBuilder(false));
-    document.getElementById('combo-builder-submit-disabled').addEventListener('click', () => createComboFromBuilder(true));
-}
-
 document.getElementById('add-axis-value-btn').addEventListener('click', () => {
     if (!currentVariantErp) return;
     const nameInput = document.getElementById('axis-name-input');
@@ -1865,46 +1813,6 @@ document.getElementById('add-axis-value-btn').addEventListener('click', () => {
     modalDirty = true;
     nameInput.value = '';
     valueInput.value = '';
-    renderVariantSection();
-});
-
-// 從商品說明表格一樣格式的 markdown 表格貼上，一次匯入多筆完整組合：
-// 第一列（表頭）當軸名稱，之後每一列是一筆組合，跟中文說明欄位常用的表格格式相同。
-document.getElementById('combo-table-import-btn').addEventListener('click', () => {
-    if (!currentVariantErp) return;
-    const statusEl = document.getElementById('combo-table-import-status');
-    const textarea = document.getElementById('combo-table-paste');
-    const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.startsWith('|'));
-    if (lines.length < 2) { statusEl.textContent = '至少要有標題列＋一列資料，而且每列要用 | 分隔。'; return; }
-
-    const parseRow = (line) => line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
-    const headers = parseRow(lines[0]);
-    if (headers.filter(Boolean).length < 2) { statusEl.textContent = '標題列至少要有兩欄（兩個軸）。'; return; }
-
-    let added = 0, skipped = 0;
-    for (let i = 1; i < lines.length; i++) {
-        if (/^[|:\s-]+$/.test(lines[i])) continue; // markdown 分隔列（---）
-        const cells = parseRow(lines[i]);
-        const values = {};
-        headers.forEach((h, idx) => {
-            const v = (cells[idx] || '').trim();
-            if (h && v) values[h] = v;
-        });
-        if (Object.keys(values).length < 2) { skipped++; continue; }
-        localVariantRows.push({
-            tempId: ++variantTempCounter,
-            id: null,
-            erp_code: currentVariantErp,
-            axis_values: values,
-            image_url: null,
-            sort_order: 0,
-        });
-        added++;
-    }
-
-    if (added) modalDirty = true;
-    statusEl.textContent = `已新增 ${added} 筆組合${skipped ? `，略過 ${skipped} 筆（欄位不足兩個）` : ''}。記得最下面按「儲存」才會真正生效。`;
-    textarea.value = '';
     renderVariantSection();
 });
 
@@ -2031,7 +1939,7 @@ function renderUnitSection() {
                 ${escapeHtml(r.name)}
                 ${baseUnit ? `
                     <span>＝</span>
-                    <input type="number" class="unit-ratio-input" data-temp-id="${r.tempId}" value="${r.ratio ?? 1}" min="0.0001" step="any" style="width:3.5rem;border:1px solid #bfdbfe;border-radius:0.25rem;padding:0 4px;color:#1e40af;background:#fff;">
+                    <input type="number" class="unit-ratio-input field-input" data-temp-id="${r.tempId}" value="${r.ratio ?? 1}" min="0.0001" step="any" style="width:3.5rem;padding:0 4px;">
                     <span>${escapeHtml(baseUnit.name)}</span>
                 ` : ''}
                 <button type="button" data-temp-id="${r.tempId}" class="unit-chip-del">×</button>
