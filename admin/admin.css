@@ -34,16 +34,25 @@ table tbody tr:hover {
     margin-bottom: 0.25rem;
 }
 
+/* 輸入框平常（滑鼠沒移過去、也還沒點進去）就先用淺灰藍打底，一眼看得出這裡可以輸入；
+   滑鼠移過去或點進去（focus）才變白，加深邊框顏色，跟平常的樣子區分開來。 */
 .field-input {
     width: 100%;
     min-width: 0; /* flex 子元素預設 min-width:auto，塞在窄的 flex 列裡不會縮小，手機版會被撐出橫向捲動 */
-    border: 1px solid #d1d5db;
+    border: 1px solid #d7e0ea;
     border-radius: 0.375rem;
     padding: 0.4rem 0.6rem;
     font-size: 0.875rem;
+    background: #eef2f7;
+}
+
+.field-input:hover {
+    background: #fff;
+    border-color: #b7c4d6;
 }
 
 .field-input:focus {
+    background: #fff;
     outline: 2px solid #2563eb;
     outline-offset: 1px;
 }
@@ -53,13 +62,20 @@ table tbody tr:hover {
 .variant-text-input-inline {
     width: 9rem;
     min-width: 0;
-    border: 1px solid #d1d5db;
+    border: 1px solid #d7e0ea;
     border-radius: 0.375rem;
     padding: 0.4rem 0.6rem;
     font-size: 0.875rem;
+    background: #eef2f7;
+}
+
+.variant-text-input-inline:hover {
+    background: #fff;
+    border-color: #b7c4d6;
 }
 
 .variant-text-input-inline:focus {
+    background: #fff;
     outline: 2px solid #2563eb;
     outline-offset: 1px;
 }
@@ -138,6 +154,47 @@ table tbody tr:hover {
     color: #2563eb;
     border-bottom-color: #2563eb;
     font-weight: 600;
+}
+
+/* 小圓框「!」說明圖示：平常只看到一個小圓圈，滑鼠移過去（或鍵盤 focus）才彈出完整說明文字，
+   用來把偏長的用法說明收起來，不要一開始就占掉整個畫面。 */
+.info-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    color: #6b7280;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+    flex-shrink: 0;
+}
+.info-tip-text {
+    display: none;
+    position: absolute;
+    top: 130%;
+    left: 0;
+    z-index: 30;
+    width: 280px;
+    max-width: 70vw;
+    background: #1f2937;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 400;
+    line-height: 1.6;
+    padding: 8px 10px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.info-tip:hover .info-tip-text,
+.info-tip:focus .info-tip-text,
+.info-tip:focus-visible .info-tip-text {
+    display: block;
 }
 
 .table-tool-panel button:disabled {
