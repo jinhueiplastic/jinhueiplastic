@@ -369,6 +369,29 @@ table tbody tr:hover {
     border-color: #e5e7eb;
 }
 
+/* 「+」用虛線＋跟選項不同的顏色，讓人一眼看出這不是可以選的值，是打開「輸入其他值」的開關。 */
+.variant-text-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 6px 10px;
+    border: 2px dashed #d1d5db;
+    border-radius: 0.5rem;
+    background: #f9fafb;
+    color: #6b7280;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.variant-text-toggle-btn:hover {
+    border-color: #9ca3af;
+    background: #f3f4f6;
+    color: #374151;
+}
+
 .variant-tile img {
     width: 48px;
     height: 48px;

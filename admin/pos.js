@@ -762,6 +762,9 @@ function productAxisNames(product) {
 function variantFieldHtml(axisName, product) {
     const options = (variantOptionsByErp[product.erp_code] && variantOptionsByErp[product.erp_code][axisName]) || [];
 
+    // 有選項的話「或直接輸入其他值」預設收起來，藏在選項最後面的「+」裡，點了才展開；
+    // 「+」故意用跟選項不一樣的顏色（虛線），一眼就看得出不是可以選的值。
+    // 完全沒有選項的軸沒什麼好收的，輸入框直接常駐顯示。
     const tilesHtml = options.length ? `
         <div class="flex flex-wrap gap-2 mb-2">
             ${options.map(o => `
@@ -769,14 +772,32 @@ function variantFieldHtml(axisName, product) {
                     ${o.image_url ? `<img src="${escapeHtml(o.image_url)}" alt="${escapeHtml(o.value)}">` : ''}
                     <span>${escapeHtml(o.value)}</span>
                 </button>`).join('')}
+            <button type="button" class="variant-text-toggle-btn" data-axis="${escapeHtml(axisName)}" title="輸入清單以外的值">+</button>
         </div>` : '';
 
     return `
         <div>
             <label class="field-label">${escapeHtml(axisName)}</label>
             ${tilesHtml}
-            <input type="text" class="field-input variant-text-input" data-axis="${escapeHtml(axisName)}" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
+            <input type="text" class="field-input variant-text-input${options.length ? ' hidden' : ''}" data-axis="${escapeHtml(axisName)}" placeholder="${options.length ? '或直接輸入其他值' : '尚無選項，可直接輸入'}">
         </div>`;
+}
+
+function expandVariantTextInput(axis) {
+    const textEl = document.querySelector(`.variant-text-input[data-axis="${CSS.escape(axis)}"]`);
+    const toggleBtn = document.querySelector(`.variant-text-toggle-btn[data-axis="${CSS.escape(axis)}"]`);
+    if (textEl) textEl.classList.remove('hidden');
+    if (toggleBtn) toggleBtn.classList.add('hidden');
+    return textEl;
+}
+
+// 只有本來就有選項（因此有「+」按鈕）的軸才需要收合回去，沒有選項的軸輸入框本來就是常駐顯示。
+function collapseVariantTextInput(axis) {
+    const toggleBtn = document.querySelector(`.variant-text-toggle-btn[data-axis="${CSS.escape(axis)}"]`);
+    if (!toggleBtn) return;
+    const textEl = document.querySelector(`.variant-text-input[data-axis="${CSS.escape(axis)}"]`);
+    if (textEl) textEl.classList.add('hidden');
+    toggleBtn.classList.remove('hidden');
 }
 
 // 單位是每個商品各自記住的清單（跟規格/孔徑/顏色分開），
@@ -1292,7 +1313,10 @@ function resetVariantPicker(p) {
     selectedVariant = {};
     autoSelectedAxes = new Set();
     document.querySelectorAll('.variant-tile.selected').forEach(b => b.classList.remove('selected'));
-    document.querySelectorAll('.variant-text-input').forEach(t => { t.value = ''; });
+    document.querySelectorAll('.variant-text-input').forEach(t => {
+        t.value = '';
+        collapseVariantTextInput(t.dataset.axis);
+    });
     if (p) applyDefaultVariantSelections(p);
     const qtyEl = document.getElementById('variant-qty');
     if (qtyEl) qtyEl.value = 1;
@@ -1418,6 +1442,13 @@ async function commitNewUnit(rawValue) {
 // 「新增規格軸」之後只重畫軸欄位那一小塊時也要重新接一次（DOM 節點換新的了，舊的事件
 // 監聽器沒有跟著過去）。
 function wireVariantFieldInteractions(p) {
+    document.querySelectorAll('.variant-text-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const textEl = expandVariantTextInput(btn.dataset.axis);
+            if (textEl) textEl.focus();
+        });
+    });
+
     document.querySelectorAll('.variant-text-input').forEach(textEl => {
         const axis = textEl.dataset.axis;
         textEl.addEventListener('input', () => {
@@ -1444,10 +1475,11 @@ function wireVariantFieldInteractions(p) {
             document.querySelectorAll('.variant-tile').forEach(b => {
                 if (b.dataset.axis === axis) b.classList.toggle('selected', b.dataset.value === selectedVariant[axis]);
             });
-            // 點按鈕的話清掉打字框，避免畫面上同時顯示兩個不同的值。
+            // 點按鈕的話清掉打字框並收回去，避免畫面上同時顯示兩個不同的值。
             document.querySelectorAll('.variant-text-input').forEach(t => {
                 if (t.dataset.axis === axis) t.value = '';
             });
+            collapseVariantTextInput(axis);
             updateVariantPreviewImage(p);
         });
     });
@@ -1493,7 +1525,7 @@ function wireVariantPicker(p) {
                 selectedVariant[axis] = value;
                 autoSelectedAxes.delete(axis);
             } else {
-                const textEl = document.querySelector(`.variant-text-input[data-axis="${CSS.escape(axis)}"]`);
+                const textEl = expandVariantTextInput(axis);
                 if (textEl) textEl.value = value;
             }
         });
