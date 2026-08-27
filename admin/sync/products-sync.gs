@@ -567,10 +567,27 @@ function batchUpsertOnConflict(path, rows, onConflictCol, batchSize = 500) {
 }
 
 // 用 id=in.(...) 刪一批資料時，id 塞在網址裡——量一多網址就會超過 UrlFetchApp 的網址長度上限
-// （「超過上限：URLFetch 網址長度」），所以切成一小批一小批分開刪，避免一次塞爆網址。
-function batchDeleteByIds(path, ids, batchSize = 100) {
-  for (let i = 0; i < ids.length; i += batchSize) {
-    const batch = ids.slice(i, i + batchSize);
+// （「超過上限：URLFetch 網址長度」）。pos_items 的 id 是 uuid（每個 36 碼），固定筆數的批次
+// 撐不住，改成照「網址實際長度」動態分批：每一批組出來的網址一定不超過 maxUrlLength，
+// 不管 id 是 uuid 還是短短的數字都安全。
+function batchDeleteByIds(path, ids, maxUrlLength = 1500) {
+  const baseUrl = SUPABASE_URL + path + '?id=in.()';
+  let batch = [];
+  let urlLen = baseUrl.length;
+
+  function flush() {
+    if (!batch.length) return;
     supabaseRequest('DELETE', path + '?id=in.(' + batch.join(',') + ')', null);
+    batch = [];
+    urlLen = baseUrl.length;
   }
+
+  ids.forEach(id => {
+    const idStr = String(id);
+    const addLen = idStr.length + 1; // +1 逗號
+    if (batch.length && urlLen + addLen > maxUrlLength) flush();
+    batch.push(idStr);
+    urlLen += addLen;
+  });
+  flush();
 }
