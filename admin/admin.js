@@ -94,7 +94,12 @@ function renderPendingPosFilterBar() {
             applyFilters();
         });
     } else if (pendingCount > 0) {
-        bar.innerHTML = `<p class="text-xs text-gray-400">有 ${pendingCount} 筆商品來自 POS 下單、還沒補齊資料（點商品列上的橘色標記可以只顯示這些）。</p>`;
+        bar.innerHTML = `<button type="button" id="pending-pos-filter-btn" class="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5 hover:bg-orange-100">來自 POS 下單（${pendingCount} 筆待補齊資料）</button>`;
+        document.getElementById('pending-pos-filter-btn').addEventListener('click', () => {
+            showOnlyPendingPos = true;
+            renderPendingPosFilterBar();
+            applyFilters();
+        });
     } else {
         bar.innerHTML = '';
     }
@@ -176,11 +181,11 @@ function groupByCategory(products) {
     return [...groups.entries()];
 }
 
-function productRowHtml(p) {
+function productCardHtml(p) {
     const img = String(p.image_url || '').split(',')[0].trim();
     const thumb = img
-        ? `<img src="${img}" alt="" class="product-thumb" style="width:72px;height:72px;">`
-        : `<div class="product-thumb" style="width:72px;height:72px;"></div>`;
+        ? `<img src="${escapeHtml(img)}" alt="" class="product-card-thumb">`
+        : `<div class="product-card-thumb"></div>`;
 
     // 有設定下單名稱的話優先顯示下單名稱，原本的商品名稱用括號附註在後面方便對照；沒設定就只顯示商品名稱。
     const orderName = (p.order_display_name || '').trim();
@@ -189,27 +194,34 @@ function productRowHtml(p) {
     // 從「POS 下單」選購商品那邊當場新增的商品，資料通常還不齊全（可能只有一個暫時
     // 拼湊的 ERP 編號、沒有圖片/價格），標記出來提醒要補齊；補齊後在這裡按儲存就會自動清掉。
     const quickAddBadge = p.added_from_pos
-        ? `<button type="button" class="quick-add-badge-btn text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-orange-100" title="只顯示這些待補齊的商品">來自 POS 下單，待補齊資料</button>`
+        ? `<button type="button" class="quick-add-badge-btn product-card-pending-strip" title="只顯示這些待補齊的商品">來自 POS 下單，待補齊資料</button>`
         : '';
 
     return `
-        <div class="flex gap-4 border rounded-lg p-3 bg-white">
-            <div class="flex flex-col items-center gap-2 shrink-0">
+        <div class="product-card">
+            <div class="product-card-thumb-wrap">
                 ${thumb}
-                <button data-id="${p.id}" class="edit-btn text-blue-600 hover:underline text-sm">編輯</button>
-            </div>
-            <div class="flex-1 min-w-0 flex items-start justify-between gap-2">
-                <div class="min-w-0">
-                    <p class="font-bold text-gray-900 truncate">${escapeHtml(p.erp_code || '')}</p>
-                    <p class="text-gray-700 truncate">${escapeHtml(nameLine)}</p>
-                    ${quickAddBadge ? `<div class="mt-1">${quickAddBadge}</div>` : ''}
-                </div>
-                <label class="flex items-center gap-1 text-xs text-gray-500 shrink-0 whitespace-nowrap">
+                <label class="product-card-status-pill" title="上架/下架">
                     <input type="checkbox" data-id="${p.id}" class="active-toggle" ${p.is_active ? 'checked' : ''}>
-                    上架
+                    <span>上架</span>
                 </label>
             </div>
+            <div class="product-card-info">
+                <p class="product-card-erp">${escapeHtml(p.erp_code || '')}</p>
+                <p class="product-card-name">${escapeHtml(nameLine)}</p>
+                <button data-id="${p.id}" class="edit-btn product-card-edit">編輯</button>
+            </div>
+            ${quickAddBadge}
         </div>`;
+}
+
+// 每個系列（分類）目前的上架狀態：全部上架／全部下架／有上架有下架混著。
+// 分類標題列的全選勾用這個決定要顯示打勾、空白、還是半勾（indeterminate）。
+function categoryActiveState(items) {
+    const activeCount = items.filter(p => p.is_active).length;
+    if (activeCount === 0) return 'none';
+    if (activeCount === items.length) return 'all';
+    return 'some';
 }
 
 function renderTable(products) {
@@ -218,10 +230,23 @@ function renderTable(products) {
         return;
     }
 
-    tbody.innerHTML = groupByCategory(products).map(([cat, items]) => `
-        <div class="category-header rounded-lg px-3 py-2">${escapeHtml(cat)}（${items.length}）</div>
-        <div class="space-y-2 mb-4">${items.map(productRowHtml).join('')}</div>
+    const groups = groupByCategory(products);
+    tbody.innerHTML = groups.map(([cat, items]) => `
+        <div class="category-header rounded-lg px-3 py-2">
+            <input type="checkbox" class="category-toggle-all" data-cat="${escapeHtml(cat)}" title="整個系列上架／下架">
+            <span>${escapeHtml(cat)}（${items.length}）</span>
+        </div>
+        <div class="grid-cards mb-4">${items.map(productCardHtml).join('')}</div>
     `).join('');
+
+    tbody.querySelectorAll('.category-toggle-all').forEach(cb => {
+        const catName = cb.dataset.cat;
+        const [, items] = groups.find(([c]) => c === catName);
+        const state = categoryActiveState(items);
+        cb.checked = state === 'all';
+        cb.indeterminate = state === 'some';
+        cb.addEventListener('change', () => toggleCategoryActive(catName, items, cb.checked));
+    });
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', () => openEditModal(btn.dataset.id));
@@ -249,6 +274,27 @@ async function toggleActive(id, isActive) {
     }
     const p = allProducts.find(x => String(x.id) === String(id));
     if (p) p.is_active = isActive;
+}
+
+// 分類標題列的全選勾：一次把整個系列（目前篩選/搜尋結果裡看得到的這些商品）都改成上架或下架。
+async function toggleCategoryActive(cat, items, isActive) {
+    if (!confirm(`確定要把「${cat}」整個系列的 ${items.length} 項商品都改成${isActive ? '上架' : '下架'}嗎？`)) {
+        applyFilters(); // 取消的話把全選勾重畫回原本的狀態，不要留著使用者剛點但沒生效的勾選外觀
+        return;
+    }
+
+    const ids = items.map(p => p.id);
+    const { error } = await sb.from('pos_items').update({ is_active: isActive }).in('id', ids);
+    if (error) {
+        alert('更新失敗：' + error.message);
+        applyFilters();
+        return;
+    }
+    ids.forEach(id => {
+        const p = allProducts.find(x => String(x.id) === String(id));
+        if (p) p.is_active = isActive;
+    });
+    applyFilters(); // 整批改完重新畫一次，每張卡片跟這個全選勾才會一起反映最新狀態
 }
 
 searchInput.addEventListener('input', applyFilters);

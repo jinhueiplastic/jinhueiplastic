@@ -105,6 +105,130 @@ table tbody tr:hover {
     font-weight: 700;
     color: #1e40af;
     border-bottom: 2px solid #bfdbfe;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.category-header input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+}
+
+/* 修改 POS 商品的商品清單：縮圖優先的卡片網格，靠照片就能認出商品，
+   不用先看貨號（塑膠零件常常長得像，貨號不好記）。 */
+.grid-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+}
+
+.product-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.product-card-thumb-wrap {
+    position: relative;
+    aspect-ratio: 1;
+    background: #f3f4f6;
+}
+
+.product-card-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #f3f4f6;
+}
+
+.product-card-status-pill {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 9999px;
+    padding: 2px 8px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.product-card-status-pill input {
+    width: 0.7rem;
+    height: 0.7rem;
+    margin: 0;
+}
+
+.product-card-status-pill span {
+    color: #9ca3af;
+}
+
+.product-card-status-pill input:checked + span {
+    color: #15803d;
+}
+
+.product-card-info {
+    padding: 0.5rem 0.6rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+}
+
+.product-card-erp {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #2563eb;
+}
+
+.product-card-name {
+    font-size: 0.82rem;
+    color: #374151;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.product-card-edit {
+    margin-top: auto;
+    align-self: flex-start;
+    font-size: 0.78rem;
+    color: #2563eb;
+    padding-top: 0.25rem;
+}
+
+.product-card-edit:hover {
+    text-decoration: underline;
+}
+
+.product-card-pending-strip {
+    display: block;
+    width: 100%;
+    text-align: center;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #c2410c;
+    background: #fff7ed;
+    border: none;
+    border-top: 1px solid #fed7aa;
+    padding: 4px 6px;
+    cursor: pointer;
+}
+
+.product-card-pending-strip:hover {
+    background: #ffedd5;
 }
 
 .admin-nav {
