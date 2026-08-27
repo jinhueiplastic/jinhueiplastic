@@ -234,7 +234,9 @@ function renderTable(products) {
     tbody.innerHTML = groups.map(([cat, items]) => `
         <div class="category-header rounded-lg px-3 py-2">
             <input type="checkbox" class="category-toggle-all" data-cat="${escapeHtml(cat)}" title="整個系列上架／下架">
-            <span>${escapeHtml(cat)}（${items.length}）</span>
+            <span class="flex-1">${escapeHtml(cat)}（${items.length}）</span>
+            <button type="button" class="category-bulk-unit-btn text-xs text-blue-700 hover:underline whitespace-nowrap" data-cat="${escapeHtml(cat)}">批次設定單位</button>
+            <button type="button" class="category-rename-btn text-xs text-blue-700 hover:underline whitespace-nowrap" data-cat="${escapeHtml(cat)}">重新命名系列</button>
         </div>
         <div class="grid-cards mb-4">${items.map(productCardHtml).join('')}</div>
     `).join('');
@@ -246,6 +248,18 @@ function renderTable(products) {
         cb.checked = state === 'all';
         cb.indeterminate = state === 'some';
         cb.addEventListener('change', () => toggleCategoryActive(catName, items, cb.checked));
+    });
+
+    tbody.querySelectorAll('.category-rename-btn').forEach(btn => {
+        const catName = btn.dataset.cat;
+        const [, items] = groups.find(([c]) => c === catName);
+        btn.addEventListener('click', () => renameCategoryBulk(catName, items));
+    });
+
+    tbody.querySelectorAll('.category-bulk-unit-btn').forEach(btn => {
+        const catName = btn.dataset.cat;
+        const [, items] = groups.find(([c]) => c === catName);
+        btn.addEventListener('click', () => bulkApplyUnitsToCategory(catName, items));
     });
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
@@ -295,6 +309,58 @@ async function toggleCategoryActive(cat, items, isActive) {
         if (p) p.is_active = isActive;
     });
     applyFilters(); // 整批改完重新畫一次，每張卡片跟這個全選勾才會一起反映最新狀態
+}
+
+// 把整個系列重新命名：底下每一項商品的分類（中文）都改成新名稱。
+// 只改分類（中文），分類（英文）不動。
+async function renameCategoryBulk(catName, items) {
+    const raw = prompt(`把「${catName}」這個系列重新命名成？（底下 ${items.length} 項商品的分類（中文）都會一起改）`, catName);
+    if (raw === null) return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === catName) return;
+
+    if (allProducts.some(p => (p.category_name_zh || '').trim() === trimmed)) {
+        if (!confirm(`已經有「${trimmed}」這個系列了，這樣會把兩個系列合併成一個，確定嗎？`)) return;
+    }
+
+    const ids = items.map(p => p.id);
+    const { error } = await sb.from('pos_items').update({ category_name_zh: trimmed }).in('id', ids);
+    if (error) { alert('重新命名失敗：' + error.message); return; }
+
+    ids.forEach(id => {
+        const p = allProducts.find(x => String(x.id) === String(id));
+        if (p) p.category_name_zh = trimmed;
+    });
+    if (selectedCategoryFilter === catName) selectedCategoryFilter = trimmed;
+    renderCategoryFilterTiles();
+    applyFilters();
+}
+
+// 把一批單位名稱套用到整個系列的每一項商品身上（新增/更新，不會移除商品原本已有的其他單位）。
+async function bulkApplyUnitsToCategory(catName, items) {
+    const raw = prompt(`要套用到「${catName}」整個系列（${items.length} 項商品）的單位？（用 / 分隔，可以打多個，例如：只/箱）`);
+    if (!raw) return;
+    const unitNames = splitBulkValues(raw);
+    if (!unitNames.length) return;
+
+    if (!confirm(`確定要把單位（${unitNames.join('、')}）套用到「${catName}」系列的 ${items.length} 項商品嗎？（不會移除商品原本已有的其他單位）`)) return;
+
+    const rows = [];
+    items.forEach(p => {
+        unitNames.forEach((name, i) => rows.push({ erp_code: p.erp_code, name, sort_order: i }));
+    });
+
+    const { error } = await sb.from('pos_item_units').upsert(rows, { onConflict: 'erp_code,name' });
+    if (error) { alert('套用失敗：' + error.message); return; }
+
+    const newKnown = unitNames.filter(n => !knownUnits.includes(n));
+    if (newKnown.length) {
+        const { error: knownErr } = await sb.from('pos_units')
+            .upsert(newKnown.map((name, i) => ({ name, sort_order: knownUnits.length + i })), { onConflict: 'name' });
+        if (!knownErr) knownUnits.push(...newKnown);
+    }
+
+    alert(`已套用到「${catName}」系列的 ${items.length} 項商品。`);
 }
 
 searchInput.addEventListener('input', applyFilters);
