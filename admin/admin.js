@@ -13,6 +13,8 @@ const PRODUCT_FIELDS = [
 ];
 
 let allProducts = [];
+let categoryImageByName = {}; // category_name_zh -> image_url，POS 下單「目錄」畫面的分類封面圖，
+                               // 跟 Google Sheet「網站內容」那邊的分類卡片完全分開，改系列名稱時會一起改，不會跑掉。
 let editingId = null;
 let modalDirty = false; // 表單或規格選項有沒有還沒儲存的修改
 let selectedCategoryFilter = null; // null = 全部
@@ -234,7 +236,9 @@ function renderTable(products) {
     tbody.innerHTML = groups.map(([cat, items]) => `
         <div class="category-header rounded-lg px-3 py-2">
             <input type="checkbox" class="category-toggle-all" data-cat="${escapeHtml(cat)}" title="整個系列上架／下架">
+            ${categoryImageByName[cat] ? `<img src="${escapeHtml(categoryImageByName[cat])}" alt="" class="w-6 h-6 rounded object-cover" title="目錄封面圖">` : ''}
             <span class="flex-1">${escapeHtml(cat)}（${items.length}）</span>
+            <button type="button" class="category-cover-btn text-xs text-blue-700 hover:underline whitespace-nowrap" data-cat="${escapeHtml(cat)}">設定封面圖</button>
             <button type="button" class="category-bulk-unit-btn text-xs text-blue-700 hover:underline whitespace-nowrap" data-cat="${escapeHtml(cat)}">批次設定單位</button>
             <button type="button" class="category-rename-btn text-xs text-blue-700 hover:underline whitespace-nowrap" data-cat="${escapeHtml(cat)}">重新命名系列</button>
         </div>
@@ -260,6 +264,10 @@ function renderTable(products) {
         const catName = btn.dataset.cat;
         const [, items] = groups.find(([c]) => c === catName);
         btn.addEventListener('click', () => bulkApplyUnitsToCategory(catName, items));
+    });
+
+    tbody.querySelectorAll('.category-cover-btn').forEach(btn => {
+        btn.addEventListener('click', () => setCategoryCoverImage(btn.dataset.cat));
     });
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
@@ -332,7 +340,34 @@ async function renameCategoryBulk(catName, items) {
         if (p) p.category_name_zh = trimmed;
     });
     if (selectedCategoryFilter === catName) selectedCategoryFilter = trimmed;
+
+    // 這個系列如果有設定過封面圖（pos_categories），跟著改名，不然「目錄」畫面會抓不到對應的封面圖。
+    if (catName in categoryImageByName) {
+        const { error: coverErr } = await sb.from('pos_categories').update({ category_name_zh: trimmed }).eq('category_name_zh', catName);
+        if (!coverErr) {
+            categoryImageByName[trimmed] = categoryImageByName[catName];
+            delete categoryImageByName[catName];
+        }
+    }
+
     renderCategoryFilterTiles();
+    applyFilters();
+}
+
+// 設定這個系列在 POS 下單「目錄」畫面的封面圖網址，跟系列名稱綁在一起（存在 pos_categories，
+// 跟 Google Sheet「網站內容」那邊的分類卡片是完全分開的兩份資料）。
+async function setCategoryCoverImage(catName) {
+    const current = categoryImageByName[catName] || '';
+    const raw = prompt(`設定「${catName}」在 POS 下單「目錄」畫面的封面圖網址：\n（跟系列改名綁在一起，之後改名還是同一張圖；清空並確定可以取消設定）`, current);
+    if (raw === null) return;
+    const trimmed = raw.trim();
+
+    const { error } = await sb.from('pos_categories')
+        .upsert({ category_name_zh: catName, image_url: trimmed || null }, { onConflict: 'category_name_zh' });
+    if (error) { alert('設定失敗：' + error.message); return; }
+
+    if (trimmed) categoryImageByName[catName] = trimmed;
+    else delete categoryImageByName[catName];
     applyFilters();
 }
 
@@ -1986,6 +2021,13 @@ async function loadKnownUnits() {
     knownUnits = (data || []).map(u => u.name);
 }
 
+async function loadCategoryImages() {
+    const { data, error } = await sb.from('pos_categories').select('*');
+    if (error) { console.error('讀取分類封面圖失敗：', error); return; }
+    categoryImageByName = {};
+    (data || []).forEach(r => { if (r.image_url) categoryImageByName[r.category_name_zh] = r.image_url; });
+}
+
 async function loadUnitSection(product) {
     const section = document.getElementById('unit-section');
     deletedUnitIds = [];
@@ -2158,7 +2200,8 @@ async function saveUnitChanges() {
 }
 
 async function initProductsPage() {
-    await Promise.all([loadProducts(), loadKnownUnits(), loadKnownAxisNames()]);
+    await Promise.all([loadProducts(), loadKnownUnits(), loadKnownAxisNames(), loadCategoryImages()]);
+    applyFilters(); // loadCategoryImages 可能比 loadProducts 內部第一次畫表格晚完成，這裡重畫一次確保封面圖縮圖有畫上去
 
     // 直接幫忙把那個商品的編輯視窗打開，不用自己在一長串商品清單裡找。
     if (editIdFromUrl && allProducts.some(p => String(p.id) === String(editIdFromUrl))) {

@@ -4,6 +4,8 @@ let cart = [];
 let cartCounter = 0;
 let categoryCards = [];      // 官網「商品目錄」頁用的分類卡片：{ catId, name, image }
 let categoryNameById = {};   // catId -> 中文分類顯示名稱
+let categoryImageByName = {}; // category_name_zh -> image_url，「修改 POS 商品」自己設定的封面圖，
+                               // 跟系列改名綁在一起，優先於 categoryCards（Google Sheet 那份）使用。
 let variantOptionsByErp = {}; // erp_code -> { 軸名稱: [{value,image_url}], ... }，各軸各自有哪些可點選項目
 let selectedVariant = {}; // 目前規格畫面上，用按鈕/打字選到的值，key 是軸名稱
 // 哪些軸目前的值是系統自動幫忙選的（不是使用者自己點的）。自動選起來的值只是「方便」，
@@ -67,7 +69,7 @@ const saveOrderBtn       = document.getElementById('save-order-btn');
 async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
-    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }, { data: itemUnitData, error: iuErr }, { data: tagData, error: tagErr }] = await Promise.all([
+    const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }, { data: itemUnitData, error: iuErr }, { data: tagData, error: tagErr }, { data: catImageData, error: catImgErr }] = await Promise.all([
         // row_index 是 Google Sheet「POS items」分頁同步過來的列順序，讓同分類底下的商品
         // 排列跟 Sheet 上到下的順序一致；沒跑過同步、手動新增的商品 row_index 預設 0，
         // 排在同分類最前面。
@@ -84,6 +86,9 @@ async function initPos() {
         sb.from('pos_units').select('*').order('sort_order', { ascending: true }),
         sb.from('pos_item_units').select('*').order('sort_order', { ascending: true }),
         sb.from('order_pickup_tags').select('*').order('sort_order', { ascending: true }),
+        // 每個系列自己設定的封面圖（在「修改 POS 商品」設定），改系列名稱時會一起改，
+        // 跟 site_content 那份靠 link 比對名稱的分類卡片是分開、各自獨立的資料。
+        sb.from('pos_categories').select('*'),
     ]);
     if (pErr) console.error(pErr);
     if (cErr) console.error(cErr);
@@ -92,8 +97,11 @@ async function initPos() {
     if (uErr) console.error(uErr);
     if (iuErr) console.error(iuErr);
     if (tagErr) console.error(tagErr);
+    if (catImgErr) console.error(catImgErr);
     products = productData || [];
     customers = customerData || [];
+    categoryImageByName = {};
+    (catImageData || []).forEach(r => { if (r.image_url) categoryImageByName[r.category_name_zh] = r.image_url; });
     allUnits = (unitData || []).map(u => u.name);
     allPickupTags = (tagData || []).map(t => t.name);
 
@@ -706,16 +714,17 @@ function renderCategoryGridHtml() {
     const countByCat = new Map(groups.map(([cat, items]) => [cat, items.length]));
 
     // 官網「商品目錄」頁的分類卡片（有真正的封面圖），只顯示底下真的有商品的分類。
+    // 「修改 POS 商品」自己設定過封面圖的話優先用那張（跟系列改名綁在一起，不會因為改名跑掉）。
     const curated = categoryCards
-        .map(c => ({ cat: c.catId, name: c.name, image: c.image, count: countByCat.get(c.catId) || 0 }))
+        .map(c => ({ cat: c.catId, name: c.name, image: categoryImageByName[c.catId] || c.image, count: countByCat.get(c.catId) || 0 }))
         .filter(c => c.count > 0);
 
     // 萬一有商品的分類沒被收進官網那份分類卡片清單，還是要讓 POS 找得到，
-    // 用該分類第一項商品的照片頂著當封面圖。
+    // 一樣優先用「修改 POS 商品」設定的封面圖，沒設定過的話才退而用該分類第一項商品的照片頂著。
     const coveredIds = new Set(curated.map(c => c.cat));
     const extra = groups
         .filter(([cat]) => !coveredIds.has(cat))
-        .map(([cat, items]) => ({ cat, name: cat, image: thumbOf(items[0]), count: items.length }));
+        .map(([cat, items]) => ({ cat, name: cat, image: categoryImageByName[cat] || thumbOf(items[0]), count: items.length }));
 
     const cards = [...curated, ...extra];
     if (!cards.length) return `<p class="text-gray-400 text-center py-10">目前沒有商品資料</p>`;
