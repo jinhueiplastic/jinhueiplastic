@@ -227,9 +227,10 @@ function orderItemLineHtml(item) {
         <div class="flex items-center gap-2 py-1">
             ${thumbHtml}
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-gray-700" style="display:flow-root;">
-                    ${escapeHtml(name)}${variant ? '（' + escapeHtml(variant) + '）' : ''}<span style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
+                <p class="text-sm font-bold text-gray-800" style="display:flow-root;">
+                    ${escapeHtml(name)}<span class="font-normal text-gray-700" style="float:right;white-space:nowrap;">${escapeHtml(qtyText)}</span>
                 </p>
+                ${variant ? `<p class="text-xs text-gray-500">（${escapeHtml(variant)}）</p>` : ''}
                 ${item.note ? `<p class="text-xs text-amber-700">備註：${escapeHtml(item.note)}</p>` : ''}
             </div>
         </div>`;
