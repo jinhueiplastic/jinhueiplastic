@@ -250,7 +250,7 @@ function runSheetEntryHtml(entry) {
 
     return `
         <div style="margin-bottom:14px;font-weight:700;">
-            <div style="display:flow-root;"><span style="display:inline-block;border:1.5px solid #9ca3af;border-radius:8px;padding:2px 10px;text-align:center;">${escapeHtml(nameLine || '（未知客戶）')}</span>${pickupTagHtml}</div>
+            <div style="display:flow-root;"><span style="display:inline-block;border:1.5px solid #9ca3af;border-radius:8px;padding:2px 10px;text-align:center;line-height:1.2;vertical-align:middle;">${escapeHtml(nameLine || '（未知客戶）')}</span>${pickupTagHtml}</div>
             <div>${escapeHtml(phoneLine)}</div>
             ${order.note ? `<div style="color:#b45309;">${escapeHtml(order.note)}</div>` : ''}
             ${itemsHtml}
