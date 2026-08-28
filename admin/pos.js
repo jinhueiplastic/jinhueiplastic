@@ -70,11 +70,11 @@ async function initPos() {
     // POS 只從 pos_items 拿商品（POS 可下單商品的子集合，跟 products/官網完全分開的一張表，
     // 從 Google Sheet 的「POS items」分頁同步過來），不是 products。
     const [{ data: productData, error: pErr }, { data: customerData, error: cErr }, { data: catData, error: catErr }, { data: variantData, error: vErr }, { data: unitData, error: uErr }, { data: itemUnitData, error: iuErr }, { data: tagData, error: tagErr }, { data: catImageData, error: catImgErr }] = await Promise.all([
-        // row_index 是 Google Sheet「POS items」分頁同步過來的列順序，讓同分類底下的商品
-        // 排列跟 Sheet 上到下的順序一致；沒跑過同步、手動新增的商品 row_index 預設 0，
-        // 排在同分類最前面。
+        // row_index 是 Google Sheet「POS items」分頁同步過來的列順序，只照這個排（不先照分類名稱
+        // 字母排序），這樣「目錄」畫面的系列卡片順序、還有同系列底下商品的順序，才會一起跟著
+        // Sheet 由上到下一致——哪個系列先出現在 Sheet 上面，那個系列就排前面。
         // 只抓上架中的商品——下架的商品不該讓人在這裡選到、下單。
-        sb.from('pos_items').select('*').eq('is_active', true).order('category_name_zh', { ascending: true }).order('row_index', { ascending: true }).order('erp_code', { ascending: true }),
+        sb.from('pos_items').select('*').eq('is_active', true).order('row_index', { ascending: true }).order('erp_code', { ascending: true }),
         sb.from('customers').select('*').order('name', { ascending: true }),
         sb.from('site_content').select('*').eq('page', 'Product Catalog').order('row_index', { ascending: true }),
         // pos_item_variants 累積很多商品的規格資料後很容易超過 Supabase 一次查詢 1000 筆的上限，
@@ -628,6 +628,9 @@ function thumbOf(p) {
     return String((p && p.image_url) || '').split(',')[0].trim();
 }
 
+// products 已經照 row_index（POS items 分頁由上到下的順序）排過序了，這裡用 Map 分組
+// 不再另外排序——Map 會照插入順序保留，也就是「哪個系列的商品先出現在 Sheet 上面，
+// 那個系列就先被分到組」，分類本身出現的順序自然就跟 Sheet 一致。
 function groupProductsByCategory() {
     const groups = new Map();
     products.forEach(p => {
@@ -635,7 +638,7 @@ function groupProductsByCategory() {
         if (!groups.has(cat)) groups.set(cat, []);
         groups.get(cat).push(p);
     });
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+    return [...groups.entries()];
 }
 
 // 有設定「下單名稱」就用那個，沒有的話退回中文品名——POS 下單畫面上顯示商品名稱的地方都用這個。
@@ -710,23 +713,23 @@ homeBtn.addEventListener('click', () => {
 });
 
 function renderCategoryGridHtml() {
-    const groups = groupProductsByCategory();
-    const countByCat = new Map(groups.map(([cat, items]) => [cat, items.length]));
+    const groups = groupProductsByCategory(); // 已經是「POS items 分頁由上到下」的系列順序
 
-    // 官網「商品目錄」頁的分類卡片（有真正的封面圖），只顯示底下真的有商品的分類。
-    // 「修改 POS 商品」自己設定過封面圖的話優先用那張（跟系列改名綁在一起，不會因為改名跑掉）。
-    const curated = categoryCards
-        .map(c => ({ cat: c.catId, name: c.name, image: categoryImageByName[c.catId] || c.image, count: countByCat.get(c.catId) || 0 }))
-        .filter(c => c.count > 0);
+    // 官網「商品目錄」頁的分類卡片（Google Sheet「網站內容」那份，有真正的封面圖），
+    // 用來查每個系列的顯示名稱／封面圖，但卡片順序一律照 POS items 分頁走，不是照這份清單的順序。
+    const curatedByCat = new Map(categoryCards.map(c => [c.catId, c]));
 
-    // 萬一有商品的分類沒被收進官網那份分類卡片清單，還是要讓 POS 找得到，
-    // 一樣優先用「修改 POS 商品」設定的封面圖，沒設定過的話才退而用該分類第一項商品的照片頂著。
-    const coveredIds = new Set(curated.map(c => c.cat));
-    const extra = groups
-        .filter(([cat]) => !coveredIds.has(cat))
-        .map(([cat, items]) => ({ cat, name: cat, image: categoryImageByName[cat] || thumbOf(items[0]), count: items.length }));
-
-    const cards = [...curated, ...extra];
+    // 封面圖優先順序：「修改 POS 商品」自己設定的封面圖（跟系列改名綁在一起，不會因為改名跑掉）
+    // → 官網分類卡片的封面圖 → 都沒有的話退而用該分類第一項商品的照片頂著。
+    const cards = groups.map(([cat, items]) => {
+        const curated = curatedByCat.get(cat);
+        return {
+            cat,
+            name: (curated && curated.name) || cat,
+            image: categoryImageByName[cat] || (curated && curated.image) || thumbOf(items[0]),
+            count: items.length,
+        };
+    });
     if (!cards.length) return `<p class="text-gray-400 text-center py-10">目前沒有商品資料</p>`;
 
     return `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">` +
