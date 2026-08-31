@@ -189,9 +189,14 @@ function productCardHtml(p) {
         ? `<img src="${escapeHtml(img)}" alt="" class="product-card-thumb">`
         : `<div class="product-card-thumb"></div>`;
 
-    // 有設定下單名稱的話優先顯示下單名稱，原本的商品名稱用括號附註在後面方便對照；沒設定就只顯示商品名稱。
+    // 有設定下單名稱的話優先顯示下單名稱（粗體），中文品名改到下面一行用灰色小字附註方便對照；
+    // 沒設定下單名稱就只顯示中文品名（粗體）。
     const orderName = (p.order_display_name || '').trim();
-    const nameLine = orderName ? `${orderName}（${p.name_zh || ''}）` : (p.name_zh || '');
+    const zhName = (p.name_zh || '').trim();
+    const primaryName = orderName || zhName;
+    const subNameHtml = (orderName && zhName)
+        ? `<p class="product-card-subname">${escapeHtml(zhName)}</p>`
+        : '';
 
     // 從「POS 下單」選購商品那邊當場新增的商品，資料通常還不齊全（可能只有一個暫時
     // 拼湊的 ERP 編號、沒有圖片/價格），標記出來提醒要補齊；補齊後在這裡按儲存就會自動清掉。
@@ -210,7 +215,8 @@ function productCardHtml(p) {
             </div>
             <div class="product-card-info">
                 <p class="product-card-erp">${escapeHtml(p.erp_code || '')}</p>
-                <p class="product-card-name">${escapeHtml(nameLine)}</p>
+                <p class="product-card-name">${escapeHtml(primaryName)}</p>
+                ${subNameHtml}
                 <button data-id="${p.id}" class="edit-btn product-card-edit">編輯</button>
             </div>
             ${quickAddBadge}
