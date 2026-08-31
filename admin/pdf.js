@@ -90,6 +90,32 @@ function buildInvoiceHtml(order, customer, items) {
     return container;
 }
 
+// html2canvas 對 vertical-align／flex／table-cell 這類「自動置中」的排版算不準，尤其中文字型
+// 上下留白（ascent/descent）本來就不對稱，不管用哪種置中技巧，實際印出來的圖常常還是偏上。
+// 改成趁 container 還在真正的瀏覽器 DOM 裡（html2canvas 還沒把它拍成圖片之前），直接用瀏覽器
+// 自己量出文字實際佔的範圍跟框目前上下留白各多少，把 padding-top/padding-bottom 動態改寫成
+// 量出來的真置中值——html2canvas 之後只需要照抄這組寫死的 padding 數字，不用自己算「置中」。
+function centerNameBadges(container) {
+    container.querySelectorAll('.pdf-name-badge').forEach(span => {
+        const spanRect = span.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(span);
+        const textRect = range.getBoundingClientRect();
+        if (!textRect.height) return;
+
+        const topGap = textRect.top - spanRect.top;
+        const bottomGap = spanRect.bottom - textRect.bottom;
+        const diff = bottomGap - topGap; // 正值代表下面留白比較多，挪一半到上面去
+        if (Math.abs(diff) < 0.5) return;
+
+        const cs = getComputedStyle(span);
+        const curPadTop = parseFloat(cs.paddingTop) || 0;
+        const curPadBottom = parseFloat(cs.paddingBottom) || 0;
+        span.style.paddingTop = Math.max(0, curPadTop + diff / 2) + 'px';
+        span.style.paddingBottom = Math.max(0, curPadBottom - diff / 2) + 'px';
+    });
+}
+
 // 把一個畫好的 HTML 容器（container 本身要先 append 到 document.body 以外）畫成圖片、
 // 切頁後畫進傳入的 jsPDF doc。isFirstPage：一份新建的 jsPDF 文件本身就自帶一張空白頁，
 // 只有整份 PDF 的第一個內容區塊的第一頁要沿用它，其餘都要先 addPage()。
@@ -97,6 +123,7 @@ async function renderHtmlPagesInto(doc, container, isFirstPage) {
     document.body.appendChild(container);
 
     try {
+        centerNameBadges(container);
         await waitForImages(container);
 
         const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
@@ -250,7 +277,7 @@ function runSheetEntryHtml(entry) {
 
     return `
         <div style="margin-bottom:14px;font-weight:700;">
-            <div style="display:flow-root;"><span style="display:inline-table;border:1.5px solid #9ca3af;border-radius:8px;"><span style="display:table-cell;vertical-align:middle;text-align:center;padding:2px 10px;line-height:1.2;">${escapeHtml(nameLine || '（未知客戶）')}</span></span>${pickupTagHtml}</div>
+            <div style="display:flow-root;"><span class="pdf-name-badge" style="display:inline-block;border:1.5px solid #9ca3af;border-radius:8px;padding:2px 10px;text-align:center;line-height:1.2;">${escapeHtml(nameLine || '（未知客戶）')}</span>${pickupTagHtml}</div>
             <div>${escapeHtml(phoneLine)}</div>
             ${order.note ? `<div style="color:#b45309;">${escapeHtml(order.note)}</div>` : ''}
             ${itemsHtml}
