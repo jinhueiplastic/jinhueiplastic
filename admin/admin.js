@@ -206,7 +206,7 @@ function productCardHtml(p) {
 
     return `
         <div class="product-card">
-            <div class="product-card-thumb-wrap">
+            <div class="product-card-thumb-wrap product-card-thumb-edit" data-id="${p.id}" title="點圖片編輯商品">
                 ${thumb}
                 <label class="product-card-status-pill" title="上架/下架">
                     <input type="checkbox" data-id="${p.id}" class="active-toggle" ${p.is_active ? 'checked' : ''}>
@@ -278,6 +278,12 @@ function renderTable(products) {
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+    });
+    tbody.querySelectorAll('.product-card-thumb-edit').forEach(wrap => {
+        wrap.addEventListener('click', (e) => {
+            if (e.target.closest('.product-card-status-pill')) return; // 點「上架」勾選框不算點圖片
+            openEditModal(wrap.dataset.id);
+        });
     });
     tbody.querySelectorAll('.active-toggle').forEach(cb => {
         cb.addEventListener('change', () => toggleActive(cb.dataset.id, cb.checked));
@@ -871,6 +877,17 @@ function closeModal() {
 }
 document.getElementById('modal-close-btn').addEventListener('click', closeModal);
 document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+
+// Ctrl/Cmd+Enter 儲存：純 Enter 留給文字框正常換行/輸入用，不會誤觸儲存。
+// 綁在 document 上（不是 modal 本身），不然視窗剛打開、焦點還沒落在視窗裡面的任何欄位時
+// （例如剛點縮圖打開，還沒點過任何輸入框），keydown 事件不會經過 modal，快捷鍵會沒反應。
+document.addEventListener('keydown', (e) => {
+    if (modal.classList.contains('hidden')) return;
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        productForm.requestSubmit();
+    }
+});
 
 productForm.addEventListener('submit', async (e) => {
     e.preventDefault();

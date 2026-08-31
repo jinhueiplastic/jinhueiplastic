@@ -137,6 +137,7 @@ table tbody tr:hover {
     position: relative;
     aspect-ratio: 1;
     background: #f3f4f6;
+    cursor: pointer;
 }
 
 .product-card-thumb {
