@@ -90,30 +90,63 @@ function buildInvoiceHtml(order, customer, items) {
     return container;
 }
 
-// html2canvas 對 vertical-align／flex／table-cell 這類「自動置中」的排版算不準，尤其中文字型
-// 上下留白（ascent/descent）本來就不對稱，不管用哪種置中技巧，實際印出來的圖常常還是偏上。
-// 改成趁 container 還在真正的瀏覽器 DOM 裡（html2canvas 還沒把它拍成圖片之前），直接用瀏覽器
-// 自己量出文字實際佔的範圍跟框目前上下留白各多少，把 padding-top/padding-bottom 動態改寫成
-// 量出來的真置中值——html2canvas 之後只需要照抄這組寫死的 padding 數字，不用自己算「置中」。
-function centerNameBadges(container) {
-    container.querySelectorAll('.pdf-name-badge').forEach(span => {
-        const spanRect = span.getBoundingClientRect();
-        const range = document.createRange();
-        range.selectNodeContents(span);
-        const textRect = range.getBoundingClientRect();
-        if (!textRect.height) return;
+// 圓角灰框（客戶--工地那個標籤）之前試過 vertical-align／flex／table-cell，甚至事後量測
+// 改寫 padding，html2canvas 拍出來的圖都還是偏上——問題不是挑哪種置中技巧，是 html2canvas
+// 自己重新實作的文字排版本身就不準。改成完全不讓 html2canvas 處理這個框：直接用 Canvas 2D
+// API 畫一張圖（圓角矩形 + 文字，用 canvas 原生的 textBaseline:'middle' 置中，這是瀏覽器
+// 底層真正的繪圖功能，不是 html2canvas 猜出來的排版），存成小圖片直接嵌進 HTML。
+// html2canvas 只需要把這張圖原封不動貼上去，貼圖是它最基本、最不會出錯的功能。
+function nameBadgeImgHtml(text) {
+    const SCALE = 3; // 內部用比較高的解析度畫，之後用 CSS 縮小顯示，html2canvas 再放大擷取時才不會糊
+    const fontSizePx = 17 * SCALE;
+    const paddingXPx = 10 * SCALE;
+    const paddingYPx = 2 * SCALE;
+    const borderPx = 1.5 * SCALE;
+    const radiusPx = 8 * SCALE;
+    const font = `700 ${fontSizePx}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
 
-        const topGap = textRect.top - spanRect.top;
-        const bottomGap = spanRect.bottom - textRect.bottom;
-        const diff = bottomGap - topGap; // 正值代表下面留白比較多，挪一半到上面去
-        if (Math.abs(diff) < 0.5) return;
+    const measureCtx = document.createElement('canvas').getContext('2d');
+    measureCtx.font = font;
+    const textWidth = measureCtx.measureText(text).width;
 
-        const cs = getComputedStyle(span);
-        const curPadTop = parseFloat(cs.paddingTop) || 0;
-        const curPadBottom = parseFloat(cs.paddingBottom) || 0;
-        span.style.paddingTop = Math.max(0, curPadTop + diff / 2) + 'px';
-        span.style.paddingBottom = Math.max(0, curPadBottom - diff / 2) + 'px';
-    });
+    const boxWidth = Math.ceil(textWidth + paddingXPx * 2 + borderPx * 2);
+    const boxHeight = Math.ceil(fontSizePx * 1.2 + paddingYPx * 2 + borderPx * 2);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = boxWidth;
+    canvas.height = boxHeight;
+    const ctx = canvas.getContext('2d');
+
+    // 邊框的描邊會畫在路徑正中間，路徑要往內縮半個邊框寬度，邊框才不會被裁掉一半。
+    const x = borderPx / 2, y = borderPx / 2;
+    const w = boxWidth - borderPx, h = boxHeight - borderPx;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(x, y, w, h, radiusPx);
+    } else {
+        const r = radiusPx;
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#9ca3af';
+    ctx.lineWidth = borderPx;
+    ctx.stroke();
+
+    ctx.font = font;
+    ctx.fillStyle = '#111111';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, boxWidth / 2, boxHeight / 2);
+
+    const displayWidth = boxWidth / SCALE;
+    const displayHeight = boxHeight / SCALE;
+    return `<img src="${canvas.toDataURL('image/png')}" style="display:inline-block;vertical-align:middle;width:${displayWidth}px;height:${displayHeight}px;">`;
 }
 
 // 把一個畫好的 HTML 容器（container 本身要先 append 到 document.body 以外）畫成圖片、
@@ -123,7 +156,6 @@ async function renderHtmlPagesInto(doc, container, isFirstPage) {
     document.body.appendChild(container);
 
     try {
-        centerNameBadges(container);
         await waitForImages(container);
 
         const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
@@ -277,7 +309,7 @@ function runSheetEntryHtml(entry) {
 
     return `
         <div style="margin-bottom:14px;font-weight:700;">
-            <div style="display:flow-root;"><span class="pdf-name-badge" style="display:inline-block;border:1.5px solid #9ca3af;border-radius:8px;padding:2px 10px;text-align:center;line-height:1.2;">${escapeHtml(nameLine || '（未知客戶）')}</span>${pickupTagHtml}</div>
+            <div style="display:flow-root;">${nameBadgeImgHtml(nameLine || '（未知客戶）')}${pickupTagHtml}</div>
             <div>${escapeHtml(phoneLine)}</div>
             ${order.note ? `<div style="color:#b45309;">${escapeHtml(order.note)}</div>` : ''}
             ${itemsHtml}
