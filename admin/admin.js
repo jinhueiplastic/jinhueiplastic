@@ -398,8 +398,8 @@ function openBulkUnitModal(catName, items) {
     bulkUnitItems = items;
     bulkUnitRows = [];
     document.getElementById('bulk-unit-modal-title').textContent = `批次設定單位－${catName}`;
-    document.getElementById('bulk-unit-modal-desc').textContent =
-        `會套用到「${catName}」系列的 ${items.length} 項商品（新增/更新，不會移除商品原本已有的其他單位）。`;
+    document.getElementById('bulk-unit-modal-desc').innerHTML =
+        `會套用到「${escapeHtml(catName)}」系列的 ${items.length} 項商品。 ${infoTipHtml('新增/更新，不會移除商品原本已有的其他單位')}`;
     renderBulkUnitChips();
     bulkUnitModal.classList.remove('hidden');
     bulkUnitModal.classList.add('flex');
@@ -610,6 +610,12 @@ const FIELD_EMPTY_PLACEHOLDER = '<span class="text-gray-400">（點一下輸入�
 
 function fieldDisplayHtml(key, escapedValue) {
     return `<div class="field-display-text" data-display-for="${key}">${escapedValue || FIELD_EMPTY_PLACEHOLDER}</div>`;
+}
+
+// 「!」小圓框，滑鼠移過去/focus 才顯示完整說明文字——句子裡附帶的補充說明（例如
+// 「不會移除原本已有的其他單位」這種備註）一律用這個收起來，不要整句話就這樣露在外面。
+function infoTipHtml(text) {
+    return `<span class="info-tip" tabindex="0"><span>!</span><span class="info-tip-text">${escapeHtml(text)}</span></span>`;
 }
 
 // 欄位標籤本身；有 hint（比較長的用法補充說明）的話，額外補一個小圓框「!」，
