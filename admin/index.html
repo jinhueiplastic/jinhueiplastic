@@ -173,6 +173,31 @@
         </div>
     </div>
 
+    <div id="bulk-unit-modal" class="fixed inset-0 bg-black/40 hidden items-start justify-center z-50 p-4 overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-md my-8">
+            <div class="px-6 py-4 border-b flex justify-between items-center gap-3">
+                <h2 id="bulk-unit-modal-title" class="font-bold text-lg truncate">批次設定單位</h2>
+                <button type="button" id="bulk-unit-modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <div class="px-6 py-4">
+                <p id="bulk-unit-modal-desc" class="text-xs text-gray-500 mb-2"></p>
+                <div id="bulk-unit-chips" class="flex flex-wrap gap-1 mb-2"></div>
+
+                <p class="text-xs text-gray-500 mb-1">快速加入：</p>
+                <div id="bulk-unit-quick-add" class="flex flex-wrap gap-1 mb-2"></div>
+
+                <div class="flex gap-2">
+                    <input type="text" id="bulk-unit-new-input" class="field-input" placeholder="輸入全新的單位，例如：箱">
+                    <button type="button" id="bulk-unit-add-btn" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">新增</button>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 py-3 px-6 border-t">
+                <button type="button" id="bulk-unit-cancel-btn" class="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50">取消</button>
+                <button type="button" id="bulk-unit-apply-btn" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">套用到整個系列</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/admin/shared.js"></script>
     <script src="/admin/admin.js"></script>
 </body>

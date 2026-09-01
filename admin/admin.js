@@ -383,18 +383,111 @@ async function setCategoryCoverImage(catName) {
     applyFilters();
 }
 
-// 把一批單位名稱套用到整個系列的每一項商品身上（新增/更新，不會移除商品原本已有的其他單位）。
-async function bulkApplyUnitsToCategory(catName, items) {
-    const raw = prompt(`要套用到「${catName}」整個系列（${items.length} 項商品）的單位？（用 / 分隔，可以打多個，例如：只/箱）`);
-    if (!raw) return;
-    const unitNames = splitBulkValues(raw);
-    if (!unitNames.length) return;
+/* --- 批次設定單位：跟編輯商品的「訂單單位」用同一套畫面（單位 chip＋比例輸入），
+   只是套用對象是整個系列的每一項商品，不是單一商品。bulkUnitRows 的結構跟 localUnitRows
+   一樣（少了 id/erp_code，因為還沒對應到特定商品），共用 unitRatioBaseOf() 算比例基準。 --- */
+let bulkUnitRows = [];
+let bulkUnitCategory = null;
+let bulkUnitItems = [];
+let bulkUnitTempCounter = 0;
 
-    if (!confirm(`確定要把單位（${unitNames.join('、')}）套用到「${catName}」系列的 ${items.length} 項商品嗎？（不會移除商品原本已有的其他單位）`)) return;
+const bulkUnitModal = document.getElementById('bulk-unit-modal');
+
+function openBulkUnitModal(catName, items) {
+    bulkUnitCategory = catName;
+    bulkUnitItems = items;
+    bulkUnitRows = [];
+    document.getElementById('bulk-unit-modal-title').textContent = `批次設定單位－${catName}`;
+    document.getElementById('bulk-unit-modal-desc').textContent =
+        `會套用到「${catName}」系列的 ${items.length} 項商品（新增/更新，不會移除商品原本已有的其他單位）。`;
+    renderBulkUnitChips();
+    bulkUnitModal.classList.remove('hidden');
+    bulkUnitModal.classList.add('flex');
+}
+
+function closeBulkUnitModal() {
+    bulkUnitModal.classList.add('hidden');
+    bulkUnitModal.classList.remove('flex');
+}
+
+function addBulkUnit(name) {
+    if (bulkUnitRows.some(r => r.name === name)) return;
+    bulkUnitRows.push({ tempId: ++bulkUnitTempCounter, name, ratio: 1 });
+    renderBulkUnitChips();
+}
+
+function renderBulkUnitChips() {
+    const chipsEl = document.getElementById('bulk-unit-chips');
+    const baseUnit = unitRatioBaseOf(bulkUnitRows);
+
+    chipsEl.innerHTML = bulkUnitRows.length
+        ? bulkUnitRows.map(r => `
+            <span class="unit-chip">
+                ${escapeHtml(r.name)}
+                ${baseUnit ? `
+                    <span>＝</span>
+                    <input type="number" class="bulk-unit-ratio-input field-input" data-temp-id="${r.tempId}" value="${r.ratio ?? 1}" min="0.0001" step="any" style="width:3.5rem;padding:0 4px;">
+                    <span>${escapeHtml(baseUnit.name)}</span>
+                ` : ''}
+                <button type="button" data-temp-id="${r.tempId}" class="bulk-unit-chip-del">×</button>
+            </span>`).join('')
+        : '<p class="text-xs text-gray-400">還沒有加入任何單位。</p>';
+
+    chipsEl.querySelectorAll('.bulk-unit-chip-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tempId = Number(btn.dataset.tempId);
+            bulkUnitRows = bulkUnitRows.filter(r => r.tempId !== tempId);
+            renderBulkUnitChips();
+        });
+    });
+
+    chipsEl.querySelectorAll('.bulk-unit-ratio-input').forEach(input => {
+        input.addEventListener('change', () => {
+            const tempId = Number(input.dataset.tempId);
+            const row = bulkUnitRows.find(r => r.tempId === tempId);
+            if (!row) return;
+            const val = Number(input.value);
+            if (!val || val <= 0) { input.value = row.ratio ?? 1; return; }
+            row.ratio = val;
+            renderBulkUnitChips(); // 重畫，讓基準單位跟著換算數字一起更新
+        });
+    });
+
+    const quickAddEl = document.getElementById('bulk-unit-quick-add');
+    const usedNames = new Set(bulkUnitRows.map(r => r.name));
+    const suggestions = knownUnits.filter(u => !usedNames.has(u));
+    quickAddEl.innerHTML = suggestions.length
+        ? suggestions.map(u => `<button type="button" class="category-filter-btn bulk-unit-quick-add-btn" data-unit="${escapeHtml(u)}">+ ${escapeHtml(u)}</button>`).join('')
+        : '<p class="text-xs text-gray-400">沒有其他已知的單位可以快速加入。</p>';
+
+    quickAddEl.querySelectorAll('.bulk-unit-quick-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => addBulkUnit(btn.dataset.unit));
+    });
+}
+
+document.getElementById('bulk-unit-add-btn').addEventListener('click', () => {
+    const input = document.getElementById('bulk-unit-new-input');
+    const value = input.value.trim();
+    if (!value) return;
+    addBulkUnit(value);
+    input.value = '';
+});
+
+document.getElementById('bulk-unit-new-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('bulk-unit-add-btn').click(); }
+});
+
+document.getElementById('bulk-unit-modal-close-btn').addEventListener('click', closeBulkUnitModal);
+document.getElementById('bulk-unit-cancel-btn').addEventListener('click', closeBulkUnitModal);
+
+document.getElementById('bulk-unit-apply-btn').addEventListener('click', async () => {
+    if (!bulkUnitRows.length) { alert('請先加入至少一個單位。'); return; }
+    const unitNames = bulkUnitRows.map(r => r.name);
+    if (!confirm(`確定要把單位（${unitNames.join('、')}）套用到「${bulkUnitCategory}」系列的 ${bulkUnitItems.length} 項商品嗎？（不會移除商品原本已有的其他單位）`)) return;
 
     const rows = [];
-    items.forEach(p => {
-        unitNames.forEach((name, i) => rows.push({ erp_code: p.erp_code, name, sort_order: i }));
+    bulkUnitItems.forEach(p => {
+        bulkUnitRows.forEach((r, i) => rows.push({ erp_code: p.erp_code, name: r.name, sort_order: i, ratio: r.ratio || 1 }));
     });
 
     const { error } = await sb.from('pos_item_units').upsert(rows, { onConflict: 'erp_code,name' });
@@ -407,7 +500,13 @@ async function bulkApplyUnitsToCategory(catName, items) {
         if (!knownErr) knownUnits.push(...newKnown);
     }
 
-    alert(`已套用到「${catName}」系列的 ${items.length} 項商品。`);
+    alert(`已套用到「${bulkUnitCategory}」系列的 ${bulkUnitItems.length} 項商品。`);
+    closeBulkUnitModal();
+});
+
+// 把一批單位（含比例）套用到整個系列的每一項商品身上（新增/更新，不會移除商品原本已有的其他單位）。
+function bulkApplyUnitsToCategory(catName, items) {
+    openBulkUnitModal(catName, items);
 }
 
 searchInput.addEventListener('input', applyFilters);
@@ -2101,9 +2200,14 @@ function addLocalUnit(name) {
 
 // 有 2 個以上單位時才需要知道換算關係（例如一箱是幾個），只有 1 個單位的話比例沒有意義。
 // 比例基準用目前數值最小的那個單位當「1」，其他單位顯示成「這個單位＝多少基準單位」。
+// 批次設定單位（bulkUnitRows）也是同一套規則，所以抽成通用版，兩邊共用。
+function unitRatioBaseOf(rows) {
+    if (rows.length < 2) return null;
+    return rows.reduce((min, r) => (Number(r.ratio) < Number(min.ratio) ? r : min), rows[0]);
+}
+
 function unitRatioBase() {
-    if (localUnitRows.length < 2) return null;
-    return localUnitRows.reduce((min, r) => (Number(r.ratio) < Number(min.ratio) ? r : min), localUnitRows[0]);
+    return unitRatioBaseOf(localUnitRows);
 }
 
 function renderUnitSection() {
