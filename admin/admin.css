@@ -645,3 +645,21 @@ table tbody tr:hover {
 .image-zoom-close-btn:hover {
     background: #fff;
 }
+
+/* 統計頁面「出貨數量」欄位：同一格裡好幾個商品各自一行，用一個沒有邊框/格線的內層表格
+   排版，商品名一欄靠左、數量+單位一欄靠右對齊，商品名稱長短不一時數量也能對齊。 */
+.stats-product-lines {
+    width: 100%;
+    border-collapse: collapse;
+}
+.stats-product-line-name {
+    text-align: left;
+    vertical-align: top;
+    padding: 0 8px 2px 0;
+}
+.stats-product-line-qty {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+    padding: 0 0 2px 0;
+}

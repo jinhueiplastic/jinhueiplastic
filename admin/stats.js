@@ -213,14 +213,21 @@ function sumUnitTotals(unitTotals) {
     return Object.values(unitTotals).reduce((a, b) => a + b, 0);
 }
 
-// 一個分組（某一天／某個區域）底下每個商品各自一行「商品名稱 數量單位」，數量多的排前面。
+// 一個分組（某一天／某個區域）底下每個商品各自一行「商品名稱　數量單位」，數量多的排前面。
+// 用一個沒有邊框、沒有格線的內層表格排版（商品名一欄靠左、數量+單位一欄靠右），
+// 不然商品名稱長短不一，數量對不齊、看起來很亂。
 function productLinesHtml(productTotals) {
     const products = [...productTotals.values()];
     if (!products.length) return '（無）';
-    return products
+    const trs = products
         .sort((a, b) => sumUnitTotals(b.unitTotals) - sumUnitTotals(a.unitTotals))
-        .map(p => `${escapeHtml(p.name)} ${unitTotalsLabel(p.unitTotals)}`)
-        .join('<br>');
+        .map(p => `
+            <tr>
+                <td class="stats-product-line-name">${escapeHtml(p.name)}</td>
+                <td class="stats-product-line-qty">${unitTotalsLabel(p.unitTotals)}</td>
+            </tr>`)
+        .join('');
+    return `<table class="stats-product-lines"><tbody>${trs}</tbody></table>`;
 }
 
 function statsTableHtml(headers, rows) {
