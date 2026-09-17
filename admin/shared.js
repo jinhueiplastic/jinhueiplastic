@@ -407,6 +407,50 @@ function closeHistoryModal() {
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 }
 
+// 修改紀錄／已刪除項目共用：把某個欄位名稱換成看得懂的中文標籤，沒對應到的就直接顯示
+// 原本的欄位名稱（例如之後表格加了新欄位，這裡不用跟著改也看得懂大概是什麼）。
+const HISTORY_FIELD_LABELS = {
+    name: '名稱', site_name: '工地', region: '區域', address: '地址', contact_person: '聯絡人', phone: '電話',
+    category_name_zh: '分類（中文）', category_name_en: '分類（英文）', erp_code: 'ERP 貨號', catalog_code: '型錄貨號',
+    name_zh: '中文品名', name_en: '英文品名', order_display_name: '下單名稱', keywords: '關鍵字', image_url: '圖片網址',
+    desc_zh: '中文說明', desc_en: '英文說明', is_active: '上架狀態', added_from_pos: '來自 POS 下單待補齊',
+    order_date: '訂單日期', order_no: '訂單編號', pickup_tag: '取貨標籤', note: '備註', customer_id: '客戶',
+};
+
+// 把一份快照整理成看得懂的欄位清單（不含 id/created_at 這種內部欄位、也不顯示空值），
+// orders 快照多帶的 __order_items 另外整理成商品明細列表。用來讓使用者在按「還原」之前，
+// 先看得到那一版實際的內容長怎樣，不用盲目還原。
+function historySnapshotDetailHtml(snapshot) {
+    const RESERVED = new Set(['id', 'created_at', '__order_items']);
+    const entries = Object.entries(snapshot).filter(([k, v]) => {
+        if (RESERVED.has(k)) return false;
+        if (v === null || v === undefined || v === '') return false;
+        if (Array.isArray(v) && !v.length) return false;
+        if (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length) return false;
+        return true;
+    });
+
+    const fieldsHtml = entries.length
+        ? entries.map(([k, v]) => {
+            const label = HISTORY_FIELD_LABELS[k] || k;
+            let display;
+            if (typeof v === 'boolean') display = v ? '是' : '否';
+            else if (typeof v === 'object') display = JSON.stringify(v);
+            else display = String(v);
+            return `<p class="text-xs text-gray-600"><span class="text-gray-400">${escapeHtml(label)}：</span>${escapeHtml(display)}</p>`;
+        }).join('')
+        : '<p class="text-xs text-gray-400">（沒有其他欄位）</p>';
+
+    const itemsHtml = (snapshot.__order_items && snapshot.__order_items.length)
+        ? `<div class="mt-2 pt-2 border-t border-gray-200">
+            <p class="text-xs text-gray-400 mb-1">商品明細：</p>
+            ${snapshot.__order_items.map(it => `<p class="text-xs text-gray-600">${escapeHtml(it.product_name_zh || it.product_erp_code || '')}　${escapeHtml(String(it.quantity ?? ''))}${escapeHtml(it.unit || '')}</p>`).join('')}
+        </div>`
+        : '';
+
+    return `<div class="bg-gray-50 rounded p-2 mt-2">${fieldsHtml}${itemsHtml}</div>`;
+}
+
 // table：record_history.table_name（'orders'／'customers'／'pos_items'）；
 // recordId：那一列的 id；label：視窗標題後面附註的識別文字（例如訂單編號、客戶名稱）；
 // onRestored：還原成功後要呼叫的回呼（通常是重新整理畫面上的資料）。
@@ -435,13 +479,31 @@ async function openHistoryModal(table, recordId, label, onRestored) {
     }
 
     body.innerHTML = data.map((h, i) => `
-        <div class="flex items-center justify-between gap-3 py-3${i > 0 ? ' border-t' : ''}">
-            <div>
-                <p class="text-sm font-medium">${escapeHtml(isoDateTimeToRocLabel(h.changed_at, true))}</p>
-                <p class="text-xs text-gray-500">${h.changed_by ? escapeHtml(h.changed_by) + '　' : ''}${h.operation === 'delete' ? '刪除前的內容' : '修改前的內容'}</p>
+        <div class="py-3${i > 0 ? ' border-t' : ''}">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="text-sm font-medium">${escapeHtml(isoDateTimeToRocLabel(h.changed_at, true))}</p>
+                    <button type="button" class="history-view-btn text-xs text-blue-600 hover:underline" data-idx="${i}">
+                        ${h.changed_by ? escapeHtml(h.changed_by) + '　' : ''}${h.operation === 'delete' ? '刪除前的內容' : '修改前的內容'}（點看內容）
+                    </button>
+                </div>
+                <button type="button" class="history-restore-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100" data-idx="${i}">還原到這一版</button>
             </div>
-            <button type="button" class="history-restore-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100" data-idx="${i}">還原到這一版</button>
+            <div class="history-detail hidden" data-idx="${i}"></div>
         </div>`).join('');
+
+    body.querySelectorAll('.history-view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = btn.dataset.idx;
+            const detail = body.querySelector(`.history-detail[data-idx="${idx}"]`);
+            if (detail.classList.contains('hidden')) {
+                detail.innerHTML = historySnapshotDetailHtml(data[Number(idx)].snapshot);
+                detail.classList.remove('hidden');
+            } else {
+                detail.classList.add('hidden');
+            }
+        });
+    });
 
     body.querySelectorAll('.history-restore-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -548,13 +610,31 @@ async function openDeletedItemsModal(table, labelFn, onRestored) {
     }
 
     body.innerHTML = deleted.map((h, i) => `
-        <div class="flex items-center justify-between gap-3 py-3${i > 0 ? ' border-t' : ''}">
-            <div>
-                <p class="text-sm font-medium">${escapeHtml(labelFn(h.snapshot))}</p>
-                <p class="text-xs text-gray-500">${escapeHtml(isoDateTimeToRocLabel(h.changed_at, true))}${h.changed_by ? '　' + escapeHtml(h.changed_by) : ''}刪除</p>
+        <div class="py-3${i > 0 ? ' border-t' : ''}">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="text-sm font-medium">${escapeHtml(labelFn(h.snapshot))}</p>
+                    <button type="button" class="history-view-btn text-xs text-blue-600 hover:underline" data-idx="${i}">
+                        ${escapeHtml(isoDateTimeToRocLabel(h.changed_at, true))}${h.changed_by ? '　' + escapeHtml(h.changed_by) : ''} 刪除（點看內容）
+                    </button>
+                </div>
+                <button type="button" class="deleted-restore-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100" data-idx="${i}">還原</button>
             </div>
-            <button type="button" class="deleted-restore-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100" data-idx="${i}">還原</button>
+            <div class="history-detail hidden" data-idx="${i}"></div>
         </div>`).join('');
+
+    body.querySelectorAll('.history-view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = btn.dataset.idx;
+            const detail = body.querySelector(`.history-detail[data-idx="${idx}"]`);
+            if (detail.classList.contains('hidden')) {
+                detail.innerHTML = historySnapshotDetailHtml(deleted[Number(idx)].snapshot);
+                detail.classList.remove('hidden');
+            } else {
+                detail.classList.add('hidden');
+            }
+        });
+    });
 
     body.querySelectorAll('.deleted-restore-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
