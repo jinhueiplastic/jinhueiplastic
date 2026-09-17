@@ -56,16 +56,16 @@
                 <div id="region-filter-tiles" class="flex flex-wrap gap-2 mb-4"></div>
 
             <div class="flex flex-wrap items-end gap-3">
-                <div>
+                <div style="width:9rem">
                     <label class="field-label">訂單編號</label>
                     <input type="text" id="q-order-no" class="field-input" placeholder="PO-000001">
                 </div>
-                <div>
+                <div style="width:12rem">
                     <label class="field-label">客戶（名稱/電話）</label>
                     <input type="text" id="q-customer" class="field-input" list="customer-datalist" placeholder="輸入或從清單選擇">
                     <datalist id="customer-datalist"></datalist>
                 </div>
-                <div>
+                <div style="width:10rem">
                     <label class="field-label">商品（貨號/名稱）</label>
                     <input type="text" id="q-product" class="field-input">
                 </div>
@@ -89,10 +89,10 @@
                         <input type="number" id="q-date-to-dd" class="field-input" style="width:3.5rem" placeholder="DD" min="1" max="31">
                     </div>
                 </div>
-                <div class="flex gap-2">
-                    <button type="button" id="search-btn" class="px-4 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">查詢</button>
-                    <button type="button" id="reset-btn" class="px-4 py-2 text-sm rounded border bg-white hover:bg-gray-100">清除條件</button>
-                </div>
+            </div>
+            <div class="flex gap-2 mt-3">
+                <button type="button" id="search-btn" class="px-4 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">查詢</button>
+                <button type="button" id="reset-btn" class="px-4 py-2 text-sm rounded border bg-white hover:bg-gray-100">清除條件</button>
             </div>
             </div>
 
