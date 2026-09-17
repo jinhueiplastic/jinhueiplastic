@@ -214,12 +214,17 @@ table tbody tr:hover {
     overflow: hidden;
 }
 
-.product-card-edit {
+.product-card-actions {
     margin-top: auto;
+    padding-top: 0.25rem;
+    display: flex;
+    gap: 0.6rem;
+}
+
+.product-card-edit {
     align-self: flex-start;
     font-size: 0.78rem;
     color: #2563eb;
-    padding-top: 0.25rem;
 }
 
 .product-card-edit:hover {

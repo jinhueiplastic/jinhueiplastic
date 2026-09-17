@@ -94,6 +94,7 @@ function renderTable(customers) {
             <td class="px-3 py-2">${escapeHtml(c.phone || '')}</td>
             <td class="px-3 py-2">
                 <button data-id="${c.id}" class="edit-btn text-blue-600 hover:underline text-sm">編輯</button>
+                <button data-id="${c.id}" class="history-btn text-blue-600 hover:underline text-sm ml-2">修改紀錄</button>
                 <button data-id="${c.id}" class="delete-btn text-red-600 hover:underline text-sm ml-2">刪除</button>
             </td>
         </tr>`).join('');
@@ -103,6 +104,14 @@ function renderTable(customers) {
     });
     tbody.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', () => deleteCustomer(btn.dataset.id));
+    });
+    tbody.querySelectorAll('.history-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const c = allCustomers.find(x => String(x.id) === btn.dataset.id);
+            openHistoryModal('customers', btn.dataset.id, c ? c.name : '', async () => {
+                await loadCustomers();
+            });
+        });
     });
     tbody.querySelectorAll('.row-checkbox').forEach(cb => {
         cb.addEventListener('change', () => {

@@ -217,7 +217,10 @@ function productCardHtml(p) {
                 <p class="product-card-erp">${escapeHtml(p.erp_code || '')}</p>
                 <p class="product-card-name">${escapeHtml(primaryName)}</p>
                 ${subNameHtml}
-                <button data-id="${p.id}" class="edit-btn product-card-edit">編輯</button>
+                <div class="product-card-actions">
+                    <button data-id="${p.id}" class="edit-btn product-card-edit">編輯</button>
+                    <button data-id="${p.id}" class="history-btn product-card-edit">修改紀錄</button>
+                </div>
             </div>
             ${quickAddBadge}
         </div>`;
@@ -278,6 +281,14 @@ function renderTable(products) {
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+    });
+    tbody.querySelectorAll('.history-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = allProducts.find(x => String(x.id) === btn.dataset.id);
+            openHistoryModal('pos_items', btn.dataset.id, p ? (p.order_display_name || p.name_zh) : '', async () => {
+                await loadProducts();
+            });
+        });
     });
     tbody.querySelectorAll('.product-card-thumb-edit').forEach(wrap => {
         wrap.addEventListener('click', (e) => {

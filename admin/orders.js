@@ -126,6 +126,7 @@ function renderResults(unsortedOrders) {
             <div class="mt-2 border-t pt-2">${itemsHtml}</div>
             <div class="flex justify-end gap-2 mt-3">
                 <a href="/admin/pos.html?edit=${encodeURIComponent(o.id)}" class="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">編輯</a>
+                <button data-id="${o.id}" class="history-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">修改紀錄</button>
                 <button data-id="${o.id}" class="pdf-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100">下載 PDF</button>
                 <button data-id="${o.id}" class="delete-btn px-3 py-1.5 text-sm rounded border border-red-200 text-red-600 bg-white hover:bg-red-50">刪除</button>
             </div>
@@ -133,6 +134,16 @@ function renderResults(unsortedOrders) {
     }).join('');
 
     wireOrderItemThumbZoom(resultsContainer);
+
+    resultsContainer.querySelectorAll('.history-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const order = allOrders.find(o => String(o.id) === btn.dataset.id);
+            if (!order) return;
+            openHistoryModal('orders', order.id, order.order_no, async () => {
+                await loadOrders();
+            });
+        });
+    });
 
     resultsContainer.querySelectorAll('.pdf-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -145,7 +156,7 @@ function renderResults(unsortedOrders) {
         btn.addEventListener('click', async () => {
             const order = allOrders.find(o => String(o.id) === btn.dataset.id);
             if (!order) return;
-            if (!confirm(`確定要刪除訂單 ${order.order_no} 嗎？此動作無法復原。`)) return;
+            if (!confirm(`確定要刪除訂單 ${order.order_no} 嗎？（刪除前的內容會留存下來，不會真的憑空消失）`)) return;
 
             const { error } = await sb.from('orders').delete().eq('id', order.id);
             if (error) {
