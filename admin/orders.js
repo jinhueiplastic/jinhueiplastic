@@ -213,6 +213,16 @@ function applyFilters() {
 document.getElementById('search-btn').addEventListener('click', applyFilters);
 document.getElementById('sort-select').addEventListener('change', applyFilters);
 
+document.getElementById('deleted-orders-btn').addEventListener('click', () => {
+    openDeletedItemsModal('orders', (s) => {
+        const dateLabel = isoDateToRocLabel(s.order_date || '');
+        const itemCount = (s.__order_items || []).length;
+        return `${s.order_no || '（無編號）'}　${dateLabel}　共 ${itemCount} 項商品`;
+    }, async () => {
+        await loadOrders();
+    });
+});
+
 const ORDERS_DATE_FROM_IDS = ['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd'];
 const ORDERS_DATE_TO_IDS   = ['q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'];
 const ORDERS_ALL_DATE_IDS  = [...ORDERS_DATE_FROM_IDS, ...ORDERS_DATE_TO_IDS];

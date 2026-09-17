@@ -972,6 +972,14 @@ function openEditModal(id) {
     resetModalScroll();
 }
 
+document.getElementById('deleted-products-btn').addEventListener('click', () => {
+    openDeletedItemsModal('pos_items', (s) => {
+        return `${s.erp_code || ''}　${s.order_display_name || s.name_zh || ''}`;
+    }, async () => {
+        await loadProducts();
+    });
+});
+
 document.getElementById('new-product-btn').addEventListener('click', () => {
     editingId = null;
     modalTitle.textContent = '新增商品';

@@ -499,3 +499,79 @@ async function restoreHistorySnapshot(table, recordId, snapshot, operation) {
         if (error) throw error;
     }
 }
+
+// 「已刪除的項目」瀏覽／還原：已刪除的資料在畫面上本來就看不到（不像修改，還在原本的
+// 列表裡可以點「修改紀錄」），所以要另外從 record_history 反查——找出「最後一次操作是
+// delete」的那些 record_id，再排除掉「後來又被還原/重建過，現在活著」的，剩下的才是
+// 真的已刪除、可以還原的項目。
+// labelFn(snapshot)：每個項目要顯示的識別文字，各表想顯示的欄位不一樣，由呼叫端決定。
+async function openDeletedItemsModal(table, labelFn, onRestored) {
+    ensureHistoryModal();
+    const modal = document.getElementById('history-modal');
+    document.getElementById('history-modal-title').textContent = '已刪除的項目';
+    const body = document.getElementById('history-modal-body');
+    body.innerHTML = '<p class="text-sm text-gray-400">載入中…</p>';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    const { data: historyRows, error } = await sb.from('record_history')
+        .select('*')
+        .eq('table_name', table)
+        .eq('operation', 'delete')
+        .order('changed_at', { ascending: false });
+    if (error) {
+        body.innerHTML = `<p class="text-sm text-red-600">讀取失敗：${escapeHtml(error.message)}</p>`;
+        return;
+    }
+
+    // record_history 是照時間新到舊排的，同一個 record_id 第一次遇到就是最新一次刪除紀錄。
+    const latestByRecord = new Map();
+    (historyRows || []).forEach(h => { if (!latestByRecord.has(h.record_id)) latestByRecord.set(h.record_id, h); });
+    const candidates = [...latestByRecord.values()];
+    if (!candidates.length) {
+        body.innerHTML = '<p class="text-sm text-gray-400">目前沒有已刪除的項目。</p>';
+        return;
+    }
+
+    const ids = candidates.map(c => c.record_id);
+    const { data: liveRows, error: liveErr } = await sb.from(table).select('id').in('id', ids);
+    if (liveErr) {
+        body.innerHTML = `<p class="text-sm text-red-600">讀取失敗：${escapeHtml(liveErr.message)}</p>`;
+        return;
+    }
+    const liveIds = new Set((liveRows || []).map(r => String(r.id)));
+    const deleted = candidates.filter(c => !liveIds.has(String(c.record_id)));
+
+    if (!deleted.length) {
+        body.innerHTML = '<p class="text-sm text-gray-400">目前沒有已刪除的項目。</p>';
+        return;
+    }
+
+    body.innerHTML = deleted.map((h, i) => `
+        <div class="flex items-center justify-between gap-3 py-3${i > 0 ? ' border-t' : ''}">
+            <div>
+                <p class="text-sm font-medium">${escapeHtml(labelFn(h.snapshot))}</p>
+                <p class="text-xs text-gray-500">${escapeHtml(isoDateTimeToRocLabel(h.changed_at, true))}${h.changed_by ? '　' + escapeHtml(h.changed_by) : ''}刪除</p>
+            </div>
+            <button type="button" class="deleted-restore-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100" data-idx="${i}">還原</button>
+        </div>`).join('');
+
+    body.querySelectorAll('.deleted-restore-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const entry = deleted[Number(btn.dataset.idx)];
+            if (!confirm('確定要還原這筆資料嗎？')) return;
+            btn.disabled = true;
+            btn.textContent = '還原中…';
+            try {
+                await restoreHistorySnapshot(table, entry.record_id, entry.snapshot, 'delete');
+                closeHistoryModal();
+                if (onRestored) await onRestored();
+                alert('已還原。');
+            } catch (e) {
+                alert('還原失敗：' + e.message);
+                btn.disabled = false;
+                btn.textContent = '還原';
+            }
+        });
+    });
+}

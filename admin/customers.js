@@ -200,6 +200,14 @@ function openEditModal(id) {
     modal.classList.add('flex');
 }
 
+document.getElementById('deleted-customers-btn').addEventListener('click', () => {
+    openDeletedItemsModal('customers', (s) => {
+        return `${s.name || '（未知客戶）'}${s.phone ? '　' + s.phone : ''}`;
+    }, async () => {
+        await loadCustomers();
+    });
+});
+
 document.getElementById('new-customer-btn').addEventListener('click', () => {
     editingId = null;
     modalTitle.textContent = '新增客戶';
