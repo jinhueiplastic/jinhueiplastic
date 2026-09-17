@@ -76,6 +76,12 @@ function initAdminAuth(pageKey, onReady) {
         currentUserEmail = session.user.email || '';
         currentUserDisplayName = (session.user.user_metadata && session.user.user_metadata.display_name) || currentUserEmail;
         if (userEmailEl) userEmailEl.textContent = currentUserDisplayName;
+
+        // 「設定顯示名稱」只給 admin 帳號看得到——role 存在 app_metadata（跟 auth.jwt() 一樣，
+        // 只有後台/SQL Editor 改得動，使用者自己登入後沒辦法透過畫面把自己升成 admin）。
+        const isAdmin = !!(session.user.app_metadata && session.user.app_metadata.role === 'admin');
+        if (editNameBtn) editNameBtn.classList.toggle('hidden', !isAdmin);
+
         onReady();
 
         // 頁面開著跨過 23:59 的話，不用等使用者重新整理，每分鐘檢查一次就會自動登出。
@@ -336,14 +342,17 @@ function isoDateToRocLabel(isoDate) {
 
 // timestamptz（例如 orders.created_at）轉成「YYY/MM/DD HH:MM」（民國年＋時分），
 // 用來顯示「建立日期」這種需要看得出確切存檔時間、不只是日期的欄位。
-function isoDateTimeToRocLabel(isoDateTime) {
+// includeSeconds 給修改紀錄這種需要精確到秒的地方用（同一分鐘內改好幾次要分得出先後）。
+function isoDateTimeToRocLabel(isoDateTime, includeSeconds) {
     if (!isoDateTime) return '';
     const d = new Date(isoDateTime);
     if (Number.isNaN(d.getTime())) return '';
     const dateLabel = isoDateToRocLabel(d.toLocaleDateString('en-CA'));
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${dateLabel} ${hh}:${mm}`;
+    if (!includeSeconds) return `${dateLabel} ${hh}:${mm}`;
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${dateLabel} ${hh}:${mm}:${ss}`;
 }
 
 // Cloud name 和 unsigned upload preset 都不是密鑰，可以放在前端程式碼裡；
@@ -366,4 +375,127 @@ async function uploadImageToCloudinary(file) {
     }
     const data = await res.json();
     return data.secure_url;
+}
+
+/* ===== 修改紀錄／一鍵還原 =====
+   訂單（查詢訂單／合併區域表單）、客戶（客戶資訊）、商品（修改 POS 商品）共用同一套
+   「修改紀錄」小視窗跟還原邏輯，資料來源是 record_history 這張表（資料庫層級的觸發器
+   自動記錄，不管從哪個頁面改的都不會漏）。每個頁面只要呼叫 openHistoryModal(table,
+   recordId, label, onRestored) 就好；視窗本身第一次用到才動態建立、插進
+   document.body，不用每個頁面各自準備一份 HTML。 */
+
+function ensureHistoryModal() {
+    if (document.getElementById('history-modal')) return;
+    const div = document.createElement('div');
+    div.id = 'history-modal';
+    div.className = 'fixed inset-0 bg-black/40 hidden items-start justify-center z-50 p-4 overflow-y-auto';
+    div.innerHTML = `
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-lg my-8">
+            <div class="px-6 py-4 border-b flex justify-between items-center gap-3">
+                <h2 id="history-modal-title" class="font-bold text-lg truncate">修改紀錄</h2>
+                <button type="button" id="history-modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <div id="history-modal-body" class="px-6 py-4 max-h-[60vh] overflow-y-auto"></div>
+        </div>`;
+    document.body.appendChild(div);
+    div.addEventListener('click', (e) => { if (e.target === div) closeHistoryModal(); });
+    div.querySelector('#history-modal-close-btn').addEventListener('click', closeHistoryModal);
+}
+
+function closeHistoryModal() {
+    const modal = document.getElementById('history-modal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
+// table：record_history.table_name（'orders'／'customers'／'pos_items'）；
+// recordId：那一列的 id；label：視窗標題後面附註的識別文字（例如訂單編號、客戶名稱）；
+// onRestored：還原成功後要呼叫的回呼（通常是重新整理畫面上的資料）。
+async function openHistoryModal(table, recordId, label, onRestored) {
+    ensureHistoryModal();
+    const modal = document.getElementById('history-modal');
+    document.getElementById('history-modal-title').textContent = `修改紀錄${label ? '－' + label : ''}`;
+    const body = document.getElementById('history-modal-body');
+    body.innerHTML = '<p class="text-sm text-gray-400">載入中…</p>';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    const { data, error } = await sb.from('record_history')
+        .select('*')
+        .eq('table_name', table)
+        .eq('record_id', String(recordId))
+        .order('changed_at', { ascending: false });
+
+    if (error) {
+        body.innerHTML = `<p class="text-sm text-red-600">讀取失敗：${escapeHtml(error.message)}</p>`;
+        return;
+    }
+    if (!data || !data.length) {
+        body.innerHTML = '<p class="text-sm text-gray-400">目前沒有修改紀錄。</p>';
+        return;
+    }
+
+    body.innerHTML = data.map((h, i) => `
+        <div class="flex items-center justify-between gap-3 py-3${i > 0 ? ' border-t' : ''}">
+            <div>
+                <p class="text-sm font-medium">${escapeHtml(isoDateTimeToRocLabel(h.changed_at, true))}</p>
+                <p class="text-xs text-gray-500">${h.changed_by ? escapeHtml(h.changed_by) + '　' : ''}${h.operation === 'delete' ? '刪除前的內容' : '修改前的內容'}</p>
+            </div>
+            <button type="button" class="history-restore-btn px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-100" data-idx="${i}">還原到這一版</button>
+        </div>`).join('');
+
+    body.querySelectorAll('.history-restore-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const entry = data[Number(btn.dataset.idx)];
+            if (!confirm('確定要還原到這一版嗎？目前的內容會被覆蓋（覆蓋前的內容一樣會被記錄下來，還原後如果後悔還是可以再還原回來）。')) return;
+            btn.disabled = true;
+            btn.textContent = '還原中…';
+            try {
+                await restoreHistorySnapshot(table, recordId, entry.snapshot, entry.operation);
+                closeHistoryModal();
+                if (onRestored) await onRestored();
+                alert('已還原。');
+            } catch (e) {
+                alert('還原失敗：' + e.message);
+                btn.disabled = false;
+                btn.textContent = '還原到這一版';
+            }
+        });
+    });
+}
+
+// orders 的快照多包了一份 __order_items 子陣列（見 record-history-migration.sql 的
+// record_orders_history()），還原時要把訂單欄位跟商品明細分開處理；customers／pos_items
+// 單純把快照裡的欄位（扣掉 id/created_at 這種不該覆蓋回去的欄位）整包還原回去，不用特地
+// 列出欄位清單，之後這些表加新欄位也不用回來改這裡。
+// operation 是那筆歷史紀錄本身的操作類型：'delete' 代表那時候整筆被刪掉了，現在資料庫裡
+// 已經沒有這筆資料，還原要用 insert（連 id 一起放回去，維持原本的識別碼）；'update' 代表
+// 資料還在，只是欄位被改過，還原用 update 蓋回去就好。
+async function restoreHistorySnapshot(table, recordId, snapshot, operation) {
+    const isRecreate = operation === 'delete';
+
+    if (table === 'orders') {
+        const { __order_items, created_at, ...fields } = snapshot;
+        const { error } = isRecreate
+            ? await sb.from('orders').insert({ ...fields, id: recordId })
+            : await sb.from('orders').update(fields).eq('id', recordId);
+        if (error) throw error;
+
+        const { error: delErr } = await sb.from('order_items').delete().eq('order_id', recordId);
+        if (delErr) throw delErr;
+
+        if (__order_items && __order_items.length) {
+            const itemsPayload = __order_items.map(({ id: _id, order_id: _orderId, ...itemFields }) => ({
+                ...itemFields,
+                order_id: recordId,
+            }));
+            const { error: insErr } = await sb.from('order_items').insert(itemsPayload);
+            if (insErr) throw insErr;
+        }
+    } else {
+        const { created_at, ...fields } = snapshot;
+        const { error } = isRecreate
+            ? await sb.from(table).insert({ ...fields, id: recordId })
+            : await sb.from(table).update(fields).eq('id', recordId);
+        if (error) throw error;
+    }
 }
