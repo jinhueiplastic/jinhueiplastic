@@ -152,8 +152,8 @@ function applyFilters() {
     const orderNo   = document.getElementById('q-order-no').value.trim().toLowerCase();
     const customerQ = document.getElementById('q-customer').value.trim().toLowerCase();
     const productQ  = document.getElementById('q-product').value.trim().toLowerCase();
-    const dateFrom  = document.getElementById('q-date-from').value;
-    const dateTo    = document.getElementById('q-date-to').value;
+    const dateFrom  = minguoFieldsToIsoDate('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
+    const dateTo    = minguoFieldsToIsoDate('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
 
     const filtered = allOrders.filter(o => {
         if (orderNo && !String(o.order_no || '').toLowerCase().includes(orderNo)) return false;
@@ -192,7 +192,7 @@ document.getElementById('search-btn').addEventListener('click', applyFilters);
 document.getElementById('sort-select').addEventListener('change', applyFilters);
 
 document.getElementById('reset-btn').addEventListener('click', () => {
-    ['q-order-no', 'q-customer', 'q-product', 'q-date-from', 'q-date-to'].forEach(id => {
+    ['q-order-no', 'q-customer', 'q-product', 'q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
         document.getElementById(id).value = '';
     });
     selectedRegionFilter = null;
