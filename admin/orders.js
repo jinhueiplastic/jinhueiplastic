@@ -229,28 +229,6 @@ ORDERS_ALL_DATE_IDS.forEach(id => {
     });
 });
 
-// 「前天」「昨天」：把起訖兩組日期都填成同一天（只查那一天），按下去馬上查詢——
-// 跟合併區域表單同一套邏輯。
-function fillMinguoOffsetDays(daysAgo) {
-    const d = new Date();
-    d.setDate(d.getDate() - daysAgo);
-    const yyy = d.getFullYear() - 1911;
-    const mm = d.getMonth() + 1;
-    const dd = d.getDate();
-    ['q-date-from-yyy', 'q-date-to-yyy'].forEach(id => { document.getElementById(id).value = yyy; });
-    ['q-date-from-mm', 'q-date-to-mm'].forEach(id => { document.getElementById(id).value = mm; });
-    ['q-date-from-dd', 'q-date-to-dd'].forEach(id => { document.getElementById(id).value = dd; });
-}
-
-document.getElementById('date-yesterday-btn').addEventListener('click', () => {
-    fillMinguoOffsetDays(1);
-    applyFilters();
-});
-document.getElementById('date-day-before-yesterday-btn').addEventListener('click', () => {
-    fillMinguoOffsetDays(2);
-    applyFilters();
-});
-
 document.getElementById('reset-btn').addEventListener('click', () => {
     ['q-order-no', 'q-customer', 'q-product', 'q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
         document.getElementById(id).value = '';
