@@ -41,7 +41,13 @@ begin
     insert into record_history (table_name, record_id, operation, snapshot, changed_by)
     values ('orders', OLD.id::text, lower(TG_OP), to_jsonb(OLD) || jsonb_build_object('__order_items', items), auth.jwt() ->> 'email');
 
-    return OLD;
+    -- BEFORE UPDATE 一定要回傳 NEW，不然 Postgres 會把「即將寫入的新值」整個換回這裡的
+    -- OLD，變成 UPDATE 語句本身不會報錯、但存進資料庫的其實還是舊資料（BEFORE DELETE
+    -- 則相反，要回傳 OLD 才會讓刪除真的進行下去，所以要依 TG_OP 分開處理）。
+    if TG_OP = 'DELETE' then
+        return OLD;
+    end if;
+    return NEW;
 end;
 $$ language plpgsql security definer;
 
@@ -55,7 +61,11 @@ create or replace function record_simple_history() returns trigger as $$
 begin
     insert into record_history (table_name, record_id, operation, snapshot, changed_by)
     values (TG_TABLE_NAME, OLD.id::text, lower(TG_OP), to_jsonb(OLD), auth.jwt() ->> 'email');
-    return OLD;
+    -- 同上：BEFORE UPDATE 要回傳 NEW，新資料才會真的寫進去；BEFORE DELETE 才回傳 OLD。
+    if TG_OP = 'DELETE' then
+        return OLD;
+    end if;
+    return NEW;
 end;
 $$ language plpgsql security definer;
 
