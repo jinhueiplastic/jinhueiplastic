@@ -1581,6 +1581,7 @@ function wireVariantPicker(p) {
         const qty = Number(document.getElementById('variant-qty').value) || 1;
         const unitNewInput = document.getElementById('unit-new-input');
         const unit = selectedUnit || (unitNewInput ? unitNewInput.value.trim() : '');
+        if (!unit) { alert('請先選擇或輸入這項商品的單位，才能加入已選購商品。'); return; }
         const note = document.getElementById('variant-note-input').value.trim();
 
         // 訂單快照要記錄完整的一組值：使用者直接選的軸，加上符合的完整組合帶出來的其他軸
