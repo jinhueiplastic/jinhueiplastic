@@ -81,18 +81,6 @@
                             <button type="button" id="edit-customer-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100">編輯客戶</button>
                             <button type="button" id="new-customer-toggle" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100">+ 新增客戶</button>
                         </div>
-                        <div id="new-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-                            <div><label class="field-label">客戶名稱</label><input type="text" id="nc-name" class="field-input"></div>
-                            <div><label class="field-label">工地名稱</label><input type="text" id="nc-site-name" class="field-input"></div>
-                            <div>
-                                <label class="field-label">區域</label>
-                                <input type="text" id="nc-region" class="field-input" list="nc-region-datalist">
-                                <datalist id="nc-region-datalist"></datalist>
-                            </div>
-                            <div><label class="field-label">地址</label><input type="text" id="nc-address" class="field-input"></div>
-                            <div><label class="field-label">電話</label><input type="text" id="nc-phone" class="field-input"></div>
-                            <button type="button" id="nc-save-btn" class="px-3 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 md:col-span-5 w-fit">新增並選用</button>
-                        </div>
                         <div id="edit-customer-panel" class="hidden mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
                             <div><label class="field-label">客戶名稱</label><input type="text" id="ec-name" class="field-input"></div>
                             <div><label class="field-label">工地名稱</label><input type="text" id="ec-site-name" class="field-input"></div>
@@ -158,6 +146,30 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <div id="new-customer-modal" class="fixed inset-0 bg-black/40 hidden items-start justify-center z-50 p-4 overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-sm my-8">
+            <div class="px-6 py-4 border-b flex justify-between items-center gap-3">
+                <h2 class="font-bold text-lg">新增客戶</h2>
+                <button type="button" id="new-customer-modal-close-btn" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <div class="px-6 py-4 space-y-3">
+                <div><label class="field-label">客戶名稱</label><input type="text" id="nc-name" class="field-input"></div>
+                <div><label class="field-label">工地名稱</label><input type="text" id="nc-site-name" class="field-input"></div>
+                <div>
+                    <label class="field-label">區域</label>
+                    <input type="text" id="nc-region" class="field-input" list="nc-region-datalist">
+                    <datalist id="nc-region-datalist"></datalist>
+                </div>
+                <div><label class="field-label">地址</label><input type="text" id="nc-address" class="field-input"></div>
+                <div><label class="field-label">電話</label><input type="text" id="nc-phone" class="field-input"></div>
+            </div>
+            <div class="flex justify-end gap-2 py-3 px-6 border-t">
+                <button type="button" id="new-customer-modal-cancel-btn" class="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50">取消</button>
+                <button type="button" id="nc-save-btn" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">新增並選用</button>
+            </div>
+        </div>
     </div>
 
     <script src="/admin/shared.js"></script>

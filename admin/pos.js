@@ -56,7 +56,7 @@ function restoreScrollSoon(y) {
 }
 
 const newCustomerToggle  = document.getElementById('new-customer-toggle');
-const newCustomerPanel   = document.getElementById('new-customer-panel');
+const newCustomerModal   = document.getElementById('new-customer-modal');
 const searchInput        = document.getElementById('product-search-input');
 const homeBtn            = document.getElementById('browse-home-btn');
 const backBtn            = document.getElementById('browse-back-btn');
@@ -538,18 +538,26 @@ customerSearchInput.addEventListener('blur', () => {
     setTimeout(() => customerSearchResults.classList.add('hidden'), 100);
 });
 
-newCustomerToggle.addEventListener('click', () => {
-    const opening = newCustomerPanel.classList.contains('hidden');
-    newCustomerPanel.classList.toggle('hidden');
+function openNewCustomerModal() {
     document.getElementById('edit-customer-panel').classList.add('hidden'); // 兩個表單不用同時開著
     // 如果目前有用區域篩選客戶，新增客戶就順便幫忙把「區域」填好，不用自己再打一次；
     // 「未分類」是給沒填區域的客戶用的特殊分類名稱，不是真的區域值，不用帶進去。
     // 每次打開都重新照目前的篩選狀態設定，不要留著上次沒存就關掉的舊內容。
-    if (opening) {
-        const prefillRegion = (selectedRegionFilter && selectedRegionFilter !== '未分類') ? selectedRegionFilter : '';
-        document.getElementById('nc-region').value = prefillRegion;
-    }
-});
+    const prefillRegion = (selectedRegionFilter && selectedRegionFilter !== '未分類') ? selectedRegionFilter : '';
+    ['nc-name', 'nc-site-name', 'nc-address', 'nc-phone'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('nc-region').value = prefillRegion;
+    newCustomerModal.classList.remove('hidden');
+    newCustomerModal.classList.add('flex');
+}
+
+function closeNewCustomerModal() {
+    newCustomerModal.classList.add('hidden');
+    newCustomerModal.classList.remove('flex');
+}
+
+newCustomerToggle.addEventListener('click', openNewCustomerModal);
+document.getElementById('new-customer-modal-close-btn').addEventListener('click', closeNewCustomerModal);
+document.getElementById('new-customer-modal-cancel-btn').addEventListener('click', closeNewCustomerModal);
 
 document.getElementById('nc-save-btn').addEventListener('click', async () => {
     const name = document.getElementById('nc-name').value.trim();
@@ -571,7 +579,7 @@ document.getElementById('nc-save-btn').addEventListener('click', async () => {
     renderRegionTiles();
     renderRegionDatalist();
     selectCustomer(data.id);
-    newCustomerPanel.classList.add('hidden');
+    closeNewCustomerModal();
     ['nc-name', 'nc-site-name', 'nc-region', 'nc-address', 'nc-phone'].forEach(id => { document.getElementById(id).value = ''; });
 });
 
@@ -587,7 +595,7 @@ editCustomerToggle.addEventListener('click', () => {
 
     const opening = editCustomerPanel.classList.contains('hidden');
     editCustomerPanel.classList.toggle('hidden');
-    newCustomerPanel.classList.add('hidden'); // 兩個表單不用同時開著
+    closeNewCustomerModal(); // 兩個表單不用同時開著
 
     if (opening) {
         document.getElementById('ec-name').value = c.name || '';
