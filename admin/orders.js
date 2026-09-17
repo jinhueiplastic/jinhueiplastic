@@ -2,12 +2,23 @@ let allOrders = [];
 let allCustomersForFilter = [];
 let selectedRegionFilter = null; // null = 全部
 
-// 訂單本身已經照 created_at 新到舊查詢回來，這裡只是額外提供「最舊在上面」的選項；
-// 排序只影響畫面顯示順序，不影響查詢/篩選邏輯本身。
+// 訂單本身已經照 created_at 新到舊查詢回來；這裡的排序只影響畫面顯示順序，不影響
+// 查詢/篩選邏輯本身。「最新訂單日期在上面」用的是 order_date（POS 下單挑的日期，
+// 可能是補登的舊日期），跟「最新建立在上面」（created_at，訂單真正存進資料庫的時間）
+// 是兩回事；同一個訂單日期的話用 created_at 新到舊當次要排序，順序才會穩定。
 function sortOrders(orders) {
     const sorted = [...orders];
-    const dir = document.getElementById('sort-select').value === 'created_asc' ? 1 : -1;
-    sorted.sort((a, b) => dir * (new Date(a.created_at) - new Date(b.created_at)));
+    const sortMode = document.getElementById('sort-select').value;
+    if (sortMode === 'order_date_desc') {
+        sorted.sort((a, b) => {
+            const dateA = a.order_date || (a.created_at ? a.created_at.slice(0, 10) : '');
+            const dateB = b.order_date || (b.created_at ? b.created_at.slice(0, 10) : '');
+            if (dateA !== dateB) return dateB.localeCompare(dateA);
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
+    } else {
+        sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
     return sorted;
 }
 
