@@ -19,7 +19,10 @@ create index if not exists record_history_lookup_idx on record_history (table_na
 
 alter table record_history enable row level security;
 
+drop policy if exists "Authenticated can read record_history" on record_history;
 create policy "Authenticated can read record_history" on record_history for select to authenticated using (true);
+
+drop policy if exists "Authenticated can insert record_history" on record_history;
 create policy "Authenticated can insert record_history" on record_history for insert to authenticated with check (true);
 
 -- orders：訂單本身要改之前，把「訂單欄位＋當時的 order_items」一起存成一份快照——
