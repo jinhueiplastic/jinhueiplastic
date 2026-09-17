@@ -191,6 +191,66 @@ function applyFilters() {
 document.getElementById('search-btn').addEventListener('click', applyFilters);
 document.getElementById('sort-select').addEventListener('change', applyFilters);
 
+const ORDERS_DATE_FROM_IDS = ['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd'];
+const ORDERS_DATE_TO_IDS   = ['q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'];
+const ORDERS_ALL_DATE_IDS  = [...ORDERS_DATE_FROM_IDS, ...ORDERS_DATE_TO_IDS];
+
+function ordersDateFieldsAllEmpty() {
+    return ORDERS_ALL_DATE_IDS.every(id => !document.getElementById(id).value);
+}
+
+// 起（民國年/月/日）打完，迄自動帶入同一天，大部分時候都是查單一天，省得再打一次；
+// 需要查一段區間的話，迄還是可以再手動改成別的日期——跟合併區域表單同一套邏輯。
+ORDERS_DATE_FROM_IDS.forEach((fromId, i) => {
+    const toId = ORDERS_DATE_TO_IDS[i];
+    document.getElementById(fromId).addEventListener('input', () => {
+        document.getElementById(toId).value = document.getElementById(fromId).value;
+    });
+});
+
+// 查詢訂單預設還是顯示全部訂單，不像合併區域表單一進頁面就自動篩「今天」；
+// 但只要點進日期格子、發現起訖兩組都還是空的，就先自動帶入今天的日期，方便直接從
+// 「今天」開始改，不用從頭自己打一次完整的日期。點下去（或用鍵盤 Tab 切過來）也會把
+// 格子文字整個選起來，直接打新的數字就會取代掉；按 Enter 直接等同按「查詢」。
+ORDERS_ALL_DATE_IDS.forEach(id => {
+    const input = document.getElementById(id);
+    input.addEventListener('focus', (e) => {
+        if (ordersDateFieldsAllEmpty()) {
+            fillTodayAsMinguo('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
+            fillTodayAsMinguo('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
+        }
+        e.target.select();
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyFilters();
+        }
+    });
+});
+
+// 「前天」「昨天」：把起訖兩組日期都填成同一天（只查那一天），按下去馬上查詢——
+// 跟合併區域表單同一套邏輯。
+function fillMinguoOffsetDays(daysAgo) {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    const yyy = d.getFullYear() - 1911;
+    const mm = d.getMonth() + 1;
+    const dd = d.getDate();
+    ['q-date-from-yyy', 'q-date-to-yyy'].forEach(id => { document.getElementById(id).value = yyy; });
+    ['q-date-from-mm', 'q-date-to-mm'].forEach(id => { document.getElementById(id).value = mm; });
+    ['q-date-from-dd', 'q-date-to-dd'].forEach(id => { document.getElementById(id).value = dd; });
+}
+
+document.getElementById('date-yesterday-btn').addEventListener('click', () => {
+    fillMinguoOffsetDays(1);
+    applyFilters();
+});
+document.getElementById('date-day-before-yesterday-btn').addEventListener('click', () => {
+    fillMinguoOffsetDays(2);
+    applyFilters();
+});
+
 document.getElementById('reset-btn').addEventListener('click', () => {
     ['q-order-no', 'q-customer', 'q-product', 'q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
         document.getElementById(id).value = '';

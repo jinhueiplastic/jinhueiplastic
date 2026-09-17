@@ -48,7 +48,7 @@
             <nav id="admin-nav" class="admin-nav"></nav>
         </header>
 
-        <main class="container mx-auto px-4 py-6 max-w-4xl">
+        <main class="container mx-auto px-4 py-6 max-w-5xl">
             <h2 class="text-lg font-bold mb-4">查詢訂單</h2>
 
             <div class="bg-white border rounded-lg p-4 mb-4">
@@ -68,6 +68,10 @@
                 <div>
                     <label class="field-label">商品（貨號/名稱）</label>
                     <input type="text" id="q-product" class="field-input">
+                </div>
+                <div class="flex gap-2">
+                    <button type="button" id="date-day-before-yesterday-btn" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">前天</button>
+                    <button type="button" id="date-yesterday-btn" class="px-3 py-2 text-sm rounded border bg-white hover:bg-gray-100 whitespace-nowrap">昨天</button>
                 </div>
                 <div>
                     <label class="field-label">起（民國年/月/日）</label>
