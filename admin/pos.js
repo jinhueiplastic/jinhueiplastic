@@ -833,7 +833,7 @@ function variantProductNameHtml(p) {
 }
 
 async function editProductOrderDisplayName(p) {
-    const raw = prompt('設定「下單名稱」（POS 下單／查詢訂單／區域表單都會改用這個顯示；不填的話繼續用中文品名）：', p.name_zh || '');
+    const raw = prompt('設定「下單名稱」（POS 下單／查詢訂單／合併區域表單都會改用這個顯示；不填的話繼續用中文品名）：', p.name_zh || '');
     if (raw === null) return;
     const trimmed = raw.trim();
     if (!trimmed) return;

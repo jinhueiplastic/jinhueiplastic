@@ -5,7 +5,7 @@ const PRODUCT_FIELDS = [
     { key: 'catalog_code',     label: '型錄貨號' },
     { key: 'name_zh',          label: '中文品名' },
     { key: 'name_en',          label: '英文品名' },
-    { key: 'order_display_name', label: '下單名稱', hint: '不填的話 POS 下單／查詢訂單／區域表單顯示中文品名' },
+    { key: 'order_display_name', label: '下單名稱', hint: '不填的話 POS 下單／查詢訂單／合併區域表單顯示中文品名' },
     { key: 'keywords',         label: '關鍵字', hint: '別名，幫助 POS 下單搜尋到，不會顯示在畫面上' },
     { key: 'image_url',        label: '圖片網址' },
     { key: 'desc_zh',          label: '中文說明', textarea: true },
