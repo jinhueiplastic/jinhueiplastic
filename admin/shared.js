@@ -420,7 +420,9 @@ const HISTORY_FIELD_LABELS = {
 // 把一份快照整理成看得懂的欄位清單（不含 id/created_at 這種內部欄位、也不顯示空值），
 // orders 快照多帶的 __order_items 另外整理成商品明細列表。用來讓使用者在按「還原」之前，
 // 先看得到那一版實際的內容長怎樣，不用盲目還原。
-function historySnapshotDetailHtml(snapshot) {
+// resolvers：{ 欄位名: async (值) => 顯示文字 }，給 customer_id 這種存 uuid、單看數字看不懂
+// 是誰的欄位用，呼叫端（各頁面自己知道要怎麼查）決定要不要提供、怎麼查。
+async function historySnapshotDetailHtml(snapshot, resolvers) {
     const RESERVED = new Set(['id', 'created_at', '__order_items']);
     const entries = Object.entries(snapshot).filter(([k, v]) => {
         if (RESERVED.has(k)) return false;
@@ -430,16 +432,21 @@ function historySnapshotDetailHtml(snapshot) {
         return true;
     });
 
-    const fieldsHtml = entries.length
-        ? entries.map(([k, v]) => {
-            const label = HISTORY_FIELD_LABELS[k] || k;
-            let display;
-            if (typeof v === 'boolean') display = v ? '是' : '否';
-            else if (typeof v === 'object') display = JSON.stringify(v);
-            else display = String(v);
-            return `<p class="text-xs text-gray-600"><span class="text-gray-400">${escapeHtml(label)}：</span>${escapeHtml(display)}</p>`;
-        }).join('')
-        : '<p class="text-xs text-gray-400">（沒有其他欄位）</p>';
+    const fieldsHtmlParts = await Promise.all(entries.map(async ([k, v]) => {
+        const label = HISTORY_FIELD_LABELS[k] || k;
+        let display;
+        if (resolvers && resolvers[k]) {
+            display = await resolvers[k](v);
+        } else if (typeof v === 'boolean') {
+            display = v ? '是' : '否';
+        } else if (typeof v === 'object') {
+            display = JSON.stringify(v);
+        } else {
+            display = String(v);
+        }
+        return `<p class="text-xs text-gray-600"><span class="text-gray-400">${escapeHtml(label)}：</span>${escapeHtml(display)}</p>`;
+    }));
+    const fieldsHtml = fieldsHtmlParts.length ? fieldsHtmlParts.join('') : '<p class="text-xs text-gray-400">（沒有其他欄位）</p>';
 
     const itemsHtml = (snapshot.__order_items && snapshot.__order_items.length)
         ? `<div class="mt-2 pt-2 border-t border-gray-200">
@@ -453,8 +460,9 @@ function historySnapshotDetailHtml(snapshot) {
 
 // table：record_history.table_name（'orders'／'customers'／'pos_items'）；
 // recordId：那一列的 id；label：視窗標題後面附註的識別文字（例如訂單編號、客戶名稱）；
-// onRestored：還原成功後要呼叫的回呼（通常是重新整理畫面上的資料）。
-async function openHistoryModal(table, recordId, label, onRestored) {
+// onRestored：還原成功後要呼叫的回呼（通常是重新整理畫面上的資料）；
+// resolvers：見 historySnapshotDetailHtml 的說明。
+async function openHistoryModal(table, recordId, label, onRestored, resolvers) {
     ensureHistoryModal();
     const modal = document.getElementById('history-modal');
     document.getElementById('history-modal-title').textContent = `修改紀錄${label ? '－' + label : ''}`;
@@ -493,12 +501,13 @@ async function openHistoryModal(table, recordId, label, onRestored) {
         </div>`).join('');
 
     body.querySelectorAll('.history-view-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const idx = btn.dataset.idx;
             const detail = body.querySelector(`.history-detail[data-idx="${idx}"]`);
             if (detail.classList.contains('hidden')) {
-                detail.innerHTML = historySnapshotDetailHtml(data[Number(idx)].snapshot);
                 detail.classList.remove('hidden');
+                detail.innerHTML = '<p class="text-xs text-gray-400 mt-2">載入中…</p>';
+                detail.innerHTML = await historySnapshotDetailHtml(data[Number(idx)].snapshot, resolvers);
             } else {
                 detail.classList.add('hidden');
             }
@@ -566,8 +575,9 @@ async function restoreHistorySnapshot(table, recordId, snapshot, operation) {
 // 列表裡可以點「修改紀錄」），所以要另外從 record_history 反查——找出「最後一次操作是
 // delete」的那些 record_id，再排除掉「後來又被還原/重建過，現在活著」的，剩下的才是
 // 真的已刪除、可以還原的項目。
-// labelFn(snapshot)：每個項目要顯示的識別文字，各表想顯示的欄位不一樣，由呼叫端決定。
-async function openDeletedItemsModal(table, labelFn, onRestored) {
+// labelFn(snapshot)：每個項目要顯示的識別文字，各表想顯示的欄位不一樣，由呼叫端決定；
+// resolvers：見 historySnapshotDetailHtml 的說明。
+async function openDeletedItemsModal(table, labelFn, onRestored, resolvers) {
     ensureHistoryModal();
     const modal = document.getElementById('history-modal');
     document.getElementById('history-modal-title').textContent = '已刪除的項目';
@@ -624,12 +634,13 @@ async function openDeletedItemsModal(table, labelFn, onRestored) {
         </div>`).join('');
 
     body.querySelectorAll('.history-view-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const idx = btn.dataset.idx;
             const detail = body.querySelector(`.history-detail[data-idx="${idx}"]`);
             if (detail.classList.contains('hidden')) {
-                detail.innerHTML = historySnapshotDetailHtml(deleted[Number(idx)].snapshot);
                 detail.classList.remove('hidden');
+                detail.innerHTML = '<p class="text-xs text-gray-400 mt-2">載入中…</p>';
+                detail.innerHTML = await historySnapshotDetailHtml(deleted[Number(idx)].snapshot, resolvers);
             } else {
                 detail.classList.add('hidden');
             }

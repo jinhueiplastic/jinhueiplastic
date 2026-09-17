@@ -2,6 +2,16 @@ let allOrders = [];
 let allCustomersForFilter = [];
 let selectedRegionFilter = null; // null = 全部
 
+// 修改紀錄／已刪除訂單的快照裡，customer_id 只是一串 uuid，看不出是哪位客戶，
+// 查一下資料庫換成名字顯示。查不到（例如那位客戶後來也被刪除了）就顯示原本的 id。
+const ORDER_HISTORY_RESOLVERS = {
+    customer_id: async (id) => {
+        if (!id) return '';
+        const { data } = await sb.from('customers').select('name').eq('id', id).single();
+        return data ? data.name : id;
+    },
+};
+
 // 訂單本身已經照 created_at 新到舊查詢回來；這裡的排序只影響畫面顯示順序，不影響
 // 查詢/篩選邏輯本身。「最新訂單日期在上面」用的是 order_date（POS 下單挑的日期，
 // 可能是補登的舊日期），跟「最新建立在上面」（created_at，訂單真正存進資料庫的時間）
@@ -141,7 +151,7 @@ function renderResults(unsortedOrders) {
             if (!order) return;
             openHistoryModal('orders', order.id, order.order_no, async () => {
                 await loadOrders();
-            });
+            }, ORDER_HISTORY_RESOLVERS);
         });
     });
 
@@ -220,7 +230,7 @@ document.getElementById('deleted-orders-btn').addEventListener('click', () => {
         return `${s.order_no || '（無編號）'}　${dateLabel}　共 ${itemCount} 項商品`;
     }, async () => {
         await loadOrders();
-    });
+    }, ORDER_HISTORY_RESOLVERS);
 });
 
 const ORDERS_DATE_FROM_IDS = ['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd'];
