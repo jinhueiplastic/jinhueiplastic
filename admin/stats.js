@@ -22,8 +22,8 @@ async function loadOrders() {
 }
 
 function applyFilter() {
-    const dateFrom = minguoFieldsToIsoDate('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
-    const dateTo = minguoFieldsToIsoDate('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
+    const dateFrom = qDateFromPicker.getIso();
+    const dateTo = qDateToPicker.getIso();
 
     filteredOrders = allOrders.filter(o => {
         const orderDate = o.created_at ? o.created_at.slice(0, 10) : '';
@@ -284,58 +284,43 @@ function renderStats() {
 document.getElementById('search-btn').addEventListener('click', applyFilter);
 
 document.getElementById('reset-btn').addEventListener('click', () => {
-    ['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
-        document.getElementById(id).value = '';
-    });
+    qDateFromPicker.setDate(null);
+    qDateToPicker.setDate(null);
     applyFilter();
 });
 
-// 起（民國年/月/日）打完，迄自動帶入同一天，大部分時候都是查單一天，省得再打一次；
+// 起選好之後，迄自動帶入同一天，大部分時候都是查單一天，省得再選一次；
 // 需要查一段區間的話，迄還是可以再手動改成別的日期——跟區域表單同一套邏輯。
-['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd'].forEach((fromId, i) => {
-    const toId = ['q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'][i];
-    document.getElementById(fromId).addEventListener('input', () => {
-        document.getElementById(toId).value = document.getElementById(fromId).value;
-    });
+const qDateFromPicker = initRocDatePicker('q-date-from', {
+    allowClear: true,
+    onChange: (iso) => qDateToPicker.setDate(iso),
 });
-
-// 日期格子點下去就整格文字選起來，按 Enter 直接查詢——跟區域表單同一套習慣。
-['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
-    const input = document.getElementById(id);
-    input.addEventListener('focus', (e) => e.target.select());
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            applyFilter();
-        }
-    });
-});
+const qDateToPicker = initRocDatePicker('q-date-to', { allowClear: true });
 
 // 「前天」「昨天」：把起訖兩組日期都填成同一天，按下去馬上查詢——跟區域表單同一套邏輯。
-function fillMinguoOffsetDays(daysAgo) {
+function fillOffsetDays(daysAgo) {
     const d = new Date();
     d.setDate(d.getDate() - daysAgo);
-    const yyy = d.getFullYear() - 1911;
-    const mm = d.getMonth() + 1;
-    const dd = d.getDate();
-    ['q-date-from-yyy', 'q-date-to-yyy'].forEach(id => { document.getElementById(id).value = yyy; });
-    ['q-date-from-mm', 'q-date-to-mm'].forEach(id => { document.getElementById(id).value = mm; });
-    ['q-date-from-dd', 'q-date-to-dd'].forEach(id => { document.getElementById(id).value = dd; });
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    qDateFromPicker.setDate(iso);
+    qDateToPicker.setDate(iso);
 }
 document.getElementById('date-yesterday-btn').addEventListener('click', () => {
-    fillMinguoOffsetDays(1);
+    fillOffsetDays(1);
     applyFilter();
 });
 document.getElementById('date-day-before-yesterday-btn').addEventListener('click', () => {
-    fillMinguoOffsetDays(2);
+    fillOffsetDays(2);
     applyFilter();
 });
 
 async function initStatsPage() {
-    // 一進頁面先預設查「今天」（民國年/月/日）——跟區域表單同一套邏輯；要看全部訂單的話
-    // 把日期欄位清空、按查詢就可以。
-    fillTodayAsMinguo('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
-    fillTodayAsMinguo('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
+    // 一進頁面先預設查「今天」——跟區域表單同一套邏輯；要看全部訂單的話把日期欄位清空、
+    // 按查詢就可以。
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    qDateFromPicker.setDate(todayIso);
+    qDateToPicker.setDate(todayIso);
     await loadOrders();
 }
 

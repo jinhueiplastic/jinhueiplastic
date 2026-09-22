@@ -301,6 +301,123 @@ function fillTodayAsMinguo(yyyId, mmId, ddId) {
     document.getElementById(ddId).value = today.getDate();
 }
 
+// 通用的民國年月曆選擇器：按鈕一按跳出月曆（月份切換＋回到今天，allowClear 的話還多一個
+// 「清除」），選到的日期存進西元 'YYYY-MM-DD' 格式的隱藏欄位，按鈕本身顯示民國年格式
+// （YYY/MM/DD）。POS 下單的訂單日期、合併區域表單／統計查詢區間的起訖日期都是用這個。
+// 需要有三個對應的 DOM 元素：#{idPrefix}-display-btn（按鈕）、#{idPrefix}-calendar
+// （月曆彈出框，預設 class="hidden"）、#{idPrefix}-input（type="hidden"）。
+function initRocDatePicker(idPrefix, { initialIso = null, allowClear = false, placeholder = '尚未選擇', onChange } = {}) {
+    const displayBtn = document.getElementById(`${idPrefix}-display-btn`);
+    const calendar = document.getElementById(`${idPrefix}-calendar`);
+    const inputEl = document.getElementById(`${idPrefix}-input`);
+    let viewDate = new Date();
+
+    function isoOf(y, m, d) {
+        return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+
+    function setDate(isoDate, { silent } = {}) {
+        inputEl.value = isoDate || '';
+        displayBtn.textContent = isoDate ? isoDateToRocLabel(isoDate) : placeholder;
+        if (!silent && onChange) onChange(isoDate);
+    }
+
+    function render() {
+        const viewYear = viewDate.getFullYear();
+        const viewMonth = viewDate.getMonth();
+        const selectedIso = inputEl.value;
+
+        const firstWeekday = new Date(viewYear, viewMonth, 1).getDay();
+        const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+        const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
+
+        let cellsHtml = '';
+        for (let i = 0; i < firstWeekday; i++) cellsHtml += '<div></div>';
+        for (let day = 1; day <= daysInMonth; day++) {
+            const iso = isoOf(viewYear, viewMonth, day);
+            const isSelected = iso === selectedIso;
+            cellsHtml += `<button type="button" class="roc-date-day-btn text-center text-sm py-1 rounded ${isSelected ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}" data-iso="${iso}">${day}</button>`;
+        }
+
+        calendar.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <button type="button" class="roc-date-prev-month px-2 py-1 text-sm rounded hover:bg-gray-100">‹</button>
+                <span class="text-sm font-bold">民國${viewYear - 1911}年${String(viewMonth + 1).padStart(2, '0')}月</span>
+                <button type="button" class="roc-date-next-month px-2 py-1 text-sm rounded hover:bg-gray-100">›</button>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-center text-xs text-gray-400 mb-1">
+                ${weekdayLabels.map(w => `<div>${w}</div>`).join('')}
+            </div>
+            <div class="grid grid-cols-7 gap-1">${cellsHtml}</div>
+            <div class="flex items-center justify-between mt-2">
+                ${allowClear ? '<button type="button" class="roc-date-clear-btn text-xs text-gray-500 hover:underline">清除</button>' : '<span></span>'}
+                <button type="button" class="roc-date-today-btn text-xs text-blue-600 hover:underline">回到今天</button>
+            </div>`;
+
+        calendar.querySelector('.roc-date-prev-month').addEventListener('click', () => {
+            viewDate = new Date(viewYear, viewMonth - 1, 1);
+            render();
+        });
+        calendar.querySelector('.roc-date-next-month').addEventListener('click', () => {
+            viewDate = new Date(viewYear, viewMonth + 1, 1);
+            render();
+        });
+        calendar.querySelector('.roc-date-today-btn').addEventListener('click', () => {
+            const today = new Date();
+            viewDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            setDate(isoOf(today.getFullYear(), today.getMonth(), today.getDate()));
+            render();
+        });
+        const clearBtn = calendar.querySelector('.roc-date-clear-btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                setDate(null);
+                calendar.classList.add('hidden');
+            });
+        }
+        calendar.querySelectorAll('.roc-date-day-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                setDate(btn.dataset.iso);
+                calendar.classList.add('hidden');
+            });
+        });
+    }
+
+    displayBtn.addEventListener('click', () => {
+        if (calendar.classList.contains('hidden')) {
+            // 每次打開都跳回目前選到的日期所在月份，比較直覺；還沒選日期就跳回今天所在月份。
+            const iso = inputEl.value;
+            if (iso) {
+                const [y, m] = iso.split('-').map(Number);
+                viewDate = new Date(y, m - 1, 1);
+            } else {
+                viewDate = new Date();
+            }
+            render();
+            calendar.classList.remove('hidden');
+        } else {
+            calendar.classList.add('hidden');
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!calendar.contains(e.target) && e.target !== displayBtn) {
+            calendar.classList.add('hidden');
+        }
+    });
+
+    if (initialIso) {
+        const [y, m] = initialIso.split('-').map(Number);
+        viewDate = new Date(y, m - 1, 1);
+    }
+    setDate(initialIso, { silent: true });
+
+    return {
+        setDate: (iso) => setDate(iso, { silent: true }),
+        getIso: () => inputEl.value || null,
+    };
+}
+
 // 讓「重新整理」之後，網頁捲動位置盡量停在原本的地方。瀏覽器內建的捲動還原
 // 常常來不及等非同步資料（商品、訂單…）載入完、畫面還很短的時候就先還原了，
 // 等資料進來、頁面變高之後，位置就對不上了。改用 sessionStorage 自己記住捲動

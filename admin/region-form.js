@@ -99,8 +99,8 @@ function applyFilter() {
     }
 
     const region = selectedRegion; // '' 代表全部，不篩選區域
-    const dateFrom = minguoFieldsToIsoDate('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
-    const dateTo = minguoFieldsToIsoDate('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
+    const dateFrom = qDateFromPicker.getIso();
+    const dateTo = qDateToPicker.getIso();
 
     matchedOrders = allOrders.filter(o => {
         const c = o.customers;
@@ -120,47 +120,30 @@ function applyFilter() {
 
 document.getElementById('search-btn').addEventListener('click', applyFilter);
 
-// 起（民國年/月/日）打完，迄自動帶入同一天，大部分時候都是查單一天，省得再打一次；
+// 起選好之後，迄自動帶入同一天，大部分時候都是查單一天，省得再選一次；
 // 需要查一段區間的話，迄還是可以再手動改成別的日期。
-['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd'].forEach((fromId, i) => {
-    const toId = ['q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'][i];
-    document.getElementById(fromId).addEventListener('input', () => {
-        document.getElementById(toId).value = document.getElementById(fromId).value;
-    });
+const qDateFromPicker = initRocDatePicker('q-date-from', {
+    allowClear: true,
+    onChange: (iso) => qDateToPicker.setDate(iso),
 });
-
-// 日期格子點下去（或用鍵盤 Tab 切過來）就整格文字選起來，直接打新的數字就會取代掉，
-// 不用自己先刪原本的值；按 Enter 直接等同按「查詢」，不用打完日期還要伸手去點按鈕。
-['q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd', 'q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd'].forEach(id => {
-    const input = document.getElementById(id);
-    input.addEventListener('focus', (e) => e.target.select());
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            applyFilter();
-        }
-    });
-});
+const qDateToPicker = initRocDatePicker('q-date-to', { allowClear: true });
 
 // 「前天」「昨天」：把起訖兩組日期都填成同一天（只查那一天），按下去馬上查詢，
 // 不用自己手動改日期再按查詢——跟「查詢」按鈕一樣要求先選好區域。
-function fillMinguoOffsetDays(daysAgo) {
+function fillOffsetDays(daysAgo) {
     const d = new Date();
     d.setDate(d.getDate() - daysAgo);
-    const yyy = d.getFullYear() - 1911;
-    const mm = d.getMonth() + 1;
-    const dd = d.getDate();
-    ['q-date-from-yyy', 'q-date-to-yyy'].forEach(id => { document.getElementById(id).value = yyy; });
-    ['q-date-from-mm', 'q-date-to-mm'].forEach(id => { document.getElementById(id).value = mm; });
-    ['q-date-from-dd', 'q-date-to-dd'].forEach(id => { document.getElementById(id).value = dd; });
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    qDateFromPicker.setDate(iso);
+    qDateToPicker.setDate(iso);
 }
 
 document.getElementById('date-yesterday-btn').addEventListener('click', () => {
-    fillMinguoOffsetDays(1);
+    fillOffsetDays(1);
     applyFilter();
 });
 document.getElementById('date-day-before-yesterday-btn').addEventListener('click', () => {
-    fillMinguoOffsetDays(2);
+    fillOffsetDays(2);
     applyFilter();
 });
 
@@ -202,8 +185,10 @@ generateBtn.addEventListener('click', async () => {
 });
 
 async function initRegionForm() {
-    fillTodayAsMinguo('q-date-from-yyy', 'q-date-from-mm', 'q-date-from-dd');
-    fillTodayAsMinguo('q-date-to-yyy', 'q-date-to-mm', 'q-date-to-dd');
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    qDateFromPicker.setDate(todayIso);
+    qDateToPicker.setDate(todayIso);
 
     statusMsg.textContent = '載入中…';
     await Promise.all([loadRegions(), loadOrders()]);
